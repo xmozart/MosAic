@@ -20,6 +20,10 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.media.proxy",
     "mosaic.media.visual",
     "mosaic.audio.analysis",
+    "mosaic.media.telemetry",
+    "mosaic.library.embed_task",
+    "mosaic.library.segments",
+    "mosaic.library.similarity",
 )
 """Modules that register production handlers; extended as pipeline stages land."""
 

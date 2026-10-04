@@ -99,7 +99,7 @@ def _key(ctx: TaskContext) -> str:
     return artifact_key(
         "audio",
         project_id=ctx.project.id,
-        inputs={"proxy": px.key},
+        inputs={"proxy": px.key, "asset": ctx.params["asset_id"]},
         config=_config(),
         version=AUDIO_VERSION,
     )

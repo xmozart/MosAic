@@ -22,6 +22,7 @@ from mosaic.core.time import Rounding, round_fraction
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import PermanentError, task
+from mosaic.library.purge import purge_sample_derived
 from mosaic.media import inventory, l1
 from mosaic.media.ffmpeg import builders
 from mosaic.media.ffmpeg.run import stream_stdout
@@ -72,7 +73,9 @@ def _key(ctx: TaskContext, px: ProxyInfo) -> str:
     return artifact_key(
         "visual",
         project_id=ctx.project.id,
-        inputs={"proxy": px.key},
+        # The asset is part of the key: rows are per asset, and two identical files share
+        # one proxy blob but are two assets.
+        inputs={"proxy": px.key, "asset": ctx.params["asset_id"]},
         config=CONFIG,
         version=VISUAL_VERSION,
     )
@@ -174,6 +177,7 @@ def visual_task(ctx: TaskContext) -> dict[str, Any]:
                 TechMetric.asset_id == asset_id, TechMetric.name.in_(VISUAL_METRICS)
             )
         )
+        purge_sample_derived(s, asset_id)  # segments and embeddings depend on these rows
         s.execute(delete(SampleFrame).where(SampleFrame.asset_id == asset_id))
         s.execute(delete(Shot).where(Shot.asset_id == asset_id))
         shot_rows: list[Shot] = []
@@ -250,6 +254,7 @@ def visual_task(ctx: TaskContext) -> dict[str, Any]:
                     phash=f"{rec['ph']:016x}",
                     kept=dup is None,
                     dup_of=dup["id"] if dup else None,
+                    dup_reason="phash" if dup else None,
                     image_key=rec["image_key"],
                     provenance_id=prov,
                 )

@@ -8,7 +8,18 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from sqlalchemy import JSON, BigInteger, Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -193,6 +204,7 @@ class SampleFrame(ProjectBase):
     phash: Mapped[str] = mapped_column(String(16))  # 64-bit hex
     kept: Mapped[bool] = mapped_column(Boolean, default=True)
     dup_of: Mapped[int | None] = mapped_column(ForeignKey("sample_frame.id"))
+    dup_reason: Mapped[str | None] = mapped_column(String(16))  # phash|embedding
     image_key: Mapped[str | None] = mapped_column(String(128))
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
 
@@ -254,3 +266,55 @@ class TranscriptWord(ProjectBase):
     end_ticks: Mapped[int] = mapped_column(BigInteger)
     word: Mapped[str] = mapped_column(Text)
     probability: Mapped[float | None] = mapped_column(Float)
+
+
+# ------------------------------------------------------- embeddings and segments
+
+
+class Embedding(ProjectBase):
+    """An L2-normalized float32 vector for a sample or a segment, per model.
+
+    Vectors are mirrored into a sqlite-vec index named after the model and dimension
+    (ARCHITECTURE.md §12); a model change creates a new index."""
+
+    __tablename__ = "embedding"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_kind: Mapped[str] = mapped_column(String(16))  # sample|segment
+    owner_id: Mapped[int] = mapped_column(Integer)
+    model: Mapped[str] = mapped_column(String(128))
+    dim: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+    __table_args__ = (Index("ix_embedding_owner", "owner_kind", "owner_id", "model"),)
+
+
+class SimilarityGroup(ProjectBase):
+    __tablename__ = "similarity_group"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    method: Mapped[str] = mapped_column(String(32))  # embedding
+    size: Mapped[int] = mapped_column(Integer)
+    best_segment_id: Mapped[int | None] = mapped_column(Integer)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class Segment(ProjectBase):
+    """Editorially coherent sub-range of a shot (1–20 s); the unit of AI analysis and
+    selection (ARCHITECTURE.md §5.3)."""
+
+    __tablename__ = "segment"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    shot_id: Mapped[int] = mapped_column(ForeignKey("shot.id"), index=True)
+    index: Mapped[int] = mapped_column(Integer)
+    start_ticks: Mapped[int] = mapped_column(BigInteger)
+    end_ticks: Mapped[int] = mapped_column(BigInteger)
+    usable_start_ticks: Mapped[int] = mapped_column(BigInteger)
+    usable_end_ticks: Mapped[int] = mapped_column(BigInteger)
+    has_speech: Mapped[bool] = mapped_column(Boolean, default=False)
+    quality: Mapped[float | None] = mapped_column(Float)  # higher is better; for "best of"
+    similarity_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("similarity_group.id"), index=True
+    )
+    group_best: Mapped[bool] = mapped_column(Boolean, default=False)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))

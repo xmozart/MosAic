@@ -22,6 +22,7 @@ def _isolated_home(
         # Model weights are shared across tests in MosAic's real app-data directory.
         monkeypatch.setenv("MOSAIC_MODELS_DIR", str(SHARED_MODELS))
     monkeypatch.setenv("MOSAIC_STT_MODEL", os.environ.get("MOSAIC_STT_MODEL", "small"))
+    monkeypatch.setenv("MOSAIC_EMBED_VARIANT", os.environ.get("MOSAIC_EMBED_VARIANT", "quantized"))
     return home
 
 
@@ -59,6 +60,7 @@ def analyzed_corpus(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):
         if "MOSAIC_MODELS_DIR" not in os.environ:
             mp.setenv("MOSAIC_MODELS_DIR", str(SHARED_MODELS))
         mp.setenv("MOSAIC_STT_MODEL", os.environ.get("MOSAIC_STT_MODEL", "small"))
+        mp.setenv("MOSAIC_EMBED_VARIANT", os.environ.get("MOSAIC_EMBED_VARIANT", "quantized"))
         root = tmp_path_factory.mktemp("analyzed") / "trip"
         shutil.copytree(corpus_dir, root)
         control = ControlDB()

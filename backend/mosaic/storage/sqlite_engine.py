@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import sqlite_vec
 from sqlalchemy import Engine, create_engine, event
 
 from mosaic.storage.placement import assert_live_db_allowed
@@ -24,5 +25,9 @@ def make_engine(path: Path, *, wal: bool) -> Engine:
         cur.execute(f"PRAGMA journal_mode={'WAL' if wal else 'DELETE'}")
         cur.execute("PRAGMA synchronous=NORMAL")
         cur.close()
+        # sqlite-vec for embedding search (ARCHITECTURE.md §12).
+        dbapi_conn.enable_load_extension(True)
+        sqlite_vec.load(dbapi_conn)
+        dbapi_conn.enable_load_extension(False)
 
     return engine

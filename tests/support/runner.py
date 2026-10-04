@@ -29,4 +29,8 @@ def run_job(
     finally:
         worker.stop.set()
         th.join(timeout=30)
+    if status != "done":
+        for t in store.tasks(job_id):
+            if t.status == "failed":
+                print(f"FAILED TASK {t.id} {t.kind} {t.params}: {t.error}")
     return status

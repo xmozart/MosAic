@@ -14,7 +14,15 @@ from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
 from mosaic.media.pipeline import UnsupportedModeError, submit_analysis
 from mosaic.storage.control import ControlDB
-from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
+from mosaic.storage.models_project import (
+    Asset,
+    AssetFile,
+    MediaFile,
+    MediaStream,
+    Segment,
+    Shot,
+    Sidecar,
+)
 from mosaic.storage.projects import init_project
 from tests.support.runner import run_job
 
@@ -141,6 +149,11 @@ def test_l0_inventory_of_synthetic_corpus(corpus_dir: Path, tmp_path: Path) -> N
             assert files["locked.mp4"].status == "unsupported"
             assert "Cannot read" in (files["locked.mp4"].reason or "")
         assert asset_of("day2/clip.mp4").kind == "video"
+        # A byte-identical copy shares the proxy blob but still gets its own analysis rows.
+        for name in ("day2/clip.mp4", "A002_basic.mp4"):
+            aid = asset_of(name).id
+            assert s.scalar(select(Shot.id).where(Shot.asset_id == aid).limit(1)), name
+            assert s.scalar(select(Segment.id).where(Segment.asset_id == aid).limit(1)), name
         assert asset_of("ambience.m4a").status == "deferred"
         assert asset_of("voice.wav").status == "unsupported"
         assert asset_of("manifest.json").kind == "unsupported"

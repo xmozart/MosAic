@@ -198,13 +198,13 @@ Stages per asset, all tasks:
 3. **proxy.** 720p H.264 8-bit SDR Rec.709 CFR, at the source rate halved until it is at most 30 fps (ADR 0007), one proxy per asset over its logical timeline. HDR and log sources are tone-mapped or have a LUT applied. Camera LRF/LRV files are associated and validated in every mode, but used as proxies only in Quick mode. This proxy is required because it is also the browser playback format.
 4. **shots.** Adaptive content detector (PySceneDetect's algorithm, ported to numpy; ADR 0008) on the proxy. Add forced subdivision for long static shots.
 5. **samples.** Scene-change frames and fixed-interval frames (ADR 0008), merged and deduplicated by perceptual hash and SigLIP embedding distance. Scene-change frames and user-marked frames are always retained.
-6. **tech metrics.** Sharpness (variance of Laplacian), exposure (histogram clipping), noise estimate, shake (gyro from GoPro GPMF or Insta360 when present, otherwise optical-flow jitter), freeze or duplicate frames, and lens obstruction.
+6. **tech metrics.** Sharpness (variance of Laplacian), exposure (histogram clipping), noise estimate, shake (gyro from GoPro GPMF or Insta360 when present, stored as `shake_gyro`; otherwise optical-flow jitter, `shake`), freeze or duplicate frames, and lens obstruction.
 7. **audio.** VAD, then transcription with word timestamps, loudness, clipping and wind estimate.
 8. **segments.** Split shots into Segments using motion changes, speech boundaries and sample clustering. Compute `usable_range` by trimming camera-start and camera-stop wobble, as detected from motion.
 9. **embeddings.** Local SigLIP image embeddings per sample, then pooled per segment.
 10. **mosaics.** Build contact sheets per the active analysis mode. Tiles come from one asset or shot where possible, so the model sees continuity. Each tile has a burned-in label (`T07 · ast_0123 · 00:02:14.3`) and a sidecar mapping. The model must reference tiles by index (`T07`), and code resolves the index to source ticks.
 11. **vision.** A structured observation for each segment. The mosaic is the transport format; the segment is the unit.
-12. **similarity.** Cluster segments by embedding and visual observation, and pick the recommended best per cluster.
+12. **similarity.** Cluster segments by embedding (M0) and later visual observation, and pick the recommended best per cluster. Leader clustering against group seeds prevents chaining (ADR 0011).
 13. **disposition.** Deterministic rules (technical failure, accidental recording) plus AI judgement produce USE/MAYBE/REJECT with reasons.
 14. **summaries.** Shot → scene → day → trip, including trip context when present. Summaries are cheap to regenerate when context changes.
 
@@ -333,7 +333,7 @@ Behaviour:
 ## 12. Search
 
 - **Hybrid search.** SigLIP text→image similarity over sample embeddings, plus full-text search (FTS5) over descriptions, tags and transcripts. The two result sets are merged with reciprocal rank fusion.
-- Vectors live in sqlite-vec inside the project DB and are versioned by (model, dimension, analysis version). A model change creates a new index; it does not overwrite the old one.
+- Vectors live in sqlite-vec inside the project DB, one index per (owner kind, model, dimension): sample and segment vectors are indexed separately. The index mirrors the `embedding` table, whose rows are rebuilt when the producing stage's key (which includes the algorithm version) changes. A model change creates a new index; it does not overwrite the old one (ADR 0011).
 
 ## 13. Edit versioning
 

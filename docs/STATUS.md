@@ -9,7 +9,7 @@ _(empty — the agent is working)_
 ## Current
 
 - **Milestone:** M0
-- **Step:** 8 (embeddings, segments with usable_range, similarity groups, GPMF). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 9 (mosaics, AI provider layer, app config, vision v1, budgets, dispositions). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -21,7 +21,7 @@ _(empty — the agent is working)_
 - [x] 5. Proxies: tone mapping, rotation, color range, VFR→CFR, tick map
 - [x] 6. Shots, samples, tech metrics, shake
 - [x] 7. Audio: VAD, Whisper word ticks, loudness, speech fixture
-- [ ] 8. Embeddings, segments with usable_range, similarity groups, GPMF if feasible
+- [x] 8. Embeddings, segments with usable_range, similarity groups, GPMF if feasible
 - [ ] 9. Mosaics, AI interface and provider registry, Anthropic and fake adapters, app configuration and `mosaic config` CLI (ADR 0003), vision v1, budgets, dispositions
 - [ ] 10. Editing: retrieval, planner, selector, solver, refiner, critic, versions, `mosaic edit`/`report`
 - [ ] 11. Render: chunks, conform, tone mapping, pillarbox, silence, loudnorm, encoder selection
@@ -29,9 +29,13 @@ _(empty — the agent is working)_
 
 ## Carry-forward notes
 
-- Step 8: merge adjacent speech `audio_event` rows split at 10-minute transcription block edges when using speech boundaries for segments.
+- Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
+
+- Step 12: calibrate `library.similarity.MAX_DISTANCE` (0.06) and `segments.VISUAL_CHANGE` on the real corpus; synthetic frames are degenerate for SigLIP (25% of pairs ≥ 0.94).
+- `media.telemetry` re-runs (and ends skipped) on every analysis for assets without GPMF; cheap, but could cache a 'no telemetry' artifact.
 
 - Artifact GC: old `frame`/`motion`/proxy artifacts stay when keys change (M1 storage cleanup).
+- Step 9: move image embeddings behind `Embedder` in `ai/adapters/` with the model from settings instead of `MOSAIC_EMBED_VARIANT` (ADR 0011).
 - Step 9: move transcription behind `Transcriber` in `ai/adapters/faster_whisper/`; choose the Whisper model from the analysis mode + settings instead of `MOSAIC_STT_MODEL` (ADR 0009).
 - Dev note: tests share Whisper/SigLIP weights in MosAic's real app-data `models/` folder (`MOSAIC_MODELS_DIR`), so they download once.
 
@@ -55,3 +59,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.5 · 720p CFR SDR proxies (tone mapping, rotation, range, VFR→CFR, chapters concatenated) with verified affine or PTS-table tick maps; frame-accurate barcode tests (ADR 0007)
 - 2026-10-04 · M0.6 · shots (ported adaptive detector), samples with pHash dedupe and thumbnails, tech metrics with set-based percentiles, optical-flow shake; project write gate; OpenCV dropped for GPL FFmpeg bundling (ADR 0008)
 - 2026-10-04 · M0.7 · audio: streaming BS.1770 loudness, Silero VAD, faster-whisper word ticks from proxy audio, LibriSpeech fixture; PyAV excluded (ADR 0009); bundled runtime libs documented (ADR 0010, Q-1); LRF flake fixed
+- 2026-10-04 · M0.8 · SigLIP (ONNX) sample/segment embeddings in per-kind sqlite-vec indexes, segments with usable_range, leader-clustered similarity groups, GPMF gyro shake; asset-scoped keys and purge-before-rebuild fixes (ADR 0011)

@@ -70,6 +70,8 @@ class CaseInfo:
     scene_frames: int | None = None  # a new synthetic scene starts every N source frames
     shake_px: int = 0  # synthetic camera shake amplitude
     transcript: str | None = None
+    duplicate_of: str | None = None  # same pictures as this file
+    wobble_frames: int | None = None  # camera shake only in the first N frames
     speech_offset_ms: int | None = None
     audio_tracks: int = 0
     full_range: bool = False
@@ -82,7 +84,13 @@ class CaseInfo:
 
 
 def render_frame(
-    width: int, height: int, index: int, scene_len: int, seed: int, shake_px: int = 0
+    width: int,
+    height: int,
+    index: int,
+    scene_len: int,
+    seed: int,
+    shake_px: int = 0,
+    shake_frames: int | None = None,
 ) -> np.ndarray:
     """Synthetic picture: per-scene mid-tone background with texture, a moving block,
     and the barcode band on top."""
@@ -103,7 +111,7 @@ def render_frame(
     x = x if x < span else 2 * span - x
     y = bh + (height - bh - size) // 2
     frame[y : y + size, x : x + size] = (170, 160, 100)
-    if shake_px:
+    if shake_px and (shake_frames is None or index < shake_frames):
         # Camera shake: the picture below the barcode band jumps a few pixels every frame.
         jitter = np.random.default_rng(10_000 + index).integers(-shake_px, shake_px + 1, 2)
         frame[bh:] = np.roll(frame[bh:], shift=(int(jitter[0]), int(jitter[1])), axis=(0, 1))
@@ -180,6 +188,7 @@ class CorpusGenerator:
         frames: int | None = None,
         container: str | None = None,
         shake_px: int = 0,
+        shake_frames: int | None = None,
     ) -> int:
         n = frames if frames is not None else int(seconds * rate)
         scene_len = int(scene_seconds * rate)
@@ -200,7 +209,7 @@ class CorpusGenerator:
         _write_frames(
             self.bin,
             spec,
-            lambda i: render_frame(w, h, first_index + i, scene_len, seed, shake_px),
+            lambda i: render_frame(w, h, first_index + i, scene_len, seed, shake_px, shake_frames),
         )
         return n
 
@@ -233,6 +242,52 @@ class CorpusGenerator:
                 audio_tracks=1,
                 transcript=text,
                 speech_offset_ms=SPEECH_OFFSET_MS,
+            )
+        )
+
+    def duplicate(self) -> None:
+        """Same pictures as A002_basic.mp4 (seed 2, 25 fps), different sound."""
+        n = self._video(
+            "A003_dup.mp4", seconds=20 * self.scale, rate=Fraction(25), seed=2, audio=(_sine(330),)
+        )
+        self._add(
+            CaseInfo(
+                "duplicate",
+                ["A003_dup.mp4"],
+                "similarity grouping",
+                rate="25/1",
+                frames=n,
+                width=640,
+                height=360,
+                audio_tracks=1,
+                duplicate_of="A002_basic.mp4",
+            )
+        )
+
+    def wobble(self) -> None:
+        """Camera-start wobble: shake in the first 2 s only (usable_range trimming)."""
+        rate = Fraction(30000, 1001)
+        wobble = int(2 * rate)
+        n = self._video(
+            "wobble.mp4",
+            seconds=10,
+            rate=rate,
+            seed=15,
+            shake_px=12,
+            shake_frames=wobble,
+            scene_seconds=60,
+        )
+        self._add(
+            CaseInfo(
+                "wobble",
+                ["wobble.mp4"],
+                "usable_range trimming",
+                rate="30000/1001",
+                frames=n,
+                width=640,
+                height=360,
+                audio_tracks=1,
+                wobble_frames=wobble,
             )
         )
 
@@ -568,6 +623,8 @@ class CorpusGenerator:
             "full_range": self.full_range,
             "hevc10_5994": self.hevc10_5994,
             "shaky": self.shaky,
+            "duplicate": self.duplicate,
+            "wobble": self.wobble,
             "speech": self.speech,
             "corrupt": self.corrupt,
             "portrait_photo": self.portrait_photo,

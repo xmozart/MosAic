@@ -534,3 +534,14 @@ def ebur128_measure(src: Path) -> FFmpegCommand:
         description=f"ebur128 {src.name}",
         loglevel="info",
     )
+
+
+def extract_data_stream(src: Path, stream_index: int) -> FFmpegCommand:
+    """Raw packets of a data stream (e.g. GoPro GPMF ``gpmd``) concatenated on stdout."""
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src))],
+        outputs=[
+            OutputSpec("pipe:1", [("-map", f"0:{stream_index}"), ("-c", "copy"), ("-f", "data")])
+        ],
+        description=f"data stream {src.name}#{stream_index}",
+    )

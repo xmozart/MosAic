@@ -39,7 +39,15 @@ def test_migrated_schema_has_no_real_time_columns(tmp_path: Path, tree: str, bas
 def test_migrations_match_models(tmp_path: Path, tree: str, base: type) -> None:
     db = Database(tmp_path / f"{tree}.db", tree)  # type: ignore[arg-type]
     with db.engine.connect() as conn:
-        diff = compare_metadata(MigrationContext.configure(conn), base.metadata)
+        ctx = MigrationContext.configure(
+            conn,
+            opts={
+                "include_name": lambda name, type_, _p: (
+                    not (type_ == "table" and str(name).startswith("vec_"))
+                )
+            },
+        )
+        diff = compare_metadata(ctx, base.metadata)
     db.dispose()
     assert diff == [], diff
 

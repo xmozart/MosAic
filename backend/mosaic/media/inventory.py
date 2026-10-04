@@ -63,6 +63,11 @@ PROJECT_STAGES: list[StageDef] = []
 
 def plan_stages(asset_ids: list[int]) -> list[TaskSpec]:
     """Task specs for all registered stages; ``deps`` index into the returned list."""
+    names = [st.name for st in ASSET_STAGES]
+    for st in ASSET_STAGES:
+        unknown = [a for a in st.after if a not in names[: names.index(st.name)]]
+        if unknown:
+            raise RuntimeError(f"stage {st.name!r} runs after unregistered or later {unknown}")
     specs: list[TaskSpec] = []
     for aid in asset_ids:
         local: dict[str, int] = {}
@@ -74,7 +79,7 @@ def plan_stages(asset_ids: list[int]) -> list[TaskSpec]:
                     resource_class=st.resource_class,
                     params={"asset_id": aid},
                     label=f"{st.name} ast_{aid:04d}",
-                    deps=[local[a] for a in st.after if a in local],
+                    deps=[local[a] for a in st.after],
                 )
             )
             local[st.name] = len(specs) - 1
