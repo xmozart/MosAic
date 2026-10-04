@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Cache FFmpeg and models
+        uses: actions/cache@v4
+        with:
+          path: |
+            .tools/ffmpeg
+            ~/.cache/huggingface
+            ~/.cache/mosaic-models
+          key: tools-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg-ci.sh') }}
+      - name: LGPL FFmpeg (BtbN)
+        run: test -x .tools/ffmpeg/bin/ffmpeg || make ffmpeg-ci
+      - name: make ci
+        run: make ci

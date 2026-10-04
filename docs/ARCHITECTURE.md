@@ -28,8 +28,10 @@ HTTP handlers never perform media or AI work. They create, query and cancel jobs
 
 ## 2. Repository layout
 
+Python package `mosaic` lives in `backend/mosaic/` (ADR 0004):
+
 ```text
-backend/
+backend/mosaic/
   app/            FastAPI routers, auth, SSE
   core/           domain models, time types, config hierarchy, provenance
   storage/        placement policy, artifact store, DB sessions, snapshots
@@ -41,6 +43,7 @@ backend/
   editing/        planner, selector, solver, refiner, critic, versions
   render/         chunk renderer, assembler, color, audio mix
   cli/            thin CLI calling the same services
+  devtools/       synthetic corpus generator, frame barcode (developer only)
 frontend/
 desktop/          Tauri project
 docs/

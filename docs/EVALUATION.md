@@ -17,13 +17,13 @@ An AI editor improves only if changes to prompts, models and algorithms are meas
 | Multi-audio-track clip | Audio track selection |
 | 120 fps clip | HFR detection |
 | Corrupt file | Graceful unsupported handling |
-| HEIC + MOV Live Photo pair | Live Photo pairing |
+| HEIC + MOV Live Photo pair | Live Photo pairing (generated from M1, ADR 0004) |
 | Portrait JPEG with EXIF orientation | Photo orientation |
 | Full-range 8-bit (`yuvj420p`) | Color-range handling |
-| 10-bit HEVC at 59.94 | High bit depth and nearest-frame conform |
+| 10-bit HEVC at 59.94 | High bit depth and nearest-frame conform (committed fixture where no 10-bit HEVC encoder exists, ADR 0004) |
 | PQ-tagged clip | PQ tone mapping |
 | GoPro chapter pair with LRF sidecars | Chapter grouping and LRF validation |
-| 40-hour synthetic project (low-res, generated lazily) | Scale |
+| 40-hour synthetic project (low-res, generated lazily) | Scale (from M1, ADR 0004) |
 
 Every synthetic video carries a burned-in, encode-robust **frame-index barcode**. Frame-accuracy tests decode it from rendered output and compare against the EDL (±1 frame; nearest-PTS for VFR). See ADR 0002 E.
 
