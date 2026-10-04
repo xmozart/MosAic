@@ -101,7 +101,7 @@ The control DB lives in the OS app-data directory and has its own Alembic tree. 
 Tables:
 - **Installation:** `installation`, `user` (exactly one in v1, but the ID is always carried), `project_registry` (project_id, root path, placement, last opened).
 - **Settings and providers:** `user_preferences` (including `eval.corpus_dir`), `provider_profile` (non-secret: capability → provider, model, mode), `secret_ref`, `usage_record`. Edited through the `mosaic config` CLI and the `/settings`, `/providers` and `/secrets/*` API (ADR 0003).
-- **Job DAG:** `job`, `task`, `task_dependency`, `lease`.
+- **Job DAG:** `job`, `task`, `task_dependency`, `lease`. `job` carries `user_id`; `task`, `task_dependency`, `lease` and `task_event` are owned through their job. A `worker` table records live worker processes.
 
 ### 5.2 Project DB (portable)
 

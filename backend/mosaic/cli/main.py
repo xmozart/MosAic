@@ -40,3 +40,21 @@ def init(folder: Path, name: str | None) -> None:
         raise click.ClickException(str(exc)) from exc
     finally:
         control.db.dispose()
+
+
+@cli.command()
+@click.option("--port", default=8765, show_default=True)
+def serve(port: int) -> None:
+    """Run the local API on 127.0.0.1 (M0: no auth, loopback only)."""
+    from mosaic.app.main import serve as run_server
+
+    run_server(port)
+
+
+@cli.command()
+@click.option("--exit-when-idle", type=float, default=None)
+def worker(exit_when_idle: float | None) -> None:
+    """Run a worker process (normally started automatically)."""
+    from mosaic.jobs.worker import main
+
+    main(["--exit-when-idle", str(exit_when_idle)] if exit_when_idle is not None else [])

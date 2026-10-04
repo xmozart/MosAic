@@ -49,18 +49,26 @@ Used as imported libraries by the backend.
 | Package | Version | License |
 |---|---|---|
 | alembic | 1.20.0 | MIT |
+| annotated-doc | 0.0.5 | MIT |
 | annotated-types | 0.8.0 | MIT |
+| anyio | 4.15.1 | MIT |
 | click | 8.5.0 | BSD-3-Clause |
+| fastapi | 0.142.2 | MIT |
+| h11 | 0.16.0 | MIT License |
+| idna | 3.20 | BSD-3-Clause |
 | mako | 1.4.3 | MIT |
 | markupsafe | 3.0.4 | BSD-3-Clause |
 | numpy | 2.5.3 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
+| opentelemetry-api | 1.45.0 | Apache-2.0 |
 | pillow | 12.3.0 | MIT-CMU |
 | platformdirs | 4.12.3 | MIT |
 | pydantic | 2.13.5 | MIT |
 | pydantic-core | 2.46.5 | MIT |
 | sqlalchemy | 2.1.3 | MIT |
+| starlette | 1.7.0 | BSD-3-Clause |
 | typing-extensions | 4.16.0 | PSF-2.0 |
 | typing-inspection | 0.4.4 | MIT |
+| uvicorn | 0.54.0 | BSD-3-Clause |
 
 ### Development only (Python)
 
@@ -70,6 +78,9 @@ Tests, lint and type checks; never shipped.
 |---|---|---|
 | ast-serialize | 0.12.1 | MIT |
 | colorama | 0.4.6 | BSD-3-Clause |
+| httpcore2 | 2.13.1 | BSD-3-Clause |
+| httpx2 | 2.13.1 | BSD-3-Clause |
+| httpx2-jsfetch | 1.0 | BSD-3-Clause |
 | hypothesis | 6.168.3 | MPL-2.0 |
 | iniconfig | 2.3.0 | MIT |
 | librt | 0.16.0 | MIT |
@@ -83,5 +94,6 @@ Tests, lint and type checks; never shipped.
 | pytest-timeout | 2.4.0 | DFSG approved; MIT License |
 | ruff | 0.16.10 | MIT |
 | sortedcontainers | 2.4.0 | Apache Software License |
+| truststore | 0.10.4 | MIT |
 
 <!-- END python-packages -->

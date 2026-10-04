@@ -6,11 +6,13 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
     "click>=8.1",
+    "fastapi>=0.142.2",
     "numpy>=2.5.3",
     "pillow>=12.3.0",
     "platformdirs>=4.2",
     "pydantic>=2.8",
     "sqlalchemy>=2.0",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]
@@ -19,6 +21,7 @@ mosaic-dev = "mosaic.cli.dev:cli"
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "hypothesis>=6.100",
     "mypy>=1.11",
     "pytest>=8.3",

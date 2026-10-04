@@ -12,7 +12,8 @@ from importlib import metadata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KNOWN = {"colorama": "BSD-3-Clause"}  # platform-specific packages not installed on macOS
+# Platform-specific packages not installed on macOS (licenses checked on PyPI).
+KNOWN = {"colorama": "BSD-3-Clause", "httpx2-jsfetch": "BSD-3-Clause"}
 BEGIN, END = "<!-- BEGIN python-packages -->", "<!-- END python-packages -->"
 
 
