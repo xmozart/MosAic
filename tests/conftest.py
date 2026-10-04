@@ -7,6 +7,16 @@ import pytest
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries, FFmpegNotFoundError, locate
 
 
+@pytest.fixture(autouse=True)
+def _isolated_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Every test gets its own MosAic app-data directory."""
+    home = tmp_path_factory.mktemp("mosaic-home")
+    monkeypatch.setenv("MOSAIC_HOME", str(home))
+    return home
+
+
 @pytest.fixture(scope="session")
 def ffmpeg_bin() -> FFmpegBinaries:
     try:

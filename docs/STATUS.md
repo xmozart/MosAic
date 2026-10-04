@@ -9,13 +9,13 @@ _(empty — the agent is working)_
 ## Current
 
 - **Milestone:** M0
-- **Step:** 2 (storage). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 3 (jobs). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
 
 - [x] 1. Scaffold, `core/time.py` with property tests, FFmpeg builders and license/capability probe, LGPL FFmpeg build script, synthetic corpus generator with barcodes
-- [ ] 2. Storage: control and project DBs, placement classifier, descriptor, artifact store, provenance, `mosaic init`, float-seconds schema test
+- [x] 2. Storage: control and project DBs, placement classifier, descriptor, artifact store, provenance, `mosaic init`, float-seconds schema test
 - [ ] 3. Jobs: DAG, leases, Executor, worker process, resume after kill; FastAPI skeleton with `/api/jobs` and SSE
 - [ ] 4. L0: probe, camera profiles, chapters, sidecars, unsupported reasons, deferred photos
 - [ ] 5. Proxies: tone mapping, rotation, color range, VFR→CFR, tick map
@@ -27,8 +27,13 @@ _(empty — the agent is working)_
 - [ ] 11. Render: chunks, conform, tone mapping, pillarbox, silence, loudnorm, encoder selection
 - [ ] 12. Acceptance in `make ci`, `make eval` on the corpus, draft expectations, reports, findings → gate G6
 
+## Carry-forward notes
+
+- Step 10/12: run `core.timecheck.find_float_times` over real DB JSON rows and the edit JSON export (acceptance 4, JSON half).
+
 ## Log
 
 _(one line per commit: date · step · summary)_
 
 - 2026-10-04 · M0.1 · scaffold, exact time types, LGPL FFmpeg 8.1.2 build + probe, typed builders, barcoded synthetic corpus, CI, LICENSES (ADR 0004)
+- 2026-10-04 · M0.2 · control/project DBs with Alembic trees, placement classifier (M0 refuses non-local), descriptor, artifact store with required provenance, `mosaic init`, migrated-schema float and drift tests (ADR 0005)

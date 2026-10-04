@@ -69,7 +69,7 @@ When a project is created, detect the filesystem class of the footage folder:
 | `local` | Local or external disk (APFS, HFS+, exFAT, NTFS, ext4…) | **In-folder.** Descriptor at `<root>/.mosaic-project.json`; live DB, cache and exports under `<root>/MosAic/`. |
 | `network` | macOS `statfs` type `smbfs`, `nfs`, `afpfs`, `webdav`; Windows `DRIVE_REMOTE`; Linux `/proc/mounts` `cifs`/`nfs` | **Split.** Live DB and cache in the local app-data workspace. Descriptor, DB snapshots, edit JSON and exports written to the folder. |
 | `cloud_synced` | Paths under `~/Library/Mobile Documents`, `~/Library/CloudStorage/*`, known Dropbox/OneDrive/Google Drive roots; Windows cloud-file attributes | **Split.** Proxies and cache are never written to the folder. |
-| `read_only` | Write probe fails | **External.** Everything lives in the local workspace. The project is keyed by folder fingerprint. |
+| `read_only` | Write-permission check fails (ADR 0005) | **External.** Everything lives in the local workspace. The project is keyed by folder fingerprint. |
 
 Server exception: if the server host owns the disks (for example, the app runs on the NAS itself), the mount is `local` from the server's point of view.
 

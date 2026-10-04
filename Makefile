@@ -17,8 +17,8 @@ sync:
 	$(UV) sync --frozen
 
 lint:
-	$(UV) run ruff check backend tests
-	$(UV) run ruff format --check backend tests
+	$(UV) run ruff check backend tests scripts
+	$(UV) run ruff format --check backend tests scripts
 
 format:
 	$(UV) run ruff check --fix backend tests
