@@ -1,0 +1,6 @@
+# Owner-managed folders, never committed (ADR 0003)
+Samples/
+Other/
+
+# macOS
+.DS_Store
