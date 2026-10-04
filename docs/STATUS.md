@@ -9,7 +9,7 @@ _(empty — the agent is working)_
 ## Current
 
 - **Milestone:** M0
-- **Step:** 5 (proxies). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 6 (shots, samples, tech metrics, shake). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -18,7 +18,7 @@ _(empty — the agent is working)_
 - [x] 2. Storage: control and project DBs, placement classifier, descriptor, artifact store, provenance, `mosaic init`, float-seconds schema test
 - [x] 3. Jobs: DAG, leases, Executor, worker process, resume after kill; FastAPI skeleton with `/api/jobs` and SSE
 - [x] 4. L0: probe, camera profiles, chapters, sidecars, unsupported reasons, deferred photos
-- [ ] 5. Proxies: tone mapping, rotation, color range, VFR→CFR, tick map
+- [x] 5. Proxies: tone mapping, rotation, color range, VFR→CFR, tick map
 - [ ] 6. Shots, samples, tech metrics, shake
 - [ ] 7. Audio: VAD, Whisper word ticks, loudness, speech fixture
 - [ ] 8. Embeddings, segments with usable_range, similarity groups, GPMF if feasible
@@ -46,3 +46,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.2 · control/project DBs with Alembic trees, placement classifier (M0 refuses non-local), descriptor, artifact store with required provenance, `mosaic init`, migrated-schema float and drift tests (ADR 0005)
 - 2026-10-04 · M0.3 · job DAG store (atomic leases, heartbeats, expiry requeue, cancel cascade), Executor, worker process with resource-class slots, kill -9 resume test, FastAPI `/api/jobs` + SSE `/api/events`
 - 2026-10-04 · M0.4 · L0 inventory: scan, probe (artifact blobs, integer streams), iPhone/GoPro/generic profiles, GoPro chapters with logical-time map, LRF validation, unsupported reasons, deferred photos, reconciliation; `mosaic analyze`, `mosaic-dev inspect` (ADR 0006)
+- 2026-10-04 · M0.5 · 720p CFR SDR proxies (tone mapping, rotation, range, VFR→CFR, chapters concatenated) with verified affine or PTS-table tick maps; frame-accurate barcode tests (ADR 0007)

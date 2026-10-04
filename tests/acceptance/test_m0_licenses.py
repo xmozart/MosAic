@@ -18,7 +18,11 @@ def test_ffmpeg_probe_reports_lgpl(ffmpeg_bin: FFmpegBinaries) -> None:
 
 def test_every_committed_fixture_is_listed() -> None:
     listed = (ROOT / "LICENSES.md").read_text()
-    fixtures = [p for p in (ROOT / "tests" / "fixtures").rglob("*") if p.is_file()]
+    fixtures = [
+        p
+        for p in (ROOT / "tests" / "fixtures").rglob("*")
+        if p.is_file() and not p.name.startswith(".")
+    ]
     missing = [str(p.relative_to(ROOT)) for p in fixtures if str(p.relative_to(ROOT)) not in listed]
     assert not missing, f"add to LICENSES.md test fixtures: {missing}"
 

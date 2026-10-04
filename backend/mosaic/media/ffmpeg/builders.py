@@ -264,3 +264,173 @@ def ffprobe_packet_durations(path: Path, stream_index: int) -> ProbeCommand:
         ],
         description=f"packet durations {path.name}#{stream_index}",
     )
+
+
+# --------------------------------------------------------------------- proxies
+
+TONEMAP_TO_SDR: tuple[Filter, ...] = (
+    Filter.of("format", "yuv420p10le"),
+    Filter.of("zscale", t="linear", npl=100),
+    Filter.of("format", "gbrpf32le"),
+    Filter.of("zscale", p="bt709"),
+    Filter.of("tonemap", tonemap="hable", desat=0),
+    Filter.of("zscale", t="bt709", m="bt709", r="tv"),
+)
+"""HLG/PQ → SDR Rec.709 (ARCHITECTURE.md §10): zscale + tonemap."""
+
+
+def seconds_expr(value: Fraction) -> str:
+    """An exact-enough decimal for an FFmpeg expression (microsecond precision)."""
+    return f"{float(value):.6f}"
+
+
+@dataclass
+class ProxySpec:
+    inputs: list[Path]  # chapter files in order
+    video_index: int
+    audio_index: int | None
+    width: int
+    height: int
+    rate: Fraction
+    hdr: str | None  # "hlg" | "pq" | None
+    full_range: bool
+    encoder: str
+    bitrate: str
+    video_starts: list[Fraction] = field(default_factory=list)  # per input, seconds
+    video_durations: list[Fraction] = field(default_factory=list)  # per input, seconds
+    hwaccel: str | None = None
+    out: Path | None = None
+
+
+def proxy(spec: ProxySpec) -> FFmpegCommand:
+    """720p CFR H.264 SDR proxy over the concatenated chapters (ARCHITECTURE.md §8)."""
+    if spec.out is None:
+        raise ValueError("ProxySpec.out is not set")
+    n = len(spec.inputs)
+    inputs: list[InputSpec] = []
+    for path in spec.inputs:
+        opts: list[tuple[str, OptionValue]] = []
+        if spec.hwaccel:
+            opts.append(("-hwaccel", spec.hwaccel))
+        inputs.append(InputSpec(media_path(path), opts))
+
+    chains: list[str] = []
+    vlabels: list[str] = []
+    alabels: list[str] = []
+    for i in range(n):
+        chains.append(f"[{i}:{spec.video_index}]setpts=PTS-STARTPTS[v{i}]")
+        vlabels.append(f"[v{i}]")
+        if spec.audio_index is not None:
+            start = spec.video_starts[i] if i < len(spec.video_starts) else Fraction(0)
+            afilters = [
+                Filter.of("asetpts", f"PTS-{seconds_expr(start)}/TB"),
+                Filter.of("aresample", "48000", **{"async": 1, "first_pts": 0}),
+                Filter.of("aformat", sample_fmts="fltp", channel_layouts="stereo"),
+            ]
+            if i < len(spec.video_durations):
+                # Pin each chapter's audio to its video length so A/V cannot drift
+                # across chapter boundaries.
+                dur = seconds_expr(spec.video_durations[i])
+                afilters += [Filter.of("apad", whole_dur=dur), Filter.of("atrim", end=dur)]
+            achain = chain(*afilters)
+            chains.append(f"[{i}:{spec.audio_index}]{achain}[a{i}]")
+            alabels.append(f"[a{i}]")
+    if n > 1:
+        chains.append("".join(vlabels) + f"concat=n={n}:v=1:a=0[vc]")
+        if alabels:
+            chains.append("".join(alabels) + f"concat=n={n}:v=0:a=1[ac]")
+        vin, ain = "[vc]", "[ac]"
+    else:
+        vin, ain = "[v0]", "[a0]"
+
+    vfilters: list[Filter] = [
+        Filter.of(
+            "scale",
+            w=spec.width,
+            h=spec.height,
+            flags="bicubic",
+            in_range="pc" if spec.full_range else "tv",
+            out_range="tv",
+            out_color_matrix="bt709",
+        )
+        if not spec.hdr
+        else Filter.of("scale", w=spec.width, h=spec.height, flags="bicubic"),
+    ]
+    if spec.hdr:
+        vfilters += list(TONEMAP_TO_SDR)
+    vfilters += [
+        Filter.of("setsar", "1"),
+        Filter.of("fps", fps=spec.rate, round="near"),
+        Filter.of("format", "yuv420p"),
+        Filter.of(
+            "setparams", color_primaries="bt709", color_trc="bt709", colorspace="bt709", range="tv"
+        ),
+    ]
+    chains.append(f"{vin}{chain(*vfilters)}[vout]")
+
+    gop = max(1, round(spec.rate * 2))
+    out_opts: list[tuple[str, OptionValue]] = [
+        ("-map", "[vout]"),
+        ("-c:v", spec.encoder),
+        ("-b:v", spec.bitrate),
+        ("-g", gop),
+        ("-color_primaries", "bt709"),
+        ("-color_trc", "bt709"),
+        ("-colorspace", "bt709"),
+        ("-color_range", "tv"),
+        ("-video_track_timescale", spec.rate.numerator),
+    ]
+    if spec.audio_index is not None:
+        out_opts += [("-map", ain), ("-c:a", "aac"), ("-b:a", "128k"), ("-ar", 48000)]
+    out_opts += [("-movflags", "+faststart"), ("-f", "mp4")]
+    return FFmpegCommand(
+        inputs=inputs,
+        outputs=[OutputSpec(media_path(spec.out), out_opts)],
+        # Raw input timestamps: the filters above rebase video and audio to the video
+        # stream's first PTS themselves, which preserves A/V alignment.
+        global_options=[("-copyts", None)],
+        filter_complex=";".join(chains),
+        description=f"proxy {spec.inputs[0].name}",
+    )
+
+
+def ffprobe_video_pts(path: Path, stream_index: int) -> ProbeCommand:
+    """One packet PTS per line for a video stream (frame times, decode order)."""
+    return ProbeCommand(
+        args=[
+            "-select_streams",
+            str(stream_index),
+            "-show_entries",
+            "packet=pts",
+            "-of",
+            "csv=p=0",
+            media_path(path),
+        ],
+        description=f"packet pts {path.name}#{stream_index}",
+    )
+
+
+def extract_luma(src: Path, frame: int = 0) -> FFmpegCommand:
+    """Raw 8-bit luma plane of one frame, values untouched (range checks)."""
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src))],
+        outputs=[
+            OutputSpec(
+                "pipe:1",
+                [
+                    ("-map", "0:v:0"),
+                    (
+                        "-vf",
+                        chain(
+                            Filter.of("trim", start_frame=frame, end_frame=frame + 1),
+                            Filter.of("extractplanes", "y"),
+                        ),
+                    ),
+                    ("-frames:v", 1),
+                    ("-f", "rawvideo"),
+                    ("-pix_fmt", "gray"),
+                ],
+            )
+        ],
+        description=f"luma {src.name}#{frame}",
+    )
