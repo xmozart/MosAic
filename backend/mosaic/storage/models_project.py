@@ -212,3 +212,45 @@ class TechMetric(ProjectBase):
     value: Mapped[float] = mapped_column(Float)
     percentile: Mapped[float | None] = mapped_column(Float)
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+# ------------------------------------------------------------------------ audio
+# Whisper's float seconds are converted to ticks at the module boundary (ADR 0002 G).
+
+
+class AudioEvent(ProjectBase):
+    """A detected audio span: ``speech`` (VAD) for now; music, applause etc. later."""
+
+    __tablename__ = "audio_event"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    start_ticks: Mapped[int] = mapped_column(BigInteger)
+    end_ticks: Mapped[int] = mapped_column(BigInteger)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class TranscriptSegment(ProjectBase):
+    __tablename__ = "transcript_segment"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    start_ticks: Mapped[int] = mapped_column(BigInteger)
+    end_ticks: Mapped[int] = mapped_column(BigInteger)
+    text: Mapped[str] = mapped_column(Text)
+    language: Mapped[str | None] = mapped_column(String(8))
+    avg_logprob: Mapped[float | None] = mapped_column(Float)
+    no_speech_prob: Mapped[float | None] = mapped_column(Float)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class TranscriptWord(ProjectBase):
+    """A word with its source ticks. Provenance comes through its segment."""
+
+    __tablename__ = "transcript_word"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    segment_id: Mapped[int] = mapped_column(ForeignKey("transcript_segment.id"), index=True)
+    start_ticks: Mapped[int] = mapped_column(BigInteger)
+    end_ticks: Mapped[int] = mapped_column(BigInteger)
+    word: Mapped[str] = mapped_column(Text)
+    probability: Mapped[float | None] = mapped_column(Float)

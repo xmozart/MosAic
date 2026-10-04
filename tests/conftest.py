@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+import platformdirs
 import pytest
 
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries, FFmpegNotFoundError, locate
+
+SHARED_MODELS = Path(platformdirs.user_data_dir("MosAic", appauthor=False)) / "models"
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +18,10 @@ def _isolated_home(
     """Every test gets its own MosAic app-data directory."""
     home = tmp_path_factory.mktemp("mosaic-home")
     monkeypatch.setenv("MOSAIC_HOME", str(home))
+    if "MOSAIC_MODELS_DIR" not in os.environ:
+        # Model weights are shared across tests in MosAic's real app-data directory.
+        monkeypatch.setenv("MOSAIC_MODELS_DIR", str(SHARED_MODELS))
+    monkeypatch.setenv("MOSAIC_STT_MODEL", os.environ.get("MOSAIC_STT_MODEL", "small"))
     return home
 
 
@@ -32,3 +40,30 @@ def corpus_dir(tmp_path_factory: pytest.TempPathFactory, ffmpeg_bin: FFmpegBinar
     out = tmp_path_factory.mktemp("corpus")
     CorpusGenerator(out, ffmpeg_bin).generate()
     return out
+
+
+@pytest.fixture(scope="session")
+def analyzed_corpus(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):  # type: ignore[no-untyped-def]
+    """A copy of the synthetic corpus, analyzed once per session (read-only for tests)."""
+    import shutil
+
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from mosaic.media.pipeline import submit_analysis
+    from mosaic.storage.control import ControlDB
+    from mosaic.storage.projects import init_project
+    from tests.support.runner import run_job
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("MOSAIC_HOME", str(tmp_path_factory.mktemp("home-analyzed")))
+        if "MOSAIC_MODELS_DIR" not in os.environ:
+            mp.setenv("MOSAIC_MODELS_DIR", str(SHARED_MODELS))
+        mp.setenv("MOSAIC_STT_MODEL", os.environ.get("MOSAIC_STT_MODEL", "small"))
+        root = tmp_path_factory.mktemp("analyzed") / "trip"
+        shutil.copytree(corpus_dir, root)
+        control = ControlDB()
+        project = init_project(control, control.local_principal, root)
+        job = submit_analysis(LocalExecutor(JobStore(control.db)), control.local_principal, project)
+        assert run_job(control, job, timeout=1800) == "done"
+        yield project
+        project.close()

@@ -134,7 +134,8 @@ def test_l0_inventory_of_synthetic_corpus(corpus_dir: Path, tmp_path: Path) -> N
             for files_by_id in [s.get(MediaFile, sc.media_file_id)]
             if files_by_id
         }
-        assert sidecars["GL010042.LRF"].status == "valid"
+        lrf = sidecars["GL010042.LRF"]
+        assert lrf.status == "valid", lrf.reason
         assert sidecars["GL020042.LRF"].proxy_candidate
         if os.geteuid() != 0:  # root (some CI containers) can read a chmod-000 file
             assert files["locked.mp4"].status == "unsupported"

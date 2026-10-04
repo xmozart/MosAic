@@ -128,6 +128,7 @@ class FFmpegCommand:
     tool: str = "ffmpeg"
     stdin_data: bytes | None = None
     description: str = ""
+    loglevel: str = "error"  # "info" for filters that report on stderr (ebur128, loudnorm)
 
     def check_safe(self) -> None:
         ins = {p for p in (_local(i.path) for i in self.inputs) if p}
@@ -140,7 +141,7 @@ class FFmpegCommand:
         self.check_safe()
         args: list[str] = [str(binary), "-hide_banner", "-nostdin"]
         if self.tool == "ffmpeg":
-            args += ["-y", "-loglevel", "error"]
+            args += ["-y", "-loglevel", self.loglevel]
         args += _option_args(self.global_options)
         for inp in self.inputs:
             args += _option_args(inp.options)

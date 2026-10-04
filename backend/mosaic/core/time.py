@@ -132,6 +132,19 @@ class SourceTime(BaseModel):
             raise ValueError(f"non-finite seconds: {seconds}")
         return cls.from_seconds(Fraction(repr(seconds)), tb, rounding)
 
+    @classmethod
+    def from_float_offset(
+        cls,
+        base: Fraction,
+        seconds: float,
+        tb: Fraction | str,
+        rounding: Rounding = Rounding.NEAREST,
+    ) -> SourceTime:
+        """``base`` (exact) plus a float offset from a third-party library (Whisper, VAD)."""
+        if not math.isfinite(seconds):
+            raise ValueError(f"non-finite seconds: {seconds}")
+        return cls.from_seconds(base + Fraction(repr(float(seconds))), tb, rounding)
+
     @property
     def seconds(self) -> Fraction:
         """Exact seconds, for transient computation only."""

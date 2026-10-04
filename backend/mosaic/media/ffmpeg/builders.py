@@ -487,3 +487,50 @@ def select_frames(
         ],
         description=f"select {len(frames)} frames {src.name}",
     )
+
+
+def audio_pcm(
+    src: Path,
+    rate: int,
+    channels: int,
+    *,
+    start: Fraction | None = None,
+    duration: Fraction | None = None,
+) -> FFmpegCommand:
+    """The first audio stream of ``src`` as float32 little-endian PCM on stdout.
+
+    Used on proxies, whose audio is already aligned to the asset's logical time 0.
+    """
+    in_opts: list[tuple[str, OptionValue]] = []
+    if start is not None:
+        in_opts.append(("-ss", _seconds_arg(start)))
+    out_opts: list[tuple[str, OptionValue]] = [("-map", "0:a:0")]
+    if duration is not None:
+        out_opts.append(("-t", _seconds_arg(duration)))
+    out_opts += [("-ac", channels), ("-ar", rate), ("-f", "f32le"), ("-c:a", "pcm_f32le")]
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src), in_opts)],
+        outputs=[OutputSpec("pipe:1", out_opts)],
+        description=f"pcm {src.name}",
+    )
+
+
+def ebur128_measure(src: Path) -> FFmpegCommand:
+    """Integrated loudness and true peak of the first audio stream (summary on stderr).
+
+    Used by tests as an independent reference for MosAic's own BS.1770 meter."""
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src))],
+        outputs=[
+            OutputSpec(
+                "-",
+                [
+                    ("-map", "0:a:0"),
+                    ("-af", chain(Filter.of("ebur128", framelog="quiet", peak="true"))),
+                    ("-f", "null"),
+                ],
+            )
+        ],
+        description=f"ebur128 {src.name}",
+        loglevel="info",
+    )

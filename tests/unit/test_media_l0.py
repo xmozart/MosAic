@@ -109,7 +109,9 @@ def test_lrf_validation() -> None:
     a = _probe([_video()], duration="10.0")
     assert lrf_matches(a, _probe([_video(width=640)], duration="10.03")) is None
     assert "frame rate" in (lrf_matches(a, _probe([_video(rate="25/1")])) or "")
-    assert "duration" in (lrf_matches(a, _probe([_video()], duration="12.0")) or "")
+    assert "duration" in (lrf_matches(a, _probe([_video(duration_ts=1080000)])) or "")
+    # Container durations may differ (audio tails); the video streams decide.
+    assert lrf_matches(a, _probe([_video()], duration="10.3")) is None
 
 
 def test_iphone_detection_capture_time_and_live_photo() -> None:

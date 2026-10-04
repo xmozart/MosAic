@@ -397,9 +397,18 @@ def lrf_matches(owner: ProbeResult, lrf: ProbeResult) -> str | None:
         return "proxy has no video stream"
     if ov[0].rate != lv[0].rate:
         return f"frame rate {lv[0].rate} differs from the original {ov[0].rate}"
-    if owner.duration is None or lrf.duration is None:
+    # Compare video stream durations: container durations include audio, whose tail length
+    # varies between files of the same recording.
+    od, ld = _video_duration(ov[0], owner), _video_duration(lv[0], lrf)
+    if od is None or ld is None:
         return "duration unknown"
     one_frame = 1 / ov[0].rate if ov[0].rate else Fraction(1, 30)
-    if abs(owner.duration - lrf.duration) > 2 * one_frame:
+    if abs(od - ld) > 2 * one_frame:
         return "duration differs from the original"
     return None
+
+
+def _video_duration(stream: StreamInfo, probe: ProbeResult) -> Fraction | None:
+    if stream.duration_ts is not None:
+        return stream.duration_ts * stream.time_base
+    return probe.duration

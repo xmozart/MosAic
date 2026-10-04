@@ -40,6 +40,17 @@ DUP_HAMMING = 6
 THUMB_WIDTH = 640
 BATCH = 120
 NOT_NORMALIZED = ("freeze",)  # flags, not measurements
+VISUAL_METRICS = (
+    "sharpness",
+    "exposure_mean",
+    "clip_low",
+    "clip_high",
+    "noise",
+    "obstruction",
+    "shake",
+    "motion",
+    "freeze",
+)
 
 CONFIG: dict[str, Any] = {
     "width": ANALYSIS_WIDTH,
@@ -158,7 +169,11 @@ def visual_task(ctx: TaskContext) -> dict[str, Any]:
                 config_hash=key.rsplit("-", 1)[-1][:16],
             ),
         )
-        s.execute(delete(TechMetric).where(TechMetric.asset_id == asset_id))
+        s.execute(
+            delete(TechMetric).where(
+                TechMetric.asset_id == asset_id, TechMetric.name.in_(VISUAL_METRICS)
+            )
+        )
         s.execute(delete(SampleFrame).where(SampleFrame.asset_id == asset_id))
         s.execute(delete(Shot).where(Shot.asset_id == asset_id))
         shot_rows: list[Shot] = []

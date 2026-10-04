@@ -13,7 +13,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 # Platform-specific packages not installed on macOS (licenses checked on PyPI).
-KNOWN = {"colorama": "BSD-3-Clause", "httpx2-jsfetch": "BSD-3-Clause"}
+KNOWN = {
+    "colorama": "BSD-3-Clause",
+    "httpx2-jsfetch": "BSD-3-Clause",
+    "av": "NOT INSTALLED: excluded by override, its wheels bundle GPL FFmpeg (ADR 0009)",
+}
 BEGIN, END = "<!-- BEGIN python-packages -->", "<!-- END python-packages -->"
 
 

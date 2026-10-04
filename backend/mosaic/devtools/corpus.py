@@ -27,7 +27,17 @@ from mosaic.media.ffmpeg.capabilities import (
     ensure_license_allowed,
     probe_capabilities,
 )
+from mosaic.media.ffmpeg.command import escape_filter_value
 from mosaic.media.ffmpeg.run import run, run_streaming_stdin
+
+SPEECH_FIXTURE = (
+    Path(__file__).resolve().parents[3]
+    / "tests"
+    / "fixtures"
+    / "audio"
+    / "librispeech-1272-128104-0002.flac"
+)
+SPEECH_OFFSET_MS = 1000
 
 HEVC10_FIXTURE = (
     Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "media" / "hevc10_5994.mov"
@@ -59,6 +69,8 @@ class CaseInfo:
     pix_fmt: str | None = None
     scene_frames: int | None = None  # a new synthetic scene starts every N source frames
     shake_px: int = 0  # synthetic camera shake amplitude
+    transcript: str | None = None
+    speech_offset_ms: int | None = None
     audio_tracks: int = 0
     full_range: bool = False
     expect_unsupported: bool = False
@@ -197,6 +209,32 @@ class CorpusGenerator:
         if is_video and info.scene_frames is None:
             info.scene_frames = self._last_scene_len
         self.cases.append(info)
+
+    def speech(self) -> None:
+        if not SPEECH_FIXTURE.is_file():
+            self._add(CaseInfo("speech", [], "transcription", skipped_reason="no speech fixture"))
+            return
+        src = escape_filter_value(str(SPEECH_FIXTURE))
+        audio = LavfiAudio(
+            f"amovie={src},adelay={SPEECH_OFFSET_MS}:all=1,apad,aresample=48000,"
+            "aformat=channel_layouts=stereo"
+        )
+        n = self._video("speech.mp4", seconds=15, seed=14, scene_seconds=60, audio=(audio,))
+        text = SPEECH_FIXTURE.with_suffix(".txt").read_text().strip()
+        self._add(
+            CaseInfo(
+                "speech",
+                ["speech.mp4"],
+                "VAD, transcription, word ticks",
+                rate="30000/1001",
+                frames=n,
+                width=640,
+                height=360,
+                audio_tracks=1,
+                transcript=text,
+                speech_offset_ms=SPEECH_OFFSET_MS,
+            )
+        )
 
     def shaky(self) -> None:
         n = self._video("shaky.mp4", seconds=10, seed=13, shake_px=6)
@@ -530,6 +568,7 @@ class CorpusGenerator:
             "full_range": self.full_range,
             "hevc10_5994": self.hevc10_5994,
             "shaky": self.shaky,
+            "speech": self.speech,
             "corrupt": self.corrupt,
             "portrait_photo": self.portrait_photo,
         }

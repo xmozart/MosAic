@@ -4,41 +4,25 @@ from __future__ import annotations
 
 import itertools
 import json
-import shutil
 import statistics
-from collections.abc import Iterator
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 from sqlalchemy import select
 
-from mosaic.jobs.executor import LocalExecutor
-from mosaic.jobs.store import JobStore
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
-from mosaic.media.pipeline import submit_analysis
 from mosaic.media.proxy import load_proxy
-from mosaic.storage.control import ControlDB
 from mosaic.storage.models_project import Asset, AssetFile, MediaFile, SampleFrame, Shot, TechMetric
-from mosaic.storage.projects import Project, init_project
+from mosaic.storage.projects import Project
 from tests.support.media import source_frame_times
-from tests.support.runner import run_job
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module")
-def analyzed(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Project]:
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("MOSAIC_HOME", str(tmp_path_factory.mktemp("home-visual")))
-        root = tmp_path_factory.mktemp("visual") / "trip"
-        shutil.copytree(corpus_dir, root)
-        control = ControlDB()
-        project = init_project(control, control.local_principal, root)
-        job = submit_analysis(LocalExecutor(JobStore(control.db)), control.local_principal, project)
-        assert run_job(control, job) == "done"
-        yield project
-        project.close()
+def analyzed(analyzed_corpus: Project) -> Project:
+    return analyzed_corpus
 
 
 def _cases(project: Project) -> dict[str, dict]:  # type: ignore[type-arg]

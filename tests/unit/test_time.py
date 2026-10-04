@@ -187,3 +187,21 @@ def test_frame_start_ticks_is_first_tick_in_frame(frame: int, rate: Fraction, tb
 def test_timeline_frames_for_duration_nearest(seconds: Fraction, rate: Fraction) -> None:
     n = timeline_frames_for_duration(seconds, rate)
     assert abs(Fraction(n) / rate - seconds) <= 1 / (2 * rate)
+
+
+@given(
+    st.fractions(min_value=0, max_value=10**5),
+    st.floats(min_value=0, max_value=1e5, allow_nan=False),
+    TBS,
+)
+def test_from_float_offset_is_integer_and_within_half_tick(
+    base: Fraction, seconds: float, tb: Fraction
+) -> None:
+    t = SourceTime.from_float_offset(base, seconds, tb)
+    assert isinstance(t.ticks, int)
+    assert abs(t.seconds - (base + Fraction(repr(seconds)))) <= tb / 2
+
+
+def test_from_float_offset_rejects_non_finite() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        SourceTime.from_float_offset(Fraction(0), float("inf"), "1/90000")

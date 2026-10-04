@@ -80,3 +80,21 @@ def test_output_may_not_overwrite_input(tmp_path: Path) -> None:
 def test_paths_are_file_urls(tmp_path: Path) -> None:
     argv = builders.remux(tmp_path / "-weird: name.mov", tmp_path / "o.mp4").argv(Path("ff"))
     assert f"file:{(tmp_path / '-weird: name.mov').resolve()}" in argv
+
+
+def test_audio_pcm_and_loglevel_argv() -> None:
+    from fractions import Fraction
+
+    cmd = builders.audio_pcm(
+        Path("/x/p.mp4"), 16000, 1, start=Fraction(598), duration=Fraction(604)
+    )
+    argv = cmd.argv(Path("ff"))
+    i = argv.index("-i")
+    assert argv.index("-ss") < i  # input-side seek
+    assert argv[argv.index("-t") + 1] == "604000000us"
+    assert argv.index("-t") > i
+    assert argv[argv.index("-map") + 1] == "0:a:0"
+    assert argv[argv.index("-f", i) + 1] == "f32le"
+    assert argv[argv.index("-loglevel") + 1] == "error"
+    measure = builders.ebur128_measure(Path("/x/p.mp4")).argv(Path("ff"))
+    assert measure[measure.index("-loglevel") + 1] == "info"
