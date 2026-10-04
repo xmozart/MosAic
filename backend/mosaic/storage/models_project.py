@@ -166,3 +166,49 @@ class Sidecar(ProjectBase):
     reason: Mapped[str | None] = mapped_column(Text)
     proxy_candidate: Mapped[bool] = mapped_column(Boolean, default=False)
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+# ------------------------------------------------------------------ L1 analysis
+# Times are logical source ticks in the asset's time base (invariants 3 and 4).
+
+
+class Shot(ProjectBase):
+    __tablename__ = "shot"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    index: Mapped[int] = mapped_column(Integer)
+    start_ticks: Mapped[int] = mapped_column(BigInteger)
+    end_ticks: Mapped[int] = mapped_column(BigInteger)
+    method: Mapped[str] = mapped_column(String(16))  # adaptive|forced
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class SampleFrame(ProjectBase):
+    __tablename__ = "sample_frame"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    shot_id: Mapped[int] = mapped_column(ForeignKey("shot.id"), index=True)
+    ticks: Mapped[int] = mapped_column(BigInteger)
+    reason: Mapped[str] = mapped_column(String(16))  # scene|interval
+    phash: Mapped[str] = mapped_column(String(16))  # 64-bit hex
+    kept: Mapped[bool] = mapped_column(Boolean, default=True)
+    dup_of: Mapped[int | None] = mapped_column(ForeignKey("sample_frame.id"))
+    image_key: Mapped[str | None] = mapped_column(String(128))
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class TechMetric(ProjectBase):
+    """A deterministic metric: raw value plus project-normalized percentile (§5.3).
+
+    Attached to a sample (frame metrics) or to a tick range (shake, motion, freeze)."""
+
+    __tablename__ = "tech_metric"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    sample_id: Mapped[int | None] = mapped_column(ForeignKey("sample_frame.id"), index=True)
+    start_ticks: Mapped[int] = mapped_column(BigInteger)
+    end_ticks: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(32), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    percentile: Mapped[float | None] = mapped_column(Float)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from sqlalchemy import select
 
 from mosaic.cli.main import cli
 from mosaic.core.keys import artifact_key
@@ -274,3 +275,68 @@ def test_cli_analyze_rejects_other_modes(tmp_path: Path) -> None:
     assert "supports: balanced" in result.output
     missing = runner.invoke(cli, ["analyze", str(tmp_path / "nope")])
     assert missing.exit_code != 0
+
+
+def test_nested_project_write_is_refused(tmp_path: Path) -> None:
+    from mosaic.storage import provenance
+    from mosaic.storage.artifacts import NestedWriteError
+    from mosaic.storage.control import ControlDB
+    from mosaic.storage.projects import init_project
+
+    control = ControlDB()
+    p = init_project(control, control.local_principal, tmp_path)
+    with p.write() as s:
+        prov = provenance.record(s, provenance.ProvenanceInfo(kind="t"))
+        with pytest.raises(NestedWriteError):
+            p.artifacts.put_bytes("x", "x-1", b"1", provenance_id=prov)
+        with pytest.raises(NestedWriteError), p.write():
+            pass
+    p.artifacts.put_bytes("x", "x-1", b"1", provenance_id=prov)
+    assert p.artifacts.exists("x", "x-1")
+    p.close()
+
+
+def test_normalize_percentiles_set_based_with_ties(tmp_path: Path) -> None:
+    from mosaic.storage.metrics import normalize_percentiles
+    from mosaic.storage.models_project import Asset, TechMetric
+
+    control = ControlDB()
+    p = init_project(control, control.local_principal, tmp_path)
+    with p.write() as s:
+        prov = provenance.record(s, provenance.ProvenanceInfo(kind="t"))
+        asset = Asset(
+            kind="video",
+            status="ok",
+            profile="generic",
+            group_key="k",
+            created_at="x",
+            provenance_id=prov,
+        )
+        s.add(asset)
+        s.flush()
+        for name, values in (
+            ("sharpness", [10.0, 20.0, 20.0, 40.0, 50.0]),
+            ("noise", [3.0]),
+            ("freeze", [1.0, 1.0]),
+        ):
+            for v in values:
+                s.add(
+                    TechMetric(
+                        asset_id=asset.id,
+                        start_ticks=0,
+                        end_ticks=0,
+                        name=name,
+                        value=v,
+                        provenance_id=prov,
+                    )
+                )
+    with p.write() as s:
+        assert normalize_percentiles(s, exclude=["freeze"]) == 6
+    with p.db.session() as s:
+        got: dict[str, list[tuple[float, float | None]]] = {}
+        for m in s.scalars(select(TechMetric).order_by(TechMetric.id)):
+            got.setdefault(m.name, []).append((m.value, m.percentile))
+    assert got["sharpness"] == [(10.0, 0.0), (20.0, 0.25), (20.0, 0.25), (40.0, 0.75), (50.0, 1.0)]
+    assert got["noise"] == [(3.0, 0.5)]
+    assert got["freeze"] == [(1.0, None), (1.0, None)]
+    p.close()

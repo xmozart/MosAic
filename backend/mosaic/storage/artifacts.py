@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -42,10 +43,41 @@ def dumps_json(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
+class NestedWriteError(RuntimeError):
+    """An artifact was recorded inside an open project write session (would deadlock)."""
+
+
+class WriteGate:
+    """One writer per project (ARCHITECTURE.md §7): a lock shared by project write sessions
+    and artifact recording, plus a per-thread flag that catches nested writes."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()  # nesting is refused before acquiring, never re-entered
+        self._local = threading.local()
+
+    @property
+    def active(self) -> bool:
+        return bool(getattr(self._local, "active", False))
+
+    @contextmanager
+    def hold(self) -> Iterator[None]:
+        if self.active:
+            raise NestedWriteError(
+                "nested project write: finish the open write session before writing again"
+            )
+        with self.lock:
+            self._local.active = True
+            try:
+                yield
+            finally:
+                self._local.active = False
+
+
 class ArtifactStore:
-    def __init__(self, root: Path, db: Database) -> None:
+    def __init__(self, root: Path, db: Database, gate: WriteGate | None = None) -> None:
         self.root = root
         self.db = db
+        self.gate = gate or WriteGate()
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _relpath(self, kind: str, key: str, ext: str) -> str:
@@ -79,6 +111,8 @@ class ArtifactStore:
     def writer(self, kind: str, key: str, ext: str, *, provenance_id: int) -> Iterator[Path]:
         """Yield a temp path to write; on success it is moved into place and recorded."""
         _check_name(kind, key)
+        if self.gate.active:
+            raise NestedWriteError(f"artifact {kind}/{key} written inside a write session")
         rel = self._relpath(kind, key, ext)
         final = self.root / rel
         final.parent.mkdir(parents=True, exist_ok=True)
@@ -94,7 +128,7 @@ class ArtifactStore:
         self._record(kind, key, rel, final.stat().st_size, provenance_id)
 
     def _record(self, kind: str, key: str, rel: str, size: int, prov: int) -> None:
-        with self.db.session() as s:
+        with self.gate.hold(), self.db.session() as s:
             row = s.get(Artifact, key)
             if row is None:
                 s.add(
@@ -130,7 +164,7 @@ class ArtifactStore:
         return json.loads(self.get_bytes(kind, key))
 
     def delete(self, kind: str, key: str) -> None:
-        with self.db.session() as s:
+        with self.gate.hold(), self.db.session() as s:
             row = s.get(Artifact, key)
             if row is None or row.kind != kind:
                 return

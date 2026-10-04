@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+from sqlalchemy.orm import Session
 
 from mosaic.core.clock import now_iso
 from mosaic.core.ids import new_ulid
@@ -43,6 +47,13 @@ class Project:
     @property
     def workspace(self) -> Path:
         return self.root / WORKSPACE_DIR
+
+    @contextmanager
+    def write(self) -> Iterator[Session]:
+        """The project's single writer (ARCHITECTURE.md §7). Do not record artifacts or
+        open another write while it is held."""
+        with self.artifacts.gate.hold(), self.db.session() as s:
+            yield s
 
     def close(self) -> None:
         self.db.dispose()

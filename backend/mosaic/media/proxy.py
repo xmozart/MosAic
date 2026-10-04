@@ -26,7 +26,7 @@ from sqlalchemy import select
 from mosaic.core.keys import artifact_key
 from mosaic.core.time import Rounding, format_rational, parse_rational, round_fraction
 from mosaic.jobs.context import TaskContext
-from mosaic.jobs.model import ResourceClass, TaskSpec
+from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import PermanentError, task
 from mosaic.media import inventory
 from mosaic.media import probe as probing
@@ -366,16 +366,4 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
     return {"proxy": key, "frames": frames, "tickmap": tmap["kind"]}
 
 
-def plan_proxy(asset: Asset) -> list[TaskSpec]:
-    return [
-        TaskSpec(
-            kind="media.proxy",
-            stage="proxy",
-            resource_class=ResourceClass.GPU_ENCODE,
-            params={"asset_id": asset.id},
-            label=f"proxy ast_{asset.id:04d}",
-        )
-    ]
-
-
-inventory.ASSET_STAGES.append(plan_proxy)
+inventory.ASSET_STAGES.append(inventory.StageDef("proxy", "media.proxy", ResourceClass.GPU_ENCODE))

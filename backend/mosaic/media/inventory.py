@@ -7,7 +7,7 @@ directory at a time so memory stays bounded on large projects (invariant 13).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -44,9 +44,54 @@ GROUP_VERSION = "group/1"
 PROXY_SIDECARS = (".lrf", ".lrv")
 _REPAIR = "Check that the copy finished; copy the file again from the camera or card."
 
-AssetStagePlanner = Callable[[Asset], list[TaskSpec]]
-ASSET_STAGES: list[AssetStagePlanner] = []
-"""Per-asset downstream stages (proxy, shots, …); later pipeline steps append planners."""
+
+@dataclass(frozen=True)
+class StageDef:
+    """A pipeline stage. Per-asset stages run once per video asset, after the stages named
+    in ``after``; project stages run once, after every per-asset task and the project
+    stages before them."""
+
+    name: str
+    kind: str
+    resource_class: ResourceClass
+    after: tuple[str, ...] = ()
+
+
+ASSET_STAGES: list[StageDef] = []
+PROJECT_STAGES: list[StageDef] = []
+
+
+def plan_stages(asset_ids: list[int]) -> list[TaskSpec]:
+    """Task specs for all registered stages; ``deps`` index into the returned list."""
+    specs: list[TaskSpec] = []
+    for aid in asset_ids:
+        local: dict[str, int] = {}
+        for st in ASSET_STAGES:
+            specs.append(
+                TaskSpec(
+                    kind=st.kind,
+                    stage=st.name,
+                    resource_class=st.resource_class,
+                    params={"asset_id": aid},
+                    label=f"{st.name} ast_{aid:04d}",
+                    deps=[local[a] for a in st.after if a in local],
+                )
+            )
+            local[st.name] = len(specs) - 1
+    per_asset = list(range(len(specs)))
+    previous: list[int] = per_asset
+    for st in PROJECT_STAGES:
+        specs.append(
+            TaskSpec(
+                kind=st.kind,
+                stage=st.name,
+                resource_class=st.resource_class,
+                label=st.name,
+                deps=list(previous),
+            )
+        )
+        previous = [len(specs) - 1]
+    return specs
 
 
 # ------------------------------------------------------------------------- scan
@@ -331,7 +376,7 @@ class _Grouper:
         self.vfr_files = vfr_files
         self.produced: set[str] = set()
         self.summary: dict[str, int] = {}
-        self.planned: list[TaskSpec] = []
+        self.video_assets: list[int] = []
         self.now = now_iso()
 
     def _count(self, key: str) -> None:
@@ -398,8 +443,7 @@ class _Grouper:
             s.execute(update(MediaFile).where(MediaFile.id == rec.id).values(asset_id=asset.id))
         self._count(f"{g.kind}:{g.status}")
         if asset.kind == "video" and asset.status == "ok":
-            for planner in ASSET_STAGES:
-                self.planned += planner(asset)
+            self.video_assets.append(asset.id)
         return asset
 
     def directory(self, rows: list[MediaFile]) -> None:
@@ -545,8 +589,9 @@ def group_task(ctx: TaskContext) -> dict[str, Any]:
             )
         grouper.directory(rows)
     grouper.reconcile()
-    if grouper.planned:
-        ctx.spawn(grouper.planned)
+    planned = plan_stages(grouper.video_assets)
+    if planned:
+        ctx.spawn(planned)
     ctx.set_stage("analysis")
     ctx.store.set_job_result(ctx.task.job_id, {"inventory": grouper.summary})
-    return {"assets": grouper.summary, "spawned": len(grouper.planned)}
+    return {"assets": grouper.summary, "spawned": len(planned)}

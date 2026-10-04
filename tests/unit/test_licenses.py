@@ -40,3 +40,30 @@ def test_installed_packages_are_not_gpl() -> None:
         if FORBIDDEN.search(joined) and not LESSER.search(joined):
             offenders.append(f"{name}: {joined[:120]}")
     assert not offenders, offenders
+
+
+GPL_NATIVE = re.compile(
+    r"(^|/)lib(x264|x265|postproc|xvidcore|vidstab|rubberband|fdk-aac)[.-]", re.I
+)
+
+
+def test_no_bundled_gpl_media_libraries() -> None:
+    """Package metadata can say Apache/BSD while a wheel bundles a GPL FFmpeg (as the macOS
+    opencv-python wheels do, ADR 0008). Scan installed native libraries directly."""
+    import sysconfig
+
+    paths = sysconfig.get_paths()
+    sites = {Path(paths["purelib"]), Path(paths["platlib"])}
+    offenders: list[str] = []
+    for site in sites:
+        for p in site.rglob("*"):
+            native = p.suffix in (".dylib", ".so", ".dll") or ".so." in p.name
+            if not native:
+                continue
+            if GPL_NATIVE.search(p.as_posix()):
+                offenders.append(str(p.relative_to(site)))
+            # Our only FFmpeg is the external LGPL build: a bundled copy (which could have
+            # GPL encoders linked statically) is not allowed either.
+            if re.search(r"(^|/)libav(codec|format)[.-]", p.as_posix()):
+                offenders.append(str(p.relative_to(site)))
+    assert not offenders, offenders

@@ -61,14 +61,13 @@ class Worker:
         self.executor = LocalExecutor(self.store)
         self.stop = threading.Event()
         self._projects: dict[str, Project] = {}
-        self._locks: dict[str, threading.Lock] = {}
         self._projects_lock = threading.Lock()
         self._busy = 0
         self._busy_lock = threading.Lock()
 
     # ----------------------------------------------------------------- projects
 
-    def _project(self, project_id: str) -> tuple[Project, threading.Lock]:
+    def _project(self, project_id: str) -> Project:
         with self._projects_lock:
             if project_id not in self._projects:
                 root = self.control.project_root(project_id)
@@ -77,8 +76,7 @@ class Worker:
                 self._projects[project_id] = open_project(
                     self.control, self.control.local_principal, Path(root)
                 )
-                self._locks[project_id] = threading.Lock()
-            return self._projects[project_id], self._locks[project_id]
+            return self._projects[project_id]
 
     # ---------------------------------------------------------------- execution
 
@@ -109,10 +107,8 @@ class Worker:
         hb.start()
         try:
             handler = registry.get(task.kind)
-            project, lock = self._project(task.project_id)
-            ctx = TaskContext(
-                task, self.worker_id, self.executor, self.store, project, lock, cancelled
-            )
+            project = self._project(task.project_id)
+            ctx = TaskContext(task, self.worker_id, self.executor, self.store, project, cancelled)
             if handler.is_done is not None and handler.is_done(ctx):
                 self.executor.complete(task.id, self.worker_id, skipped_existing=True)
                 return

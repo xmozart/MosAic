@@ -16,7 +16,7 @@ React/TS UI  ──HTTP + SSE──>  FastAPI (API + services)
    Worker processes (resource classes: cpu, gpu_encode, ai_api, io)
           │
           ├─ FFmpeg / ffprobe (subprocess)
-          ├─ PySceneDetect, OpenCV
+          ├─ numpy/SciPy image metrics (ADR 0008)
           ├─ faster-whisper, SigLIP embeddings (local)
           └─ AI provider adapters (cloud / local)
 ```
@@ -196,8 +196,8 @@ Stages per asset, all tasks:
 1. **probe.** Run ffprobe plus camera-profile parsers (`MEDIA_SUPPORT.md`) to produce MediaFile and Asset rows.
 2. **group.** Chapter grouping, Live Photo pairing, burst detection and sidecar association.
 3. **proxy.** 720p H.264 8-bit SDR Rec.709 CFR, at the source rate halved until it is at most 30 fps (ADR 0007), one proxy per asset over its logical timeline. HDR and log sources are tone-mapped or have a LUT applied. Camera LRF/LRV files are associated and validated in every mode, but used as proxies only in Quick mode. This proxy is required because it is also the browser playback format.
-4. **shots.** PySceneDetect AdaptiveDetector on the proxy. Add forced subdivision for long static shots.
-5. **samples.** Scene-change frames, fixed-interval frames and a few I-frames, merged and deduplicated by perceptual hash and SigLIP embedding distance. Scene-change frames and user-marked frames are always retained.
+4. **shots.** Adaptive content detector (PySceneDetect's algorithm, ported to numpy; ADR 0008) on the proxy. Add forced subdivision for long static shots.
+5. **samples.** Scene-change frames and fixed-interval frames (ADR 0008), merged and deduplicated by perceptual hash and SigLIP embedding distance. Scene-change frames and user-marked frames are always retained.
 6. **tech metrics.** Sharpness (variance of Laplacian), exposure (histogram clipping), noise estimate, shake (gyro from GoPro GPMF or Insta360 when present, otherwise optical-flow jitter), freeze or duplicate frames, and lens obstruction.
 7. **audio.** VAD, then transcription with word timestamps, loudness, clipping and wind estimate.
 8. **segments.** Split shots into Segments using motion changes, speech boundaries and sample clustering. Compute `usable_range` by trimming camera-start and camera-stop wobble, as detected from motion.

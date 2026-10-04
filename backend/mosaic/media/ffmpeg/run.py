@@ -6,7 +6,7 @@ import logging
 import subprocess
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -119,3 +119,45 @@ def run_streaming_stdin(
     if returncode != 0:
         raise FFmpegError(command.description or "ffmpeg", argv, returncode, stderr)
     return result
+
+
+def stream_stdout(
+    binaries: FFmpegBinaries, command: FFmpegCommand, chunk_size: int
+) -> Iterator[bytes]:
+    """Yield stdout in fixed-size chunks (e.g. one raw frame each) without buffering the
+    whole output (invariant 13). Raises ``FFmpegError`` if the process fails."""
+    argv = command.argv(_binary(binaries, command.tool))
+    started = time.monotonic()
+    proc = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL
+    )
+    out, err_pipe = proc.stdout, proc.stderr
+    assert out is not None
+    assert err_pipe is not None
+    err_chunks: list[bytes] = []
+    reader = threading.Thread(target=lambda: err_chunks.append(err_pipe.read()))
+    reader.start()
+    try:
+        while True:
+            buf = out.read(chunk_size)
+            if not buf:
+                break
+            if len(buf) < chunk_size:  # short read at EOF only
+                rest = out.read(chunk_size - len(buf))
+                buf += rest
+                if len(buf) < chunk_size:
+                    break
+            yield buf
+    finally:
+        if proc.poll() is None:
+            out.close()
+        returncode = proc.wait()
+        reader.join()
+        stderr = b"".join(err_chunks).decode("utf-8", "replace")
+        result = RunResult(
+            argv, returncode, b"", stderr[-STDERR_TAIL:], int((time.monotonic() - started) * 1000)
+        )
+        for sink in list(_sinks):
+            sink(result)
+    if returncode != 0:
+        raise FFmpegError(command.description or "ffmpeg", argv, returncode, stderr)

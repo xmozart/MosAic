@@ -27,7 +27,6 @@ class TaskContext:
     executor: Executor
     store: JobStore
     project: Project
-    write_lock: threading.Lock
     cancelled: threading.Event = field(default_factory=threading.Event)
 
     @property
@@ -37,7 +36,7 @@ class TaskContext:
     @contextmanager
     def write(self) -> Iterator[Session]:
         """Project DB writes are serialized per project (ARCHITECTURE.md §7)."""
-        with self.write_lock, self.project.db.session() as s:
+        with self.project.write() as s:
             yield s
 
     def spawn(self, tasks: Sequence[TaskSpec]) -> list[int]:

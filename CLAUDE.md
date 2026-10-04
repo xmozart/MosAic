@@ -71,7 +71,7 @@ The product may become commercial.
 - Tauri 2, with the Python backend as a sidecar.
 
 **Media**
-- FFmpeg/ffprobe (LGPL build), PySceneDetect, OpenCV (headless).
+- FFmpeg/ffprobe (LGPL build). Shot detection and image metrics on numpy/SciPy (a port of PySceneDetect's adaptive detector); OpenCV is not used because its macOS wheels bundle GPL FFmpeg (ADR 0008).
 - Local Whisper-compatible STT (faster-whisper).
 - SigLIP or OpenCLIP image embeddings.
 - sqlite-vec.

@@ -120,3 +120,15 @@ def test_tick_maps_affine_and_table() -> None:
 
 def test_parse_pts_lines() -> None:
     assert parse_pts_lines(b"3003\n0,\nN/A\n1001\n") == [0, 1001, 3003]
+
+
+@given(st.integers(min_value=0, max_value=10**6), RATES)
+def test_select_frames_seek_never_skips_the_first_frame(first: int, rate: Fraction) -> None:
+    from pathlib import Path
+
+    cmd = builders.select_frames(Path("/x/p.mp4"), [first, first + 3], rate)
+    ss = cmd.inputs[0].options[0][1]
+    assert isinstance(ss, str)
+    start = Fraction(int(ss.removesuffix("us")), 1_000_000)
+    assert start <= Fraction(first) / rate
+    assert start > Fraction(first - 1) / rate

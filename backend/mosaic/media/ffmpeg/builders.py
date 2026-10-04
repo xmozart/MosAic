@@ -434,3 +434,56 @@ def extract_luma(src: Path, frame: int = 0) -> FFmpegCommand:
         ],
         description=f"luma {src.name}#{frame}",
     )
+
+
+def raw_frames(src: Path, width: int, height: int, pix_fmt: str = "rgb24") -> FFmpegCommand:
+    """Every frame of a (CFR, upright) proxy, scaled, as raw video on stdout."""
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src))],
+        outputs=[
+            OutputSpec(
+                "pipe:1",
+                [
+                    ("-map", "0:v:0"),
+                    ("-vf", chain(Filter.of("scale", w=width, h=height, flags="area"))),
+                    ("-fps_mode", "passthrough"),
+                    ("-f", "rawvideo"),
+                    ("-pix_fmt", pix_fmt),
+                ],
+            )
+        ],
+        description=f"raw frames {src.name}",
+    )
+
+
+def select_frames(
+    src: Path, frames: Sequence[int], rate: Fraction, pix_fmt: str = "rgb24"
+) -> FFmpegCommand:
+    """Selected frame indices of a CFR proxy at full size, in order, as raw video.
+
+    Seeks to the first wanted frame, then selects by output frame number relative to it.
+    """
+    if not frames:
+        raise ValueError("no frames selected")
+    first = frames[0]
+    rel = [f - first for f in frames]
+    expr = "+".join(f"eq(n\\,{r})" for r in rel)
+    # Floor to whole microseconds so the first wanted frame is never skipped by seeking.
+    start_us = (Fraction(first) / rate * 1_000_000).__floor__()
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src), [("-ss", f"{start_us}us")])],
+        outputs=[
+            OutputSpec(
+                "pipe:1",
+                [
+                    ("-map", "0:v:0"),
+                    ("-vf", f"select={expr}"),
+                    ("-fps_mode", "passthrough"),
+                    ("-frames:v", len(frames)),
+                    ("-f", "rawvideo"),
+                    ("-pix_fmt", pix_fmt),
+                ],
+            )
+        ],
+        description=f"select {len(frames)} frames {src.name}",
+    )

@@ -57,6 +57,8 @@ class CaseInfo:
     vfr: bool = False
     hdr: str | None = None
     pix_fmt: str | None = None
+    scene_frames: int | None = None  # a new synthetic scene starts every N source frames
+    shake_px: int = 0  # synthetic camera shake amplitude
     audio_tracks: int = 0
     full_range: bool = False
     expect_unsupported: bool = False
@@ -67,7 +69,9 @@ class CaseInfo:
     skipped_reason: str | None = None
 
 
-def render_frame(width: int, height: int, index: int, scene_len: int, seed: int) -> np.ndarray:
+def render_frame(
+    width: int, height: int, index: int, scene_len: int, seed: int, shake_px: int = 0
+) -> np.ndarray:
     """Synthetic picture: per-scene mid-tone background with texture, a moving block,
     and the barcode band on top."""
     scene = index // max(scene_len, 1)
@@ -87,6 +91,10 @@ def render_frame(width: int, height: int, index: int, scene_len: int, seed: int)
     x = x if x < span else 2 * span - x
     y = bh + (height - bh - size) // 2
     frame[y : y + size, x : x + size] = (170, 160, 100)
+    if shake_px:
+        # Camera shake: the picture below the barcode band jumps a few pixels every frame.
+        jitter = np.random.default_rng(10_000 + index).integers(-shake_px, shake_px + 1, 2)
+        frame[bh:] = np.roll(frame[bh:], shift=(int(jitter[0]), int(jitter[1])), axis=(0, 1))
     barcode.draw(frame, index)
     return frame
 
@@ -132,6 +140,7 @@ class CorpusGenerator:
         ensure_license_allowed(self.caps)
         self.scale = scale
         self.cases: list[CaseInfo] = []
+        self._last_scene_len: int | None = None
         self._tmp_dir: Path | None = None
 
     @property
@@ -158,9 +167,11 @@ class CorpusGenerator:
         out: Path | None = None,
         frames: int | None = None,
         container: str | None = None,
+        shake_px: int = 0,
     ) -> int:
         n = frames if frames is not None else int(seconds * rate)
         scene_len = int(scene_seconds * rate)
+        self._last_scene_len = scene_len
         spec = SynthSpec(
             out=out or self.out / name,
             width=w,
@@ -177,12 +188,31 @@ class CorpusGenerator:
         _write_frames(
             self.bin,
             spec,
-            lambda i: render_frame(w, h, first_index + i, scene_len, seed),
+            lambda i: render_frame(w, h, first_index + i, scene_len, seed, shake_px),
         )
         return n
 
     def _add(self, info: CaseInfo) -> None:
+        is_video = info.files and not (info.expect_unsupported or info.expect_deferred)
+        if is_video and info.scene_frames is None:
+            info.scene_frames = self._last_scene_len
         self.cases.append(info)
+
+    def shaky(self) -> None:
+        n = self._video("shaky.mp4", seconds=10, seed=13, shake_px=6)
+        self._add(
+            CaseInfo(
+                "shaky",
+                ["shaky.mp4"],
+                "camera shake metric",
+                rate="30000/1001",
+                frames=n,
+                width=640,
+                height=360,
+                audio_tracks=1,
+                shake_px=6,
+            )
+        )
 
     # ----------------------------------------------------------------- cases
 
@@ -452,6 +482,7 @@ class CorpusGenerator:
                 "10-bit HEVC at 59.94",
                 rate="60000/1001",
                 frames=n,
+                scene_frames=int(4 * rate),
                 width=640,
                 height=360,
                 audio_tracks=1,
@@ -498,6 +529,7 @@ class CorpusGenerator:
             "hfr": self.hfr,
             "full_range": self.full_range,
             "hevc10_5994": self.hevc10_5994,
+            "shaky": self.shaky,
             "corrupt": self.corrupt,
             "portrait_photo": self.portrait_photo,
         }

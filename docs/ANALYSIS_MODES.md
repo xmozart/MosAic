@@ -20,7 +20,7 @@ Artifacts are keyed per level and density, so moving Quick → Thorough reuses L
 | Levels | L0, L1 (reduced), L2 | L0–L2 | L0–L3 |
 | Proxies | Camera LRF/LRV if valid, else 540p | 720p | 720p |
 | Fixed sample interval | 6 s | 3 s | 1.5 s |
-| Scene detection | Fast threshold detector | Adaptive detector | Adaptive + forced subdivision of long shots |
+| Scene detection | Fast threshold detector | Adaptive detector; shots over 60 s split (ADR 0008) | Adaptive + forced subdivision of long shots |
 | Tiles per mosaic | 24 (small tiles) | 16 | 9–12, plus L3 single frames |
 | Transcription | Small model, speech segments only | Medium model | Large model, word timestamps everywhere |
 | Shake metric | Telemetry only; else skipped | Telemetry or sparse optical flow | Dense optical flow |
