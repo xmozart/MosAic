@@ -17,6 +17,13 @@ KNOWN = {
     "colorama": "BSD-3-Clause",
     "httpx2-jsfetch": "BSD-3-Clause",
     "av": "NOT INSTALLED: excluded by override, its wheels bundle GPL FFmpeg (ADR 0009)",
+    # keyring's Linux/Windows backends (licenses checked on PyPI)
+    "cffi": "MIT-0",
+    "cryptography": "Apache-2.0 OR BSD-3-Clause",
+    "jeepney": "MIT",
+    "pycparser": "BSD-3-Clause",
+    "pywin32-ctypes": "BSD-3-Clause",
+    "secretstorage": "BSD-3-Clause",
 }
 BEGIN, END = "<!-- BEGIN python-packages -->", "<!-- END python-packages -->"
 

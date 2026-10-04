@@ -29,6 +29,8 @@ _(empty — the agent is working)_
 
 ## Carry-forward notes
 
+- 9b: provider↔capability compatibility table in the AI registry; `mosaic config ai reset-key`; one-session `set_providers_many`; pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
+
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
 
 - Step 12: calibrate `library.similarity.MAX_DISTANCE` (0.06) and `segments.VISUAL_CHANGE` on the real corpus; synthetic frames are degenerate for SigLIP (25% of pairs ≥ 0.94).
@@ -39,7 +41,6 @@ _(empty — the agent is working)_
 - Step 9: move transcription behind `Transcriber` in `ai/adapters/faster_whisper/`; choose the Whisper model from the analysis mode + settings instead of `MOSAIC_STT_MODEL` (ADR 0009).
 - Dev note: tests share Whisper/SigLIP weights in MosAic's real app-data `models/` folder (`MOSAIC_MODELS_DIR`), so they download once.
 
-- Step 9: replace the `MOSAIC_ALLOW_GPL_FFMPEG` env override in `media/tools.py` with the `allow_gpl_ffmpeg` dev setting in `user_preferences`.
 - Dev gotcha: an auto-started worker lives ~20 s after its last job and keeps running the code it loaded; wait or kill it after code changes.
 - M1 follow-ups from step 4: GoPro timelapse flag; Apple Log / GoPro flat `log(<name>)` color hints; Live Photo pairing by the still's own content identifier; relink-by-fingerprint probe keys.
 - GoPro `creation_time` is camera-local time labelled UTC; per-device clock offsets come with M1 (S6 clock check).
@@ -60,3 +61,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.6 · shots (ported adaptive detector), samples with pHash dedupe and thumbnails, tech metrics with set-based percentiles, optical-flow shake; project write gate; OpenCV dropped for GPL FFmpeg bundling (ADR 0008)
 - 2026-10-04 · M0.7 · audio: streaming BS.1770 loudness, Silero VAD, faster-whisper word ticks from proxy audio, LibriSpeech fixture; PyAV excluded (ADR 0009); bundled runtime libs documented (ADR 0010, Q-1); LRF flake fixed
 - 2026-10-04 · M0.8 · SigLIP (ONNX) sample/segment embeddings in per-kind sqlite-vec indexes, segments with usable_range, leader-clustered similarity groups, GPMF gyro shake; asset-scoped keys and purge-before-rebuild fixes (ADR 0011)
+- 2026-10-04 · M0.9a · app configuration: settings/provider profiles/secret refs/usage tables, keyring secrets, `mosaic config` CLI, /api/settings, /api/providers, /api/secrets (ADR 0003)

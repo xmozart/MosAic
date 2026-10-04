@@ -1,0 +1,107 @@
+"""``/api/settings``, ``/api/providers`` and ``/api/secrets`` (docs/ui/API_MAP.md, ADR 0003).
+
+Secrets are write-only: responses carry ``configured`` and the last four characters.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from mosaic.app.deps import principal, services
+from mosaic.app.services import Services
+from mosaic.core.principal import Principal
+from mosaic.core.settings import SettingError
+from mosaic.storage import secrets
+from mosaic.storage.config import ConfigService
+
+router = APIRouter(prefix="/api")
+Svc = Depends(services)
+Me = Depends(principal)
+
+
+def _config(svc: Services) -> ConfigService:
+    return ConfigService(svc.control)
+
+
+@router.get("/settings")
+def get_settings(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    return {k: {"value": v.value, "source": v.source} for k, v in _config(svc).settings(me).items()}
+
+
+API_READONLY_SETTINGS = frozenset({"allow_gpl_ffmpeg"})  # dev-only: CLI on the host
+
+
+@router.patch("/settings")
+def patch_settings(body: dict[str, Any], svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    blocked = sorted(API_READONLY_SETTINGS & set(body))
+    if blocked:
+        raise HTTPException(403, f"{', '.join(blocked)} can only be changed with mosaic config")
+    try:
+        _config(svc).set_many(me, body)  # all keys or none
+    except SettingError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return get_settings(svc, me)
+
+
+def _providers_json(cfg: ConfigService, me: Principal) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for cap, st in cfg.providers(me).items():
+        ch = st.choice
+        entry: dict[str, Any] = {
+            "provider": ch.provider,
+            "model": ch.model,
+            "mode": ch.mode,
+            "source": st.source,
+        }
+        if st.needs_key:
+            ks = cfg.key_status(me, ch.provider)
+            entry["key"] = {"configured": ks.configured, "last4": ks.last4}
+        out[cap] = entry
+    return out
+
+
+@router.get("/providers")
+def get_providers(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    return _providers_json(_config(svc), me)
+
+
+class ProviderPatch(BaseModel):
+    provider: str
+    model: str
+
+
+@router.patch("/providers")
+def patch_providers(
+    body: dict[str, ProviderPatch], svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    cfg = _config(svc)
+    try:
+        for cap, choice in body.items():  # validate everything before writing anything
+            cfg.validate_provider(cap, choice.provider, choice.model)
+        for cap, choice in body.items():
+            cfg.set_provider(me, cap, choice.provider, choice.model)
+    except SettingError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return _providers_json(cfg, me)
+
+
+class SecretBody(BaseModel):
+    value: str
+
+
+@router.put("/secrets/{ref:path}")
+def put_secret(
+    ref: str, body: SecretBody, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """``ref`` is the secret name, e.g. ``ai/anthropic``. Write-only."""
+    kind, _, provider = ref.partition("/")
+    if kind != "ai" or not provider:
+        raise HTTPException(404, "unknown secret")
+    try:
+        ks = _config(svc).set_key(me, provider, body.value.strip())
+    except (SettingError, secrets.SecretError) as exc:
+        raise HTTPException(422, secrets.redact(str(exc), body.value)) from None
+    return {"configured": ks.configured, "last4": ks.last4}

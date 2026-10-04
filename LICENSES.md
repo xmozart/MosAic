@@ -67,6 +67,8 @@ SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIME
 
 ## Notes on bundled native libraries
 
+- **MIT-0** (cffi) is MIT without the attribution clause, so it is within the allow-list.
+
 - **CTranslate2** (faster-whisper) Linux and Windows wheels statically link Intel oneMKL
   (Intel Simplified Software License); the Linux wheel also bundles `libgomp` (GPL-3.0 with
   the GCC Runtime Library Exception) and the Windows wheel Intel OpenMP. The macOS wheel
@@ -94,8 +96,10 @@ Used as imported libraries by the backend.
 | anyio | 4.15.1 | MIT |
 | av | 19.0.1 | NOT INSTALLED: excluded by override, its wheels bundle GPL FFmpeg (ADR 0009) |
 | certifi | 2026.7.22 | Mozilla Public License 2.0 (MPL 2.0) |
+| cffi | 2.1.1 | MIT-0 |
 | click | 8.5.0 | BSD-3-Clause |
 | colorama | 0.4.6 | BSD-3-Clause |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
 | ctranslate2 | 4.8.2 | MIT |
 | fastapi | 0.142.2 | MIT |
 | faster-whisper | 1.2.1 | MIT License |
@@ -108,8 +112,14 @@ Used as imported libraries by the backend.
 | httpx | 0.28.1 | BSD License |
 | huggingface-hub | 1.33.0 | Apache Software License |
 | idna | 3.20 | BSD-3-Clause |
+| jaraco-classes | 3.4.0 | MIT License |
+| jaraco-context | 6.1.2 | MIT |
+| jaraco-functools | 4.6.0 | MIT |
+| jeepney | 0.9.0 | MIT |
+| keyring | 25.7.0 | MIT |
 | mako | 1.4.3 | MIT |
 | markupsafe | 3.0.4 | BSD-3-Clause |
+| more-itertools | 11.1.0 | MIT |
 | numpy | 2.5.3 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
 | onnxruntime | 1.30.0 | MIT License |
 | opentelemetry-api | 1.45.0 | Apache-2.0 |
@@ -117,10 +127,13 @@ Used as imported libraries by the backend.
 | pillow | 12.3.0 | MIT-CMU |
 | platformdirs | 4.12.3 | MIT |
 | protobuf | 7.36.2 | 3-Clause BSD License |
+| pycparser | 3.0 | BSD-3-Clause |
 | pydantic | 2.13.5 | MIT |
 | pydantic-core | 2.46.5 | MIT |
+| pywin32-ctypes | 0.2.3 | BSD-3-Clause |
 | pyyaml | 6.0.3 | MIT License |
 | scipy | 1.18.1 | BSD License |
+| secretstorage | 3.5.0 | BSD-3-Clause |
 | sqlalchemy | 2.1.3 | MIT |
 | sqlite-vec | 0.1.9 | MIT License, Apache License, Version 2.0 |
 | starlette | 1.7.0 | BSD-3-Clause |

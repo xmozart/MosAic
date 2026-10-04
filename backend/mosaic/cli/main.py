@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from mosaic.cli.config_cmd import config as config_group
 from mosaic.storage.control import ControlDB
 from mosaic.storage.placement import PlacementRefusedError
 from mosaic.storage.projects import Project
@@ -114,3 +115,6 @@ def analyze(folder: Path, mode: str) -> None:
     if status != "done":
         raise click.ClickException(f"analysis {status}; see `mosaic-dev inspect {folder}`")
     click.echo("Analysis complete.")
+
+
+cli.add_command(config_group)

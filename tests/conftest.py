@@ -15,7 +15,15 @@ SHARED_MODELS = Path(platformdirs.user_data_dir("MosAic", appauthor=False)) / "m
 def _isolated_home(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> Path:
-    """Every test gets its own MosAic app-data directory."""
+    """Every test gets its own MosAic app-data directory and an in-memory keyring."""
+    import keyring
+
+    from tests.support.testkeyring import MemoryKeyring
+
+    MemoryKeyring.store.clear()
+    keyring.set_keyring(MemoryKeyring())
+    # Subprocesses (CLI, auto-started workers) must never reach the real OS keychain.
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
     home = tmp_path_factory.mktemp("mosaic-home")
     monkeypatch.setenv("MOSAIC_HOME", str(home))
     if "MOSAIC_MODELS_DIR" not in os.environ:

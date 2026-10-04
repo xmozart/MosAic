@@ -129,3 +129,56 @@ class WorkerRecord(ControlBase):
     host: Mapped[str] = mapped_column(String(255))
     heartbeat_ms: Mapped[int] = mapped_column(BigInteger)
     started_at: Mapped[str] = mapped_column(String(40))
+
+
+# ------------------------------------------------------------- app configuration
+# ADR 0003. Secrets themselves live in the OS keyring; only references are stored here.
+
+
+class UserPreference(ControlBase):
+    __tablename__ = "user_preferences"
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSON)
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+
+class ProviderProfile(ControlBase):
+    """capability → provider, model, mode (non-secret)."""
+
+    __tablename__ = "provider_profile"
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), primary_key=True)
+    capability: Mapped[str] = mapped_column(String(32), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(128))
+    mode: Mapped[str] = mapped_column(String(16))  # cloud|local
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+
+class SecretRef(ControlBase):
+    """Where a secret lives, e.g. ``keyring:mosaic/ai/anthropic``. Never the secret."""
+
+    __tablename__ = "secret_ref"
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)  # e.g. ai/anthropic
+    ref: Mapped[str] = mapped_column(String(256))
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+
+class UsageRecord(ControlBase):
+    """One paid AI call (ANALYSIS_MODES.md §4)."""
+
+    __tablename__ = "usage_record"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(26), index=True)
+    job_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    task_id: Mapped[int | None] = mapped_column(Integer)
+    capability: Mapped[str] = mapped_column(String(32))
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(128))
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[str] = mapped_column(String(40))

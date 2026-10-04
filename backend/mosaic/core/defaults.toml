@@ -1,0 +1,43 @@
+# MosAic shipped defaults (AGENT_WORKFLOW.md §4, ADR 0003). The owner's choices live in the
+# control DB (user_preferences, provider_profile) and override these.
+
+[settings]
+"eval.corpus_dir" = ""
+"analysis.mode" = "balanced"
+"ai.budget.per_eval_run_usd" = 5.0
+"ai.budget.per_milestone_usd" = 25.0
+"ai.budget.per_job_usd" = 5.0
+"ai.local_only" = false
+"ai.send_gps" = false
+"allow_gpl_ffmpeg" = false  # dev only; never enable in a shipped build
+
+# capability → provider, model, mode. Anthropic is the default provider, not a requirement.
+[providers.vision]
+provider = "anthropic"
+model = "claude-haiku-4-5"
+mode = "cloud"
+
+[providers.planner]
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+mode = "cloud"
+
+[providers.selector]
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+mode = "cloud"
+
+[providers.critic]
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+mode = "cloud"
+
+[providers.transcriber]
+provider = "faster-whisper"
+model = "medium"
+mode = "local"
+
+[providers.embedder]
+provider = "siglip-onnx"
+model = "base"
+mode = "local"

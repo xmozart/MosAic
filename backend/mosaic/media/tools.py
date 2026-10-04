@@ -13,14 +13,28 @@ from mosaic.media.ffmpeg.capabilities import (
     probe_capabilities,
 )
 
-ENV_ALLOW_GPL = "MOSAIC_ALLOW_GPL_FFMPEG"
+ENV_ALLOW_GPL = "MOSAIC_ALLOW_GPL_FFMPEG"  # CI/dev override of the setting below
+
+
+def _allow_gpl() -> bool:
+    """The dev-only ``allow_gpl_ffmpeg`` setting (never a default), or its env override."""
+    if os.environ.get(ENV_ALLOW_GPL, "").lower() in ("1", "true", "yes"):
+        return True
+    from mosaic.storage.config import ConfigService
+    from mosaic.storage.control import ControlDB
+
+    control = ControlDB()
+    try:
+        return bool(ConfigService(control).get(control.local_principal, "allow_gpl_ffmpeg"))
+    finally:
+        control.db.dispose()
 
 
 @lru_cache(maxsize=1)
 def media_tools() -> tuple[FFmpegBinaries, Capabilities]:
-    """Locate FFmpeg and refuse GPL builds unless the dev-only override is set."""
+    """Locate FFmpeg and refuse GPL builds unless ``allow_gpl_ffmpeg`` is set."""
     binaries = locate()
     caps = probe_capabilities(binaries.ffmpeg)
-    allow = os.environ.get(ENV_ALLOW_GPL, "").lower() in ("1", "true", "yes")
-    ensure_license_allowed(caps, allow_gpl_ffmpeg=allow)
+    if caps.license.value != "lgpl":
+        ensure_license_allowed(caps, allow_gpl_ffmpeg=_allow_gpl())
     return binaries, caps
