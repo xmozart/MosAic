@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mosaic.jobs.context import TaskContext
 
-HANDLER_MODULES: tuple[str, ...] = ()
+HANDLER_MODULES: tuple[str, ...] = ("mosaic.media.inventory",)
 """Modules that register production handlers; extended as pipeline stages land."""
 
 ENV_PLUGINS = "MOSAIC_TASK_PLUGINS"

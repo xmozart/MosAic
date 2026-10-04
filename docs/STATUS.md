@@ -9,7 +9,7 @@ _(empty — the agent is working)_
 ## Current
 
 - **Milestone:** M0
-- **Step:** 4 (L0 inventory). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 5 (proxies). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -17,7 +17,7 @@ _(empty — the agent is working)_
 - [x] 1. Scaffold, `core/time.py` with property tests, FFmpeg builders and license/capability probe, LGPL FFmpeg build script, synthetic corpus generator with barcodes
 - [x] 2. Storage: control and project DBs, placement classifier, descriptor, artifact store, provenance, `mosaic init`, float-seconds schema test
 - [x] 3. Jobs: DAG, leases, Executor, worker process, resume after kill; FastAPI skeleton with `/api/jobs` and SSE
-- [ ] 4. L0: probe, camera profiles, chapters, sidecars, unsupported reasons, deferred photos
+- [x] 4. L0: probe, camera profiles, chapters, sidecars, unsupported reasons, deferred photos
 - [ ] 5. Proxies: tone mapping, rotation, color range, VFR→CFR, tick map
 - [ ] 6. Shots, samples, tech metrics, shake
 - [ ] 7. Audio: VAD, Whisper word ticks, loudness, speech fixture
@@ -28,6 +28,11 @@ _(empty — the agent is working)_
 - [ ] 12. Acceptance in `make ci`, `make eval` on the corpus, draft expectations, reports, findings → gate G6
 
 ## Carry-forward notes
+
+- Step 9: replace the `MOSAIC_ALLOW_GPL_FFMPEG` env override in `media/tools.py` with the `allow_gpl_ffmpeg` dev setting in `user_preferences`.
+- Dev gotcha: an auto-started worker lives ~20 s after its last job and keeps running the code it loaded; wait or kill it after code changes.
+- M1 follow-ups from step 4: GoPro timelapse flag; Apple Log / GoPro flat `log(<name>)` color hints; Live Photo pairing by the still's own content identifier; relink-by-fingerprint probe keys.
+- GoPro `creation_time` is camera-local time labelled UTC; per-device clock offsets come with M1 (S6 clock check).
 
 - Structured JSON logs with job_id/task_id/project_id (ARCHITECTURE §16): worker uses plain logging for now; add before M1 diagnostics work.
 
@@ -40,3 +45,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.1 · scaffold, exact time types, LGPL FFmpeg 8.1.2 build + probe, typed builders, barcoded synthetic corpus, CI, LICENSES (ADR 0004)
 - 2026-10-04 · M0.2 · control/project DBs with Alembic trees, placement classifier (M0 refuses non-local), descriptor, artifact store with required provenance, `mosaic init`, migrated-schema float and drift tests (ADR 0005)
 - 2026-10-04 · M0.3 · job DAG store (atomic leases, heartbeats, expiry requeue, cancel cascade), Executor, worker process with resource-class slots, kill -9 resume test, FastAPI `/api/jobs` + SSE `/api/events`
+- 2026-10-04 · M0.4 · L0 inventory: scan, probe (artifact blobs, integer streams), iPhone/GoPro/generic profiles, GoPro chapters with logical-time map, LRF validation, unsupported reasons, deferred photos, reconciliation; `mosaic analyze`, `mosaic-dev inspect` (ADR 0006)

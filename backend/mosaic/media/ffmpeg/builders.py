@@ -234,3 +234,33 @@ def extract_rgb_frames(src: Path, width: int, height: int) -> FFmpegCommand:
         ],
         description=f"rgb frames {src.name}",
     )
+
+
+def decode_first_frame(src: Path, stream: str = "v:0") -> FFmpegCommand:
+    """Decode one frame of ``stream`` to the null muxer (decodability check)."""
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src))],
+        outputs=[
+            OutputSpec(
+                "-",
+                [("-map", f"0:{stream}"), ("-frames:v", 1), ("-f", "null")],
+            )
+        ],
+        description=f"decode check {src.name}",
+    )
+
+
+def ffprobe_packet_durations(path: Path, stream_index: int) -> ProbeCommand:
+    """One packet duration per line (compact CSV, no per-packet JSON objects)."""
+    return ProbeCommand(
+        args=[
+            "-select_streams",
+            str(stream_index),
+            "-show_entries",
+            "packet=duration",
+            "-of",
+            "csv=p=0",
+            media_path(path),
+        ],
+        description=f"packet durations {path.name}#{stream_index}",
+    )

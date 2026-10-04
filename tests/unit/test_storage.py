@@ -264,3 +264,13 @@ def test_split_descriptor_refused_in_m0(tmp_path: Path) -> None:
     control = ControlDB()
     with pytest.raises(PlacementRefusedError, match="split"):
         open_project(control, control.local_principal, tmp_path)
+
+
+def test_cli_analyze_rejects_other_modes(tmp_path: Path) -> None:
+    runner = CliRunner()
+    assert runner.invoke(cli, ["init", str(tmp_path)]).exit_code == 0
+    result = runner.invoke(cli, ["analyze", str(tmp_path), "--mode", "thorough"])
+    assert result.exit_code != 0
+    assert "supports: balanced" in result.output
+    missing = runner.invoke(cli, ["analyze", str(tmp_path / "nope")])
+    assert missing.exit_code != 0
