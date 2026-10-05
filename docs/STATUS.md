@@ -9,7 +9,7 @@ _(empty — the agent is working on M1)_
 ## Current
 
 - **Milestone:** M1
-- **Step:** M1 planning. M0 passed G6 (2026-10-05); owner feedback: Airshow needs more aircraft (F-35 demo) and fewer crowd shots, so trip context and the L3 review come first.
+- **Step:** M1 step 4 (analysis modes); steps 1–3 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -31,9 +31,9 @@ _(empty — the agent is working on M1)_
 
 Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over crowds), then the rest of the milestone.
 
-- [ ] 1. Trip context: `trip_context` table; `mosaic context` CLI (import JSON or free text, AI-parsed and shown for confirmation); context in planner/selector v2 and in summaries; names allowed only from context (invariant 16)
-- [ ] 2. Thorough L3 review: full-resolution single frames of candidate segments (sky/aircraft, MAYBE "not usable", top candidates), context-aware, with the `reviewer` capability (Sonnet 5.5); deepening scoped to project, day or selection; cost ceiling with pause → raise → resume (acceptance 5, 7)
-- [ ] 3. Airshow re-eval with context + Thorough → compare against M0 (aircraft share, crowd share, F-35 coverage)
+- [x] 1. Trip context: `trip_context` table; `mosaic context` CLI (import JSON or free text, AI-parsed and shown for confirmation); context in planner/selector v2 and in summaries; names allowed only from context (invariant 16)
+- [x] 2. Thorough L3 review: full-resolution single frames of candidate segments (sky/aircraft, MAYBE "not usable", top candidates), context-aware, with the `reviewer` capability (Sonnet 5.5); deepening scoped to project, day or selection; cost ceiling with pause → raise → resume (acceptance 5, 7)
+- [x] 3. Airshow re-eval with context + Thorough → compare against M0 (aircraft share, crowd share, F-35 coverage)
 - [ ] 4. Analysis modes Quick/Balanced/Thorough/Custom (ANALYSIS_MODES.md): per-mode detectors, tile density, LRF proxies in Quick, estimates
 - [ ] 5. Hierarchical summaries shot → day → trip (context changes re-run summaries only)
 - [ ] 6. Storage placement split/external (macOS and Linux detection), artifact store relocation, DB snapshots via the backup API, cloud placeholders, read-only folders (acceptance 1, 2)
@@ -93,3 +93,6 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M0.12c · `make eval` on the owner's corpus via Claude Code: Airshow 3:00 (49 shots) and Dubai 1:15 (16 shots), exact durations, every blocking metric 0, −14.2/−13.9 LUFS, $0 API spend. Fixed: FFmpeg select-term limit, AAC sample check, AI 'not usable' → MAYBE, CLI served-model provenance. Report M0.md and ADR 0001 written → G6.
 
 - 2026-10-05 · G6 · Owner reviewed M0: results not bad; Airshow needs aircraft/F-35 focus, fewer crowds; context is key. Recorded in results and ADR 0001 (accepted). M1 starts.
+- 2026-10-05 · M1.1 · Trip context (model, CLI, API, parse job), planner/selector v2 with context, eval context.json + subject metric
+- 2026-10-05 · M1.2 · L3 deep review (full-res frames from originals, reviewer capability, deep_review supersedes L2), mosaic deepen, raise-and-resume cost limits (ADR 0018); later capabilities inherit the single chosen provider (ADR 0019)
+- 2026-10-05 · M1.3 · Airshow re-eval: AI 'obstructed' rejects only unusable clips (accidental/pocket always), primary-subject metric; aircraft 79 %, crowd 2 %, 0 must-exclude violations; Q-2 on the confirmed must-include list

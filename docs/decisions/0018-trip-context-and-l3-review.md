@@ -56,8 +56,19 @@ only, by a stronger model.
 
 ## Consequences
 
-- With context alone, the Airshow edit went from 14 % to 40 % aircraft. Crowds stayed
-  at 23 %: the thumbnails still read many jet passes as empty sky, and L3 targets those.
+- **Airshow results by primary subject**, measured on the same current labels for every
+  edit (the first subject of the L3 review, else of L2):
+
+  | Edit | Aircraft | Crowd |
+  |---|---|---|
+  | M0 | 45 % | 29 % |
+  | Context only | 69 % | 16 % |
+  | Context + L3 + the narrowed "obstructed" rule | 79 % | 2 % |
+
+  Confirmed must-exclude violations stay at 0.
+- **Why primary subject.** An earlier keyword-share metric over descriptions was
+  misleading. Descriptions mention everything in frame ("spectators photograph a distant
+  jet"), so they over-count both subjects.
 - A full Airshow deepening is about 180 reviewer calls. Through Claude Code that costs no
   API money but takes wall time. Through the API at Sonnet prices it is roughly
   $2–3 per trip.

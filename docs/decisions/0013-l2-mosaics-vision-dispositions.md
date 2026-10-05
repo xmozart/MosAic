@@ -61,7 +61,11 @@ gives 16 tiles per mosaic for Balanced. The spec leaves these questions open:
      near-black ≥ 0.9), obstruction (median ≥ 0.6), or frozen for ≥ 80 % of the segment.
    - MAYBE: dark, partly frozen, very shaky (top 5 % *and* 3 × the wobble floor), or blurry
      (bottom 5 % *and* a raw variance of the Laplacian under 15).
-   - AI issues: `accidental`, `pocket_or_covered` and `obstructed` mean REJECT;
+   - AI issues: `accidental` and `pocket_or_covered` always mean REJECT (must-exclude
+     material, even when one frame is good). `obstructed` means REJECT only when the model
+     also says `usable: false`, otherwise MAYBE (M1: the reviewer flagged another
+     spectator's lens or a lens hood at the frame edge as "obstructed" on clips it called
+     usable, including a fighter-jet shot);
      the other issues, low interest with poor composition, and `usable: false` on its own
      mean MAYBE. (`usable: false` was REJECT until the M0 eval: on the real Airshow
      footage, Haiku without trip context called sky shots of distant aircraft unusable.)

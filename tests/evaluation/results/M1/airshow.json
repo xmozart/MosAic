@@ -1,0 +1,116 @@
+{
+  "trip": "Airshow",
+  "started_at": "2026-10-05T15:51:47-04:00",
+  "deep_review_candidates": 116,
+  "edit": "edt_0001",
+  "version": 7,
+  "request": {
+    "duration_s": 180,
+    "story": "cinematic_journey",
+    "chronology": "mostly",
+    "pace": "balanced",
+    "tolerance_pct": 5,
+    "instructions": "",
+    "fps": null,
+    "variant": 0
+  },
+  "rate": "30000/1001",
+  "metrics": {
+    "target_frames": 5395,
+    "total_frames": 5395,
+    "duration_error_frames": 0,
+    "tolerance_frames": 269,
+    "duration_ok": true,
+    "events": 43,
+    "mid_word_cuts": 0,
+    "dialogue_truncations": 0,
+    "adjacent_jump_cuts": 0,
+    "reject_used": 0,
+    "same_group_within_5": 0,
+    "same_group_per_5min": 0.0,
+    "shake_percentile_median": 0.463,
+    "days_used": [
+      1
+    ],
+    "days_available": [
+      1
+    ],
+    "beats_used": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6",
+      "b7"
+    ],
+    "beats_planned": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6",
+      "b7"
+    ],
+    "blocking_ok": true,
+    "retrieval": {
+      "segments": 485,
+      "rejected": 151,
+      "too_short": 1,
+      "duplicate": 217,
+      "candidates": 116,
+      "capped": 0
+    },
+    "solver": {
+      "target_frames": 5395,
+      "total_frames_before_refine": 5395,
+      "tolerance_frames": 269,
+      "underfilled": false,
+      "dropped": [],
+      "notes": [
+        "seg_000059: merged into seg_000058 (same take)",
+        "seg_000381: dropped to avoid a jump cut"
+      ]
+    },
+    "ai": {
+      "planner": {
+        "provider": "claude-cli",
+        "model": "claude-sonnet-5-5",
+        "cached": false
+      },
+      "selector": {
+        "provider": "claude-cli",
+        "model": "claude-sonnet-5-5",
+        "cached": false
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "findings": [],
+  "expectations": {
+    "draft": false,
+    "must_include_total": 8,
+    "must_include_hit": 0,
+    "must_include_recall": 0.0,
+    "must_exclude_total": 92,
+    "must_exclude_violations": 0,
+    "violations": []
+  },
+  "subject_shares": {
+    "aircraft": 0.787,
+    "crowd": 0.018
+  },
+  "render": {
+    "path": "/Users/michaeldemb/Script/MosAic/Samples/Airshow/MosAic/renders/edt_0001/v007-final-r0009.mp4",
+    "metrics": {
+      "frames": 5395,
+      "rate": "30000/1001",
+      "samples": 8640632,
+      "loudness_lufs": -14.1,
+      "true_peak_dbtp": -1.4,
+      "normalized": true
+    }
+  },
+  "finished_at": "2026-10-05T15:52:02-04:00"
+}

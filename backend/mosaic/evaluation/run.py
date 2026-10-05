@@ -264,7 +264,9 @@ def run_trip(
             "metrics": v.metrics,
             "findings": v.findings,
             "expectations": exp.score(expect, events, _files(project)),
-            "subject_shares": exp.subject_shares(expect, events, _descriptions(project, events)),
+            "subject_shares": exp.subject_shares(
+                expect, events, _primary_subjects(project, events)
+            ),
         }
         if render:
             rid = create_render(project, edit_id, v.version, "final")
@@ -309,21 +311,25 @@ def apply_context(project: Any, path: Path) -> None:
             print(f"  trip context: {path.name if path.is_file() else 'cleared'}", flush=True)
 
 
-def _descriptions(project: Any, events: list[dict[str, Any]]) -> dict[str, str]:
+def _primary_subjects(project: Any, events: list[dict[str, Any]]) -> dict[str, str]:
+    """Each used clip's primary subject: the first subject of the L3 review (ordered most
+    important first, context-aware) when present, else of the L2 vision observation.
+    Descriptions mention everything in frame ("spectators photograph a distant jet"), so
+    they over-count; the primary subject says what the clip is about."""
     from sqlalchemy import select
 
-    from mosaic.storage.models_project import VisualObservation
+    from mosaic.storage.models_project import DeepReview, VisualObservation
 
     ids = [int(e["segment_id"][4:]) for e in events]
+    out: dict[str, str] = {}
     with project.db.session() as s:
-        return {
-            f"seg_{sid:06d}": str(data.get("description", ""))
+        for model in (VisualObservation, DeepReview):  # L3 overwrites L2
             for sid, data in s.execute(
-                select(VisualObservation.segment_id, VisualObservation.data).where(
-                    VisualObservation.segment_id.in_(ids)
-                )
-            )
-        }
+                select(model.segment_id, model.data).where(model.segment_id.in_(ids))
+            ):
+                subjects = data.get("subjects") or [""]
+                out[f"seg_{sid:06d}"] = str(subjects[0])
+    return out
 
 
 def _files(project: Any) -> dict[str, int]:

@@ -289,8 +289,21 @@ def test_rules() -> None:
 
 def test_ai_reasons_and_severity() -> None:
     assert disp.ai_reasons(None) == []
-    obs = {"usable": True, "issues": ["pocket_or_covered", "shaky"], "interest": "low"}
-    assert _codes(disp.ai_reasons(obs)) == {"pocket_or_covered": "REJECT", "shaky": "MAYBE"}
+    obs = {"usable": False, "issues": ["pocket_or_covered", "shaky"], "interest": "low"}
+    assert _codes(disp.ai_reasons(obs)) == {
+        "not_usable": "MAYBE",
+        "pocket_or_covered": "REJECT",
+        "shaky": "MAYBE",
+    }
+    # A usable clip with something in the foreground is not rejected (M1 Airshow finding)...
+    lens = {"usable": True, "issues": ["obstructed"]}
+    assert _codes(disp.ai_reasons(lens)) == {"obstructed": "MAYBE"}
+    assert _codes(disp.ai_reasons({"issues": ["obstructed"]})) == {"obstructed": "MAYBE"}
+    blocked = {"usable": False, "issues": ["obstructed"]}
+    assert _codes(disp.ai_reasons(blocked)) == {"not_usable": "MAYBE", "obstructed": "REJECT"}
+    # ...but accidental and pocket material is always REJECT (must-exclude), even "usable".
+    for issue in ("accidental", "pocket_or_covered"):
+        assert _codes(disp.ai_reasons({"usable": True, "issues": [issue]})) == {issue: "REJECT"}
     dull = {"usable": True, "issues": [], "interest": "low", "composition": "poor"}
     assert _codes(disp.ai_reasons(dull)) == {"low_interest": "MAYBE"}
     # "Not usable" alone is a MAYBE (sky shots with a distant aircraft, M0 eval finding).

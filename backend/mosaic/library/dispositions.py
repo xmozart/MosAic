@@ -44,7 +44,7 @@ from mosaic.storage.models_project import (
     VisualObservation,
 )
 
-DISPOSITION_VERSION = "dispositions/2"  # AI "not usable" alone is MAYBE (ADR 0013 §5)
+DISPOSITION_VERSION = "dispositions/4"  # AI "obstructed" needs usable=false (ADR 0013 §5)
 SEVERITY = {"USE": 0, "MAYBE": 1, "REJECT": 2}
 
 MIN_USABLE = Fraction(7, 10)  # seconds of usable range
@@ -59,7 +59,8 @@ SHAKE_FACTOR = 3.0  # × the wobble floor, so a steady project has no "very shak
 BLUR_PERCENTILE = 0.05
 BLUR_VARIANCE = 15.0  # variance of the Laplacian at analysis width
 
-AI_REJECT = {"accidental", "pocket_or_covered", "obstructed"}
+AI_REJECT = {"accidental", "pocket_or_covered"}  # always: must-exclude material
+AI_REJECT_IF_UNUSABLE = {"obstructed"}  # models also use it for things in the scene
 AI_MAYBE = {
     "lens_dirty",
     "out_of_focus",
@@ -81,6 +82,7 @@ CONFIG = {
     "shake": [SHAKE_PERCENTILE, SHAKE_FACTOR],
     "blur": [BLUR_PERCENTILE, BLUR_VARIANCE],
     "ai_reject": sorted(AI_REJECT),
+    "ai_reject_if_unusable": sorted(AI_REJECT_IF_UNUSABLE),
     "ai_maybe": sorted(AI_MAYBE),
 }
 
@@ -164,14 +166,21 @@ def ai_reasons(observation: dict[str, Any] | None) -> list[Reason]:
     if observation is None:
         return []
     out: list[Reason] = []
-    if observation.get("usable") is False:
+    unusable = observation.get("usable") is False
+    if unusable:
         # Without trip context the model calls content-poor views unusable that the story
         # may need (real Airshow footage: "blue sky with a tiny dark speck", the aircraft),
-        # so on its own this is MAYBE; concrete issues below still REJECT.
+        # so on its own this is MAYBE; accidental and covered material still REJECTs.
         out.append(Reason("not_usable", "MAYBE", "ai", observation.get("description", "")))
     for issue in observation.get("issues", []):
         if issue in AI_REJECT:
+            # Accidental and pocket material is must-exclude even when one frame is good.
             out.append(Reason(issue, "REJECT", "ai"))
+        elif issue in AI_REJECT_IF_UNUSABLE:
+            # Models also flag things in the scene (another spectator's lens, a lens hood at
+            # the edge) as "obstructed"; a clip the model itself calls usable is MAYBE
+            # (real Airshow footage: a fighter-jet shot rejected for a lens hood).
+            out.append(Reason(issue, "REJECT" if unusable else "MAYBE", "ai"))
         elif issue in AI_MAYBE:
             out.append(Reason(issue, "MAYBE", "ai"))
     if observation.get("interest") == "low" and observation.get("composition") == "poor":
