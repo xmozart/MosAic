@@ -175,6 +175,12 @@ def test_preview_and_chunk_reuse(
     streams = json.loads(run(ffmpeg_bin, ffprobe_stream_counts(path)).stdout)["streams"]
     video = next(st for st in streams if st["codec_type"] == "video")
     assert parse_rational(video["avg_frame_rate"]) == parse_rational(v.rate)
+    # Decoded AAC length (container durations include priming; M0 eval finding).
+    from mosaic.render.plan import samples_for
+    from mosaic.render.tasks import decoded_samples
+
+    expected = samples_for(v.timeline["duration"]["frames"], parse_rational(v.rate))
+    assert abs(decoded_samples(ffmpeg_bin, path) - expected) <= 1024
     assert r.metrics["true_peak_dbtp"] is not None
     assert r.metrics["true_peak_dbtp"] <= -1.0
     with project.db.session() as s:

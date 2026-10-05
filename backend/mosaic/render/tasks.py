@@ -21,7 +21,11 @@ from mosaic.core.time import parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
 from mosaic.media.ffmpeg import render as rb
-from mosaic.media.ffmpeg.builders import ebur128_measure, ffprobe_stream_counts
+from mosaic.media.ffmpeg.builders import (
+    audio_sample_count,
+    ebur128_measure,
+    ffprobe_stream_counts,
+)
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.run import run
 from mosaic.media.proxy import load_proxy
@@ -275,6 +279,18 @@ def stream_counts(binaries: FFmpegBinaries, path: Path) -> tuple[int, int]:
     return frames, samples
 
 
+_SAMPLES = re.compile(r"Number of samples:\s*(\d+)")
+
+
+def decoded_samples(binaries: FFmpegBinaries, path: Path) -> int:
+    """Audio samples as a player decodes them. AAC's container duration also counts
+    encoder priming/padding, so it cannot verify an MP4."""
+    found = _SAMPLES.findall(run(binaries, audio_sample_count(path)).stderr)
+    if not found:
+        raise PermanentError(f"{path.name}: FFmpeg reported no audio sample count")
+    return int(found[-1])
+
+
 def output_path(workspace: Path, r: Render) -> Path:
     """One file per render (two renders of a version never share a file)."""
     ext = "mov" if r.profile.get("lossless") else "mp4"
@@ -305,8 +321,10 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     tmp = out.with_name(out.stem + ".part" + out.suffix)
     run(binaries, rb.assemble(list_file, tmp, measured, prof.container, total_samples, rate))
     frames, samples = stream_counts(binaries, tmp)
-    # AAC in MP4 may report up to one frame of priming/padding samples.
-    slack = 0 if prof.container == "mov" else 2048
+    if prof.container == "mp4":
+        samples = decoded_samples(binaries, tmp)
+    # PCM is exact; decoded AAC may differ by up to one 1024-sample frame at the end.
+    slack = 0 if prof.container == "mov" else 1024
     if frames != total_frames or abs(samples - total_samples) > slack:
         raise PermanentError(
             f"assembled {frames} frames / {samples} samples, "

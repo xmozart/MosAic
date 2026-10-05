@@ -4,22 +4,16 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-**Gate G1 (M0 step 12, `make eval`).** Everything that runs offline is done and passes `make ci`. The real-corpus evaluation needs two settings that only the owner can give:
+**Gate G6: M0 quality review.** M0's acceptance tests pass; the report is `docs/reports/M0.md` and the findings are `docs/decisions/0001-m0-findings.md`.
 
-1. The corpus folder, a folder of trip folders. For the current corpus:
-   `mosaic config set eval.corpus_dir /Users/michaeldemb/Script/MosAic/Samples`
-   (Airshow and Dubai; only `.mosaic-project.json` and `MosAic/` are added inside each trip, and originals are never touched).
-2. A real AI provider, choosing one of:
-   - `mosaic config ai use claude-cli`: the installed Claude Code app and your sign-in, no API key (ADR 0014). Billed to your Claude plan.
-   - `mosaic config ai use codex-cli`: the installed Codex app and your sign-in, no API key. Billed to your ChatGPT plan.
-   - `mosaic config ai use anthropic`, then `mosaic config ai set-key --provider anthropic` (hidden prompt). Billed per token, within $5 per run and $25 per milestone.
-
-Then: `mosaic config ai test` → `make eval`. The agent resumes with the eval, the draft expectations, `docs/reports/M0.md`, ADR 0001 (findings) and gate G6.
+1. Watch `Samples/Airshow/MosAic/renders/edt_0001/v002-final-r0002.mp4` and `Samples/Dubai/MosAic/renders/edt_0001/v001-final-r0001.mp4`, then score the rubric in `tests/evaluation/results/M0/airshow.md` and `dubai.md`.
+2. Confirm or edit `tests/evaluation/corpus/{airshow,dubai}/expectations.yaml` and set `draft: false`.
+3. Confirm or adjust the M1 focus in ADR 0001. Then M1 starts.
 
 ## Current
 
 - **Milestone:** M0
-- **Step:** 12: waiting at G1 for the eval settings (acceptance suite, `make eval` runner and templates done); steps 10 and 11 done; step 9 done (9a config, 9b AI layer, 9c mosaics/vision/dispositions, 9d Claude Code / Codex CLI providers at the owner's request, ADR 0014). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** M0 complete; waiting at G6 (see above). Next: M1 after the owner's review. Owner decisions: ADRs 0002, 0003 and 0014 (CLI providers).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -81,3 +75,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M0.10 · Editing: request/pace/timeline rate, capped retrieval with similar-clip fallback, planner v1 + selector v1 (validated refs), deterministic solver, cut refiner (words, sentences, settle, frame grid), jump-cut fixer + backfill, critic metrics, immutable versions with JSON export, `mosaic edit`/`report`, edit API (ADR 0015)
 - 2026-10-05 · M0.11 · Render: per-event chunks (copyts trims across chapters, nearest-frame conform, tone mapping, pillarbox, gain/fades, silence fill, exact frame and sample counts), stream-copy assembly with two-pass loudnorm, preview/final/lossless profiles, chunk reuse, `mosaic render`, render API, barcode frame-accuracy checker (ADR 0016)
 - 2026-10-05 · M0.12a · Acceptance suite (every synthetic case analyze → edit → lossless render, barcode-exact; no float times; zero repeat AI calls), `make eval` runner (G1/G2 gates, budgets via job cost limits and a ledger, drafted expectations, results, rubric), paused-job handling in the CLI (ADR 0017). Stopped at G1.
+- 2026-10-05 · M0.12c · `make eval` on the owner's corpus via Claude Code: Airshow 3:00 (49 shots) and Dubai 1:15 (16 shots), exact durations, every blocking metric 0, −14.2/−13.9 LUFS, $0 API spend. Fixed: FFmpeg select-term limit, AAC sample check, AI 'not usable' → MAYBE, CLI served-model provenance. Report M0.md and ADR 0001 written → G6.

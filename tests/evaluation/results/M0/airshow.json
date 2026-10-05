@@ -1,0 +1,108 @@
+{
+  "trip": "Airshow",
+  "started_at": "2026-10-05T07:27:21-04:00",
+  "edit": "edt_0001",
+  "version": 2,
+  "request": {
+    "duration_s": 180,
+    "story": "cinematic_journey",
+    "chronology": "mostly",
+    "pace": "balanced",
+    "tolerance_pct": 5,
+    "instructions": "",
+    "fps": null,
+    "variant": 0
+  },
+  "rate": "30000/1001",
+  "metrics": {
+    "target_frames": 5395,
+    "total_frames": 5395,
+    "duration_error_frames": 0,
+    "tolerance_frames": 269,
+    "duration_ok": true,
+    "events": 49,
+    "mid_word_cuts": 0,
+    "dialogue_truncations": 0,
+    "adjacent_jump_cuts": 0,
+    "reject_used": 0,
+    "same_group_within_5": 0,
+    "same_group_per_5min": 0.0,
+    "shake_percentile_median": 0.465,
+    "days_used": [
+      1
+    ],
+    "days_available": [
+      1
+    ],
+    "beats_used": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6"
+    ],
+    "beats_planned": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6"
+    ],
+    "blocking_ok": true,
+    "retrieval": {
+      "segments": 485,
+      "rejected": 92,
+      "too_short": 1,
+      "duplicate": 215,
+      "candidates": 177,
+      "capped": 0
+    },
+    "solver": {
+      "target_frames": 5395,
+      "total_frames_before_refine": 5395,
+      "tolerance_frames": 269,
+      "underfilled": false,
+      "dropped": [],
+      "notes": [
+        "seg_000270: merged into seg_000269 (same take)"
+      ]
+    },
+    "ai": {
+      "planner": {
+        "provider": "claude-cli",
+        "model": "claude-haiku-4-5",
+        "cached": false
+      },
+      "selector": {
+        "provider": "claude-cli",
+        "model": "claude-haiku-4-5",
+        "cached": false
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "findings": [],
+  "expectations": {
+    "draft": true,
+    "must_include_total": 8,
+    "must_include_hit": 1,
+    "must_include_recall": 0.125,
+    "must_exclude_total": 92,
+    "must_exclude_violations": 0,
+    "violations": []
+  },
+  "render": {
+    "path": "/Users/michaeldemb/Script/MosAic/Samples/Airshow/MosAic/renders/edt_0001/v002-final-r0002.mp4",
+    "metrics": {
+      "frames": 5395,
+      "rate": "30000/1001",
+      "samples": 8640632,
+      "loudness_lufs": -14.2,
+      "true_peak_dbtp": -1.4,
+      "normalized": true
+    }
+  },
+  "finished_at": "2026-10-05T07:30:05-04:00"
+}

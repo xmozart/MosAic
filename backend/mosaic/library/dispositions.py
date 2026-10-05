@@ -43,7 +43,7 @@ from mosaic.storage.models_project import (
     VisualObservation,
 )
 
-DISPOSITION_VERSION = "dispositions/1"
+DISPOSITION_VERSION = "dispositions/2"  # AI "not usable" alone is MAYBE (ADR 0013 §5)
 SEVERITY = {"USE": 0, "MAYBE": 1, "REJECT": 2}
 
 MIN_USABLE = Fraction(7, 10)  # seconds of usable range
@@ -164,7 +164,10 @@ def ai_reasons(observation: dict[str, Any] | None) -> list[Reason]:
         return []
     out: list[Reason] = []
     if observation.get("usable") is False:
-        out.append(Reason("not_usable", "REJECT", "ai", observation.get("description", "")))
+        # Without trip context the model calls content-poor views unusable that the story
+        # may need (real Airshow footage: "blue sky with a tiny dark speck", the aircraft),
+        # so on its own this is MAYBE; concrete issues below still REJECT.
+        out.append(Reason("not_usable", "MAYBE", "ai", observation.get("description", "")))
     for issue in observation.get("issues", []):
         if issue in AI_REJECT:
             out.append(Reason(issue, "REJECT", "ai"))

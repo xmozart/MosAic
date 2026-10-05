@@ -293,7 +293,10 @@ def test_ai_reasons_and_severity() -> None:
     assert _codes(disp.ai_reasons(obs)) == {"pocket_or_covered": "REJECT", "shaky": "MAYBE"}
     dull = {"usable": True, "issues": [], "interest": "low", "composition": "poor"}
     assert _codes(disp.ai_reasons(dull)) == {"low_interest": "MAYBE"}
-    assert _codes(disp.ai_reasons({"usable": False, "issues": []})) == {"not_usable": "REJECT"}
+    # "Not usable" alone is a MAYBE (sky shots with a distant aircraft, M0 eval finding).
+    assert _codes(disp.ai_reasons({"usable": False, "issues": []})) == {"not_usable": "MAYBE"}
+    pocket = {"usable": False, "issues": ["pocket_or_covered"]}
+    assert disp.decide(disp.ai_reasons(pocket)) == "REJECT"
     assert disp.decide([]) == "USE"
     assert disp.decide(disp.ai_reasons(obs)) == "REJECT"
     assert disp.decide([disp.Reason("x", "MAYBE", "rule")]) == "MAYBE"

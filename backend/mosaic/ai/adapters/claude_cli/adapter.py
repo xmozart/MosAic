@@ -115,15 +115,24 @@ def parse_events(stdout: str, model: str) -> tuple[str, int, int, str]:
         + int(usage.get("cache_creation_input_tokens", 0))
     )
     tokens_out = int(usage.get("output_tokens", 0))
-    served = next(
-        (
-            info.get("canonicalModel", name)
-            for name, info in (result.get("modelUsage") or {}).items()
-            if isinstance(info, dict) and info.get("canonicalModel")
-        ),
-        model,
-    )
+    served = served_model(result.get("modelUsage") or {}, model)
     return json.dumps(answer), tokens_in, tokens_out, str(served)
+
+
+def served_model(usage: dict[str, Any], requested: str) -> str:
+    """The model that answered. The app also reports helper models it used on the side
+    (for example a small model for housekeeping), so the requested model wins when it is
+    listed; otherwise the one that produced the most output."""
+    entries = [
+        (str(info.get("canonicalModel") or name), int(info.get("outputTokens") or 0))
+        for name, info in usage.items()
+        if isinstance(info, dict)
+    ]
+    if any(name == requested for name, _ in entries):
+        return requested
+    if not entries:
+        return requested
+    return max(entries, key=lambda e: e[1])[0]
 
 
 class ClaudeCliAdapter:

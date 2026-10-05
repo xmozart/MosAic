@@ -1,0 +1,123 @@
+{
+  "trip": "Dubai",
+  "started_at": "2026-10-05T07:30:05-04:00",
+  "edit": "edt_0001",
+  "version": 1,
+  "request": {
+    "duration_s": 75,
+    "story": "cinematic_journey",
+    "chronology": "mostly",
+    "pace": "balanced",
+    "tolerance_pct": 5,
+    "instructions": "",
+    "fps": null,
+    "variant": 0
+  },
+  "rate": "60000/1001",
+  "metrics": {
+    "target_frames": 4496,
+    "total_frames": 4496,
+    "duration_error_frames": 0,
+    "tolerance_frames": 224,
+    "duration_ok": true,
+    "events": 16,
+    "mid_word_cuts": 0,
+    "dialogue_truncations": 0,
+    "adjacent_jump_cuts": 0,
+    "reject_used": 0,
+    "same_group_within_5": 2,
+    "same_group_per_5min": 8.0,
+    "shake_percentile_median": 0.439,
+    "days_used": [
+      1
+    ],
+    "days_available": [
+      1
+    ],
+    "beats_used": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6"
+    ],
+    "beats_planned": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6"
+    ],
+    "blocking_ok": true,
+    "retrieval": {
+      "segments": 19,
+      "rejected": 0,
+      "too_short": 0,
+      "duplicate": 5,
+      "duplicate_fallback": 5,
+      "candidates": 19,
+      "capped": 0
+    },
+    "solver": {
+      "target_frames": 4496,
+      "total_frames_before_refine": 4496,
+      "tolerance_frames": 224,
+      "underfilled": false,
+      "dropped": [],
+      "notes": [
+        "seg_000016: merged into seg_000015 (same take)",
+        "seg_000014: merged into seg_000013 (same take)"
+      ]
+    },
+    "ai": {
+      "planner": {
+        "provider": "claude-cli",
+        "model": "claude-haiku-4-5",
+        "cached": false
+      },
+      "selector": {
+        "provider": "claude-cli",
+        "model": "claude-haiku-4-5",
+        "cached": false
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "findings": [
+    {
+      "code": "repetition",
+      "severity": "warning",
+      "frame": 646,
+      "text": "seg_000002 and seg_000012 look alike"
+    },
+    {
+      "code": "repetition",
+      "severity": "warning",
+      "frame": 3224,
+      "text": "seg_000006 and seg_000007 look alike"
+    }
+  ],
+  "expectations": {
+    "draft": true,
+    "must_include_total": 7,
+    "must_include_hit": 7,
+    "must_include_recall": 1.0,
+    "must_exclude_total": 0,
+    "must_exclude_violations": 0,
+    "violations": []
+  },
+  "render": {
+    "path": "/Users/michaeldemb/Script/MosAic/Samples/Dubai/MosAic/renders/edt_0001/v001-final-r0001.mp4",
+    "metrics": {
+      "frames": 4496,
+      "rate": "60000/1001",
+      "samples": 3600397,
+      "loudness_lufs": -13.9,
+      "true_peak_dbtp": -1.4,
+      "normalized": true
+    }
+  },
+  "finished_at": "2026-10-05T07:34:05-04:00"
+}

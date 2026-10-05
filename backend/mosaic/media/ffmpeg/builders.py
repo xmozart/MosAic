@@ -559,6 +559,35 @@ def ebur128_measure(src: Path) -> FFmpegCommand:
     )
 
 
+def audio_sample_count(src: Path) -> FFmpegCommand:
+    """Decoded audio sample count of the first audio stream ("Number of samples" on
+    stderr). Exact for any codec, unlike container durations (AAC priming/padding)."""
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src))],
+        outputs=[
+            OutputSpec(
+                "-",
+                [
+                    ("-map", "0:a:0"),
+                    (
+                        "-af",
+                        chain(
+                            Filter.of(
+                                "astats",
+                                measure_perchannel="none",
+                                measure_overall="Number_of_samples",
+                            )
+                        ),
+                    ),
+                    ("-f", "null"),
+                ],
+            )
+        ],
+        description=f"sample count {src.name}",
+        loglevel="info",
+    )
+
+
 def extract_data_stream(src: Path, stream_index: int) -> FFmpegCommand:
     """Raw packets of a data stream (e.g. GoPro GPMF ``gpmd``) concatenated on stdout."""
     return FFmpegCommand(

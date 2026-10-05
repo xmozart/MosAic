@@ -115,3 +115,17 @@ def test_select_frames_stays_under_the_expression_limit() -> None:
     assert cmd.description.startswith("select 64 frames")
     with pytest.raises(ValueError, match="at most 64"):
         select_frames(Path("/x.mp4"), list(range(0, 65 * 90, 90)), Fraction(30))
+
+
+def test_audio_sample_count_command() -> None:
+    from pathlib import Path
+
+    from mosaic.media.ffmpeg.builders import audio_sample_count
+
+    cmd = audio_sample_count(Path("/x.mp4"))
+    argv = cmd.argv(Path("/bin/ffmpeg"))
+    joined = " ".join(argv)
+    assert "-map 0:a:0" in joined
+    assert "astats=measure_perchannel=none:measure_overall=Number_of_samples" in joined
+    assert argv[-3:] == ["-f", "null", "-"]
+    assert argv[argv.index("-loglevel") + 1] == "info"

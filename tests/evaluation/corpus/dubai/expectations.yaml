@@ -1,0 +1,90 @@
+trip: Dubai
+draft: true
+note: Generated from analysis; confirm or edit at gate G6 (EVALUATION.md §1).
+must_include:
+- file: GX010287.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 0
+      tb: 1/60000
+    end:
+      ticks: 742742
+      tb: 1/60000
+  display: 00:00.0–00:12.3
+  note: Aerial view of a coastal marina filled with white boats moored along piers, with a tall modern
+    skyline rising beyond turquoise water under a hazy sky.
+- file: GX010288.MP4
+  asset: ast_0027
+  range:
+    start:
+      ticks: 0
+      tb: 1/60000
+    end:
+      ticks: 1171170
+      tb: 1/60000
+  display: 00:00.0–00:19.5
+  note: A vehicle drives on an elevated highway through a modern city skyline, approaching and passing
+    a yellow bus ahead.
+- file: GX010289.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 1531530
+      tb: 1/60000
+    end:
+      ticks: 2498496
+      tb: 1/60000
+  display: 00:25.5–00:41.6
+  note: POV driving behind a white convertible car on the elevated highway with industrial structures
+    and residential buildings visible.
+- file: GX010290.MP4
+  asset: ast_0029
+  range:
+    start:
+      ticks: 0
+      tb: 1/60000
+    end:
+      ticks: 630630
+      tb: 1/60000
+  display: 00:00.0–00:10.5
+  note: A large white observation wheel with cable stays is shown from waterfront level against clear
+    blue sky, with palm trees and buildings nearby.
+- file: GX010290.MP4
+  asset: ast_0029
+  range:
+    start:
+      ticks: 630630
+      tb: 1/60000
+    end:
+      ticks: 1441440
+      tb: 1/60000
+  display: 00:10.5–00:24.0
+  note: A waterfront with rocky shore in the foreground opens to a distant cityscape skyline across the
+    water, with occasional pedestrians walking along the shore.
+- file: GX010291.MP4
+  asset: ast_0030
+  range:
+    start:
+      ticks: 0
+      tb: 1/60000
+    end:
+      ticks: 720000
+      tb: 1/60000
+  display: 00:00.0–00:12.0
+  note: A waterfront promenade with green grass and palm trees overlooks a rocky breakwater and calm water,
+    beyond which a modern city skyline rises; the camera pans slowly to the right across the scene.
+- file: GX010294.MP4
+  asset: ast_0033
+  range:
+    start:
+      ticks: 60000
+      tb: 1/60000
+    end:
+      ticks: 1080000
+      tb: 1/60000
+  display: 00:01.0–00:18.0
+  note: A waterfront plaza with modern high-rise buildings and palm trees is established in wide shots,
+    then the camera moves closer to foreground where people are sitting on grass with the architecture
+    receding into the background.
+must_exclude: []

@@ -1,0 +1,1113 @@
+trip: Airshow
+draft: true
+note: Generated from analysis; confirm or edit at gate G6 (EVALUATION.md §1).
+must_include:
+- file: GX010338.MP4
+  asset: ast_0020
+  range:
+    start:
+      ticks: 10120110
+      tb: 1/30000
+    end:
+      ticks: 10650640
+      tb: 1/30000
+  display: 05:37.3–05:55.0
+  note: Scenic views across calm water toward a distant urban skyline, seen from an observation point
+    with telescope equipment and railing in the foreground.
+- file: GX010338.MP4
+  asset: ast_0020
+  range:
+    start:
+      ticks: 10650640
+      tb: 1/30000
+    end:
+      ticks: 10750740
+      tb: 1/30000
+  display: 05:55.0–05:58.3
+  note: A scenic view of a distant cityscape across the water from a waterfront observation point, with
+    telescope equipment and metal railing framing the foreground.
+- file: GX010338.MP4
+  asset: ast_0020
+  range:
+    start:
+      ticks: 15975960
+      tb: 1/30000
+    end:
+      ticks: 16567551
+      tb: 1/30000
+  display: 08:52.5–09:12.2
+  note: Wide establishing shots capture a crowded waterfront park or promenade with blue water and a striking
+    distant cityscape visible beyond the bay.
+- file: GX010338.MP4
+  asset: ast_0020
+  range:
+    start:
+      ticks: 18318300
+      tb: 1/30000
+    end:
+      ticks: 18786768
+      tb: 1/30000
+  display: 10:10.6–10:26.2
+  note: A crowded tour boat glides along a waterfront with a city skyline visible in the background under
+    clear blue skies.
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 1606605
+      tb: 1/30000
+    end:
+      ticks: 2102100
+      tb: 1/30000
+  display: 00:53.5–01:10.0
+  note: Final aerobatic sequences with complex elaborate smoke trail patterns forming figure-eight and
+    spiral shapes, with parts of the filming aircraft structure visible at frame edges and water and horizon
+    visible below.
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 2102100
+      tb: 1/30000
+    end:
+      ticks: 2657655
+      tb: 1/30000
+  display: 01:10.0–01:28.5
+  note: An aircraft performs an aerobatic maneuver, creating a heart-shaped white smoke trail against
+    a clear blue sky.
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 2657655
+      tb: 1/30000
+    end:
+      ticks: 3213210
+      tb: 1/30000
+  display: 01:28.5–01:47.1
+  note: An aircraft executes an aerobatic maneuver while trailing white smoke, with the camera tracking
+    the aircraft's wing and nose as it maneuvers in frame.
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 3753750
+      tb: 1/30000
+    end:
+      ticks: 4286782
+      tb: 1/30000
+  display: 02:05.1–02:22.8
+  note: Aircraft perform aerial acrobatics with white smoke trails against a blue sky.
+must_exclude:
+- file: GX010338.MP4
+  asset: ast_0020
+  range:
+    start:
+      ticks: 11891880
+      tb: 1/30000
+    end:
+      ticks: 12425413
+      tb: 1/30000
+  display: 06:36.3–06:54.1
+  note: pocket_or_covered
+- file: GX010338.MP4
+  asset: ast_0020
+  range:
+    start:
+      ticks: 24084060
+      tb: 1/30000
+    end:
+      ticks: 24562538
+      tb: 1/30000
+  display: 13:22.8–13:38.7
+  note: pocket_or_covered
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 13077064
+      tb: 1/30000
+    end:
+      ticks: 13437424
+      tb: 1/30000
+  display: 07:15.9–07:27.9
+  note: obstructed
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 14710696
+      tb: 1/30000
+    end:
+      ticks: 15161146
+      tb: 1/30000
+  display: 08:10.3–08:25.3
+  note: obstructed
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 20120100
+      tb: 1/30000
+    end:
+      ticks: 20135115
+      tb: 1/30000
+  display: 11:10.6–11:11.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 20135115
+      tb: 1/30000
+    end:
+      ticks: 20150130
+      tb: 1/30000
+  display: 11:11.1–11:11.6
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 20150130
+      tb: 1/30000
+    end:
+      ticks: 20690670
+      tb: 1/30000
+  display: 11:11.6–11:29.6
+  note: obstructed
+- file: GX010339.MP4
+  asset: ast_0021
+  range:
+    start:
+      ticks: 20690670
+      tb: 1/30000
+    end:
+      ticks: 20810790
+      tb: 1/30000
+  display: 11:29.6–11:33.6
+  note: obstructed
+- file: GX010341.MP4
+  asset: ast_0023
+  range:
+    start:
+      ticks: 7597590
+      tb: 1/30000
+    end:
+      ticks: 7898891
+      tb: 1/30000
+  display: 04:13.2–04:23.2
+  note: pocket_or_covered
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 7927920
+      tb: 1/30000
+    end:
+      ticks: 8413405
+      tb: 1/30000
+  display: 04:24.2–04:40.4
+  note: pocket_or_covered
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 10870860
+      tb: 1/30000
+    end:
+      ticks: 10990980
+      tb: 1/30000
+  display: 06:02.3–06:06.3
+  note: obstructed
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 12777765
+      tb: 1/30000
+    end:
+      ticks: 13363350
+      tb: 1/30000
+  display: 07:05.9–07:25.4
+  note: accidental
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 13363350
+      tb: 1/30000
+    end:
+      ticks: 13948935
+      tb: 1/30000
+  display: 07:25.4–07:44.9
+  note: accidental
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 13948935
+      tb: 1/30000
+    end:
+      ticks: 14534520
+      tb: 1/30000
+  display: 07:44.9–08:04.4
+  note: accidental
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 14534520
+      tb: 1/30000
+    end:
+      ticks: 14894880
+      tb: 1/30000
+  display: 08:04.4–08:16.4
+  note: accidental
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 15135120
+      tb: 1/30000
+    end:
+      ticks: 15375360
+      tb: 1/30000
+  display: 08:24.5–08:32.5
+  note: accidental
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 15435420
+      tb: 1/30000
+    end:
+      ticks: 15735720
+      tb: 1/30000
+  display: 08:34.5–08:44.5
+  note: accidental
+- file: GX010342.MP4
+  asset: ast_0024
+  range:
+    start:
+      ticks: 15735720
+      tb: 1/30000
+    end:
+      ticks: 16096080
+      tb: 1/30000
+  display: 08:44.5–08:56.5
+  note: accidental
+- file: GX010343.MP4
+  asset: ast_0025
+  range:
+    start:
+      ticks: 0
+      tb: 1/30000
+    end:
+      ticks: 48048
+      tb: 1/30000
+  display: 00:00.0–00:01.6
+  note: accidental, accidental_recording
+- file: GX010344.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 940940
+      tb: 1/30000
+    end:
+      ticks: 1411410
+      tb: 1/30000
+  display: 00:31.3–00:47.0
+  note: obstructed
+- file: GX010344.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 9727718
+      tb: 1/30000
+    end:
+      ticks: 9862853
+      tb: 1/30000
+  display: 05:24.2–05:28.7
+  note: accidental
+- file: GX010344.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 12672660
+      tb: 1/30000
+    end:
+      ticks: 13180167
+      tb: 1/30000
+  display: 07:02.4–07:19.3
+  note: pocket_or_covered
+- file: GX010344.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 14384370
+      tb: 1/30000
+    end:
+      ticks: 14905891
+      tb: 1/30000
+  display: 07:59.4–08:16.8
+  note: pocket_or_covered
+- file: GX010344.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 20669649
+      tb: 1/30000
+    end:
+      ticks: 20780760
+      tb: 1/30000
+  display: 11:28.9–11:32.6
+  note: accidental
+- file: GX010344.MP4
+  asset: ast_0026
+  range:
+    start:
+      ticks: 21141120
+      tb: 1/30000
+    end:
+      ticks: 21475954
+      tb: 1/30000
+  display: 11:44.7–11:55.8
+  note: pocket_or_covered
+- file: GX010345.MP4
+  asset: ast_0027
+  range:
+    start:
+      ticks: 1306305
+      tb: 1/30000
+    end:
+      ticks: 1526525
+      tb: 1/30000
+  display: 00:43.5–00:50.8
+  note: pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 1051050
+      tb: 1/30000
+    end:
+      ticks: 1370369
+      tb: 1/30000
+  display: 00:35.0–00:45.6
+  note: pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 5382377
+      tb: 1/30000
+    end:
+      ticks: 5840501
+      tb: 1/30000
+  display: 02:59.4–03:14.6
+  note: obstructed
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 5840501
+      tb: 1/30000
+    end:
+      ticks: 6193187
+      tb: 1/30000
+  display: 03:14.6–03:26.4
+  note: obstructed
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 11711700
+      tb: 1/30000
+    end:
+      ticks: 11823812
+      tb: 1/30000
+  display: 06:30.3–06:34.1
+  note: pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 23648625
+      tb: 1/30000
+    end:
+      ticks: 23753730
+      tb: 1/30000
+  display: 13:08.2–13:11.7
+  note: pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 23954931
+      tb: 1/30000
+    end:
+      ticks: 23970947
+      tb: 1/30000
+  display: 13:18.4–13:19.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 23970947
+      tb: 1/30000
+    end:
+      ticks: 23993970
+      tb: 1/30000
+  display: 13:19.0–13:19.7
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 23993970
+      tb: 1/30000
+    end:
+      ticks: 24008985
+      tb: 1/30000
+  display: 13:19.7–13:20.2
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24008985
+      tb: 1/30000
+    end:
+      ticks: 24024000
+      tb: 1/30000
+  display: 13:20.2–13:20.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24024000
+      tb: 1/30000
+    end:
+      ticks: 24039015
+      tb: 1/30000
+  display: 13:20.8–13:21.3
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24039015
+      tb: 1/30000
+    end:
+      ticks: 24144120
+      tb: 1/30000
+  display: 13:21.3–13:24.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24144120
+      tb: 1/30000
+    end:
+      ticks: 24264240
+      tb: 1/30000
+  display: 13:24.8–13:28.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24264240
+      tb: 1/30000
+    end:
+      ticks: 24354330
+      tb: 1/30000
+  display: 13:28.8–13:31.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24354330
+      tb: 1/30000
+    end:
+      ticks: 24444420
+      tb: 1/30000
+  display: 13:31.8–13:34.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24444420
+      tb: 1/30000
+    end:
+      ticks: 24804780
+      tb: 1/30000
+  display: 13:34.8–13:46.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 24804780
+      tb: 1/30000
+    end:
+      ticks: 25262237
+      tb: 1/30000
+  display: 13:46.8–14:02.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 25262237
+      tb: 1/30000
+    end:
+      ticks: 25670311
+      tb: 1/30000
+  display: 14:02.0–14:15.6
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 25670311
+      tb: 1/30000
+    end:
+      ticks: 26126100
+      tb: 1/30000
+  display: 14:15.6–14:30.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 26126100
+      tb: 1/30000
+    end:
+      ticks: 26486460
+      tb: 1/30000
+  display: 14:30.8–14:42.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 26486460
+      tb: 1/30000
+    end:
+      ticks: 26726700
+      tb: 1/30000
+  display: 14:42.8–14:50.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 26726700
+      tb: 1/30000
+    end:
+      ticks: 26846820
+      tb: 1/30000
+  display: 14:50.8–14:54.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 26846820
+      tb: 1/30000
+    end:
+      ticks: 26936910
+      tb: 1/30000
+  display: 14:54.8–14:57.8
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 26936910
+      tb: 1/30000
+    end:
+      ticks: 27027000
+      tb: 1/30000
+  display: 14:57.8–15:00.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27027000
+      tb: 1/30000
+    end:
+      ticks: 27117090
+      tb: 1/30000
+  display: 15:00.9–15:03.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27117090
+      tb: 1/30000
+    end:
+      ticks: 27207180
+      tb: 1/30000
+  display: 15:03.9–15:06.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27207180
+      tb: 1/30000
+    end:
+      ticks: 27297270
+      tb: 1/30000
+  display: 15:06.9–15:09.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27297270
+      tb: 1/30000
+    end:
+      ticks: 27387360
+      tb: 1/30000
+  display: 15:09.9–15:12.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27387360
+      tb: 1/30000
+    end:
+      ticks: 27507480
+      tb: 1/30000
+  display: 15:12.9–15:16.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27507480
+      tb: 1/30000
+    end:
+      ticks: 27987960
+      tb: 1/30000
+  display: 15:16.9–15:32.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 27987960
+      tb: 1/30000
+    end:
+      ticks: 28078050
+      tb: 1/30000
+  display: 15:32.9–15:35.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28078050
+      tb: 1/30000
+    end:
+      ticks: 28288260
+      tb: 1/30000
+  display: 15:35.9–15:42.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28288260
+      tb: 1/30000
+    end:
+      ticks: 28528500
+      tb: 1/30000
+  display: 15:42.9–15:50.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28528500
+      tb: 1/30000
+    end:
+      ticks: 28618590
+      tb: 1/30000
+  display: 15:50.9–15:53.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28618590
+      tb: 1/30000
+    end:
+      ticks: 28768740
+      tb: 1/30000
+  display: 15:53.9–15:58.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28768740
+      tb: 1/30000
+    end:
+      ticks: 28858830
+      tb: 1/30000
+  display: 15:58.9–16:01.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28858830
+      tb: 1/30000
+    end:
+      ticks: 28948920
+      tb: 1/30000
+  display: 16:01.9–16:04.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 28948920
+      tb: 1/30000
+    end:
+      ticks: 29489460
+      tb: 1/30000
+  display: 16:04.9–16:22.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 29489460
+      tb: 1/30000
+    end:
+      ticks: 29579550
+      tb: 1/30000
+  display: 16:22.9–16:25.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 29579550
+      tb: 1/30000
+    end:
+      ticks: 29729700
+      tb: 1/30000
+  display: 16:25.9–16:30.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 29729700
+      tb: 1/30000
+    end:
+      ticks: 29819790
+      tb: 1/30000
+  display: 16:30.9–16:33.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 29819790
+      tb: 1/30000
+    end:
+      ticks: 29969940
+      tb: 1/30000
+  display: 16:33.9–16:38.9
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 29969940
+      tb: 1/30000
+    end:
+      ticks: 30150120
+      tb: 1/30000
+  display: 16:38.9–16:45.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 30150120
+      tb: 1/30000
+    end:
+      ticks: 30240210
+      tb: 1/30000
+  display: 16:45.0–16:48.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 30240210
+      tb: 1/30000
+    end:
+      ticks: 30330300
+      tb: 1/30000
+  display: 16:48.0–16:51.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 30330300
+      tb: 1/30000
+    end:
+      ticks: 30420390
+      tb: 1/30000
+  display: 16:51.0–16:54.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 30420390
+      tb: 1/30000
+    end:
+      ticks: 30990960
+      tb: 1/30000
+  display: 16:54.0–17:13.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 30990960
+      tb: 1/30000
+    end:
+      ticks: 31081050
+      tb: 1/30000
+  display: 17:13.0–17:16.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 31081050
+      tb: 1/30000
+    end:
+      ticks: 31171140
+      tb: 1/30000
+  display: 17:16.0–17:19.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 31171140
+      tb: 1/30000
+    end:
+      ticks: 31611580
+      tb: 1/30000
+  display: 17:19.0–17:33.7
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 31611580
+      tb: 1/30000
+    end:
+      ticks: 31771740
+      tb: 1/30000
+  display: 17:33.7–17:39.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 31771740
+      tb: 1/30000
+    end:
+      ticks: 31861830
+      tb: 1/30000
+  display: 17:39.0–17:42.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 31861830
+      tb: 1/30000
+    end:
+      ticks: 32192160
+      tb: 1/30000
+  display: 17:42.0–17:53.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32192160
+      tb: 1/30000
+    end:
+      ticks: 32492460
+      tb: 1/30000
+  display: 17:53.0–18:03.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32492460
+      tb: 1/30000
+    end:
+      ticks: 32612580
+      tb: 1/30000
+  display: 18:03.0–18:07.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32612580
+      tb: 1/30000
+    end:
+      ticks: 32702670
+      tb: 1/30000
+  display: 18:07.0–18:10.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32702670
+      tb: 1/30000
+    end:
+      ticks: 32792760
+      tb: 1/30000
+  display: 18:10.0–18:13.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32792760
+      tb: 1/30000
+    end:
+      ticks: 32882850
+      tb: 1/30000
+  display: 18:13.0–18:16.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32882850
+      tb: 1/30000
+    end:
+      ticks: 32972940
+      tb: 1/30000
+  display: 18:16.0–18:19.0
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 32972940
+      tb: 1/30000
+    end:
+      ticks: 33063030
+      tb: 1/30000
+  display: 18:19.0–18:22.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 33063030
+      tb: 1/30000
+    end:
+      ticks: 33153120
+      tb: 1/30000
+  display: 18:22.1–18:25.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 33153120
+      tb: 1/30000
+    end:
+      ticks: 33243210
+      tb: 1/30000
+  display: 18:25.1–18:28.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 33243210
+      tb: 1/30000
+    end:
+      ticks: 33393360
+      tb: 1/30000
+  display: 18:28.1–18:33.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 33393360
+      tb: 1/30000
+    end:
+      ticks: 33483450
+      tb: 1/30000
+  display: 18:33.1–18:36.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 33483450
+      tb: 1/30000
+    end:
+      ticks: 33993960
+      tb: 1/30000
+  display: 18:36.1–18:53.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 33993960
+      tb: 1/30000
+    end:
+      ticks: 34084050
+      tb: 1/30000
+  display: 18:53.1–18:56.1
+  note: black_frames, obstructed, pocket_or_covered
+- file: GX010346.MP4
+  asset: ast_0028
+  range:
+    start:
+      ticks: 34084050
+      tb: 1/30000
+    end:
+      ticks: 34530000
+      tb: 1/30000
+  display: 18:56.1–19:11.0
+  note: black_frames, obstructed, pocket_or_covered

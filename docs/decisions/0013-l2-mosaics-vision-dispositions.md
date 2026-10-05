@@ -62,8 +62,9 @@ gives 16 tiles per mosaic for Balanced. The spec leaves these questions open:
    - MAYBE: dark, partly frozen, very shaky (top 5 % *and* 3 × the wobble floor), or blurry
      (bottom 5 % *and* a raw variance of the Laplacian under 15).
    - AI issues: `accidental`, `pocket_or_covered` and `obstructed` mean REJECT;
-     `usable: false` means REJECT; the other issues, or low interest with poor
-     composition, mean MAYBE.
+     the other issues, low interest with poor composition, and `usable: false` on its own
+     mean MAYBE. (`usable: false` was REJECT until the M0 eval: on the real Airshow
+     footage, Haiku without trip context called sky shots of distant aircraft unusable.)
    - The most severe status wins, and every reason is kept.
    - The thresholds are first estimates, calibrated on the real corpus in step 12.
 6. **Stage registration** no longer depends on import order. A stage module imports the

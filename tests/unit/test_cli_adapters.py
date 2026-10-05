@@ -306,3 +306,15 @@ def test_ai_test_includes_cli_providers(tmp_path: Path, log: Path) -> None:
     assert runner.invoke(cli, ["config", "ai", "use", "claude-cli"]).exit_code == 0
     out = runner.invoke(cli, ["config", "ai", "test"])
     assert "claude-cli: ok" in out.output, out.output
+
+
+def test_served_model_ignores_helper_models() -> None:
+    from mosaic.ai.adapters.claude_cli.adapter import served_model
+
+    usage = {
+        "claude-haiku-4-5": {"canonicalModel": "claude-haiku-4-5", "outputTokens": 40},
+        "claude-sonnet-5-5": {"canonicalModel": "claude-sonnet-5-5", "outputTokens": 900},
+    }
+    assert served_model(usage, "claude-sonnet-5-5") == "claude-sonnet-5-5"
+    assert served_model(usage, "sonnet") == "claude-sonnet-5-5"  # alias: most output wins
+    assert served_model({}, "claude-haiku-4-5") == "claude-haiku-4-5"
