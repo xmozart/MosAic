@@ -30,6 +30,8 @@ from mosaic.storage.models_control import ProviderProfile, SecretRef, UserPrefer
 KNOWN_PROVIDERS: dict[str, str] = {
     # provider → mode. Cloud providers need a key; adapters are added when chosen (ADR 0003).
     "anthropic": "cloud",
+    "claude-cli": "cli",  # sends data to the provider but needs no key (ADR 0014)
+    "codex-cli": "cli",
     "fake": "local",
     "faster-whisper": "local",
     "siglip-onnx": "local",

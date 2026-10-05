@@ -328,7 +328,7 @@ Behaviour:
 - **Structured output.** Use the provider's JSON-schema or tool mode when available. Validate with Pydantic, retry once with the validation errors, then fail the task.
 - **Privacy.** In `local_only` mode, cloud adapters are unavailable and the UI states which features are missing. GPS coordinates are never sent to cloud providers unless the user enables it; coarse place names from trip context are allowed.
 - **Provider selection is configuration.** Each cloud capability's provider and model come from `provider_profile`, not code (ADR 0003). Prompts and schemas are provider-neutral; only `ai/adapters/<provider>/` imports a provider SDK. A provider must support image input and structured output to serve `VisionAnalyzer`.
-- **v1 providers.** Anthropic is the default for vision and reasoning, with local faster-whisper (STT) and local SigLIP (embeddings). Adapters for other providers are added when the owner selects one. The interfaces must admit others without changes.
+- **v1 providers.** Anthropic is the default for vision and reasoning, with local faster-whisper (STT) and local SigLIP (embeddings). The installed Claude Code and Codex apps can serve every AI capability through the owner's own sign-in, with no API key (`claude-cli`, `codex-cli`, ADR 0014); they count as cloud for `local_only`. Adapters for other providers are added when the owner selects one. The interfaces must admit others without changes.
 
 ## 12. Search
 

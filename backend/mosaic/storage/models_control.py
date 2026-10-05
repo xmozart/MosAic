@@ -151,7 +151,7 @@ class ProviderProfile(ControlBase):
     capability: Mapped[str] = mapped_column(String(32), primary_key=True)
     provider: Mapped[str] = mapped_column(String(64))
     model: Mapped[str] = mapped_column(String(128))
-    mode: Mapped[str] = mapped_column(String(16))  # cloud|local
+    mode: Mapped[str] = mapped_column(String(16))  # cloud|cli|local
     updated_at: Mapped[str] = mapped_column(String(40))
 
 

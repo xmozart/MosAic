@@ -9,7 +9,7 @@ _(empty — the agent is working)_
 ## Current
 
 - **Milestone:** M0
-- **Step:** 10 (editing); step 9 done (9a config, 9b AI layer, 9c mosaics/vision/dispositions). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 10 (editing); step 9 done (9a config, 9b AI layer, 9c mosaics/vision/dispositions, 9d Claude Code / Codex CLI providers at the owner's request, ADR 0014). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -67,3 +67,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.9a · app configuration: settings/provider profiles/secret refs/usage tables, keyring secrets, `mosaic config` CLI, /api/settings, /api/providers, /api/secrets (ADR 0003)
 - 2026-10-04 · M0.9b · AI provider layer: capability protocols, registry, Anthropic + fake/replay adapters, AIClient (cache, atomic budget reservation, validate+retry, usage/provenance), ai test/reset-key, validate endpoint; Whisper/SigLIP behind adapters (ADR 0012)
 - 2026-10-04 · M0.9c · Labelled mosaics sized to the vision provider, vision v1 (one call per sheet, code-checked segment/tile references), USE/MAYBE/REJECT dispositions from rules + AI with user rows kept across re-segmentation; vision skipped with the fix when not configured; accidental/pocket corpus cases; import-order-safe stage registration (ADR 0013)
+- 2026-10-04 · M0.9d · Owner request: `claude-cli` and `codex-cli` providers drive the installed Claude Code / Codex apps with the owner's sign-in (no API key) for all AI capabilities; `mosaic config ai use <provider>` presets; app-presence readiness check; real `ai test` and a real vision pass verified on the dev Mac (ADR 0014)

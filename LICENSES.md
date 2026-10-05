@@ -15,6 +15,13 @@ Python package is missing here or is GPL/AGPL. Regenerate the Python tables with
 | libopenh264 (linked into FFmpeg) | 2.6.0 | BSD-2-Clause | Fallback H.264 encoder. Patent note: Cisco's patent coverage applies only to Cisco-distributed binaries (FUTURE_APPENDIX §5) |
 | VideoToolbox / AudioToolbox | macOS | Apple system frameworks | Hardware H.264/HEVC encode |
 
+Optional AI apps the user installs and signs in to (ADR 0014):
+
+| Name | Version | License | How it is used |
+|---|---|---|---|
+| Claude Code CLI (`claude`, optional, user-installed) | user's version | Anthropic commercial terms | `claude-cli` AI provider: separate process, never bundled or linked (ADR 0014) |
+| Codex CLI (`codex`, optional, user-installed) | user's version | Apache-2.0 | `codex-cli` AI provider: separate process, never bundled or linked (ADR 0014) |
+
 The BtbN static build bundles further libraries; its LGPL variant contains only LGPL-compatible
 components (see https://github.com/BtbN/FFmpeg-Builds#package-list). MosAic invokes it as a
 separate process only.

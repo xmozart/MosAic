@@ -114,10 +114,40 @@ def ai_set(capability: str, provider: str, model: str) -> None:
         control.db.dispose()
 
 
+@ai.command("use")
+@click.argument("provider")
+def ai_use(provider: str) -> None:
+    """Use PROVIDER for every AI capability with its preset models.
+
+    anthropic needs an API key; claude-cli and codex-cli use the installed Claude Code or
+    Codex app and your own sign-in, no key (ADR 0014)."""
+    from mosaic.core.settings import preset
+
+    control, svc = _service()
+    try:
+        models = preset(provider)
+        svc.set_providers_many(
+            control.local_principal, {cap: (provider, m) for cap, m in models.items()}
+        )
+        for cap, m in models.items():
+            click.echo(f"{cap}: {provider} {m}")
+        if (
+            provider == "anthropic"
+            and not svc.key_status(control.local_principal, provider).configured
+        ):
+            click.echo("next: mosaic config ai set-key --provider anthropic")
+        else:
+            click.echo(f"check it with: mosaic config ai test --provider {provider}")
+    except SettingError as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        control.db.dispose()
+
+
 @ai.command("test")
 @click.option("--provider", default=None, help="Default: every provider the profile uses.")
 def ai_test(provider: str | None) -> None:
-    """Validate provider keys with one minimal call each."""
+    """Check each AI provider in use with one minimal call (key or app sign-in)."""
     from mosaic.ai.health import check_provider
 
     control, svc = _service()
@@ -130,7 +160,7 @@ def ai_test(provider: str | None) -> None:
                 {
                     st.choice.provider
                     for st in svc.providers(me).values()
-                    if st.needs_key or st.choice.provider == "fake"
+                    if st.choice.mode != "local" or st.choice.provider == "fake"
                 }
             )
         failed = False

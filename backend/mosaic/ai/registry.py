@@ -25,7 +25,10 @@ class LocalOnlyError(NotConfiguredError):
     pass
 
 
-def _anthropic(key: str | None) -> Adapter:
+Factory = Callable[[ConfigService, Principal, str | None], Adapter]
+
+
+def _anthropic(_config: ConfigService, _principal: Principal, key: str | None) -> Adapter:
     from mosaic.ai.adapters.anthropic.adapter import AnthropicAdapter
 
     if key is None:
@@ -33,10 +36,28 @@ def _anthropic(key: str | None) -> Adapter:
     return AnthropicAdapter(key)
 
 
-def _fake(_key: str | None) -> Adapter:
+def _fake(_config: ConfigService, _principal: Principal, _key: str | None) -> Adapter:
     from mosaic.ai.adapters.fake.adapter import FakeAdapter
 
     return FakeAdapter()
+
+
+def _claude_cli(config: ConfigService, principal: Principal, _key: str | None) -> Adapter:
+    from mosaic.ai.adapters.claude_cli.adapter import ClaudeCliAdapter
+
+    return ClaudeCliAdapter(
+        str(config.get(principal, "ai.cli.claude_path")),
+        float(config.get(principal, "ai.cli.timeout_s")),
+    )
+
+
+def _codex_cli(config: ConfigService, principal: Principal, _key: str | None) -> Adapter:
+    from mosaic.ai.adapters.codex_cli.adapter import CodexCliAdapter
+
+    return CodexCliAdapter(
+        str(config.get(principal, "ai.cli.codex_path")),
+        float(config.get(principal, "ai.cli.timeout_s")),
+    )
 
 
 def _anthropic_limits(model: str) -> AdapterLimits:
@@ -51,16 +72,61 @@ def _fake_limits(model: str) -> AdapterLimits:
     return limits(model)
 
 
+def _claude_cli_limits(model: str) -> AdapterLimits:
+    from mosaic.ai.adapters.claude_cli.adapter import limits
+
+    return limits(model)
+
+
+def _codex_cli_limits(model: str) -> AdapterLimits:
+    from mosaic.ai.adapters.codex_cli.adapter import limits
+
+    return limits(model)
+
+
+def _app_check(binary: str, setting: str) -> Callable[[ConfigService, Principal], None]:
+    def check(config: ConfigService, principal: Principal) -> None:
+        from mosaic.ai.adapters.cli_common import find_binary
+        from mosaic.ai.types import AdapterError
+
+        try:
+            find_binary(binary, str(config.get(principal, setting)))
+        except AdapterError as exc:
+            raise NotConfiguredError(f"not configured: {exc}") from None
+
+    return check
+
+
+def _no_check(_config: ConfigService, _principal: Principal) -> None:
+    return None
+
+
 @dataclass(frozen=True)
 class ProviderEntry:
-    factory: Callable[[str | None], Adapter]
+    factory: Factory
     needs_key: bool
     limits: Callable[[str], AdapterLimits]
+    remote: bool  # sends footage or text off this machine (blocked by ai.local_only)
+    check: Callable[[ConfigService, Principal], None] = _no_check  # installed app present
 
 
 PROVIDERS: dict[str, ProviderEntry] = {
-    "anthropic": ProviderEntry(_anthropic, needs_key=True, limits=_anthropic_limits),
-    "fake": ProviderEntry(_fake, needs_key=False, limits=_fake_limits),
+    "anthropic": ProviderEntry(_anthropic, True, _anthropic_limits, remote=True),
+    "claude-cli": ProviderEntry(
+        _claude_cli,
+        False,
+        _claude_cli_limits,
+        remote=True,
+        check=_app_check("claude", "ai.cli.claude_path"),
+    ),
+    "codex-cli": ProviderEntry(
+        _codex_cli,
+        False,
+        _codex_cli_limits,
+        remote=True,
+        check=_app_check("codex", "ai.cli.codex_path"),
+    ),
+    "fake": ProviderEntry(_fake, False, _fake_limits, remote=False),
 }
 
 
@@ -85,18 +151,19 @@ def _ready(
     entry = PROVIDERS.get(provider)
     if entry is None:
         raise NotConfiguredError(f"no adapter for provider {provider!r}")
-    if entry.needs_key and config.get(principal, "ai.local_only"):
+    if entry.remote and config.get(principal, "ai.local_only"):
         raise LocalOnlyError(
-            f"{provider} is a cloud provider and ai.local_only is on; turn it off with "
+            f"{provider} sends data off this machine and ai.local_only is on; turn it off with "
             "`mosaic config set ai.local_only false` or choose a local provider"
         )
+    entry.check(config, principal)
     key = config.key_for(principal, provider) if entry.needs_key else None
     return entry, key
 
 
 def adapter_for(config: ConfigService, principal: Principal, provider: str) -> Adapter:
     entry, key = _ready(config, principal, provider)
-    return entry.factory(key)
+    return entry.factory(config, principal, key)
 
 
 def resolve(config: ConfigService, principal: Principal, capability: str) -> Resolved:

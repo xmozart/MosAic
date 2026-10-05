@@ -9,6 +9,9 @@
 "ai.budget.per_job_usd" = 5.0
 "ai.local_only" = false
 "ai.send_gps" = false
+"ai.cli.claude_path" = ""  # Claude Code app (claude-cli provider, ADR 0014); "" = find on PATH
+"ai.cli.codex_path" = ""  # Codex app (codex-cli provider); "" = find on PATH
+"ai.cli.timeout_s" = 300.0
 "allow_gpl_ffmpeg" = false  # dev only; never enable in a shipped build
 
 # capability → provider, model, mode. Anthropic is the default provider, not a requirement.
@@ -41,3 +44,22 @@ mode = "local"
 provider = "siglip-onnx"
 model = "base"
 mode = "local"
+
+# `mosaic config ai use <preset>`: provider and model per AI capability in one step.
+[presets.anthropic]
+vision = "claude-haiku-4-5"
+planner = "claude-sonnet-5-5"
+selector = "claude-sonnet-5-5"
+critic = "claude-sonnet-5-5"
+
+[presets.claude-cli]
+vision = "claude-haiku-4-5"
+planner = "claude-sonnet-5-5"
+selector = "claude-sonnet-5-5"
+critic = "claude-sonnet-5-5"
+
+[presets.codex-cli]
+vision = "gpt-5.5"
+planner = "gpt-5.5"
+selector = "gpt-5.5"
+critic = "gpt-5.5"

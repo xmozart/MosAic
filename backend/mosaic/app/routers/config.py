@@ -15,7 +15,7 @@ from mosaic.app.services import Services
 from mosaic.core.principal import Principal
 from mosaic.core.settings import SettingError
 from mosaic.storage import secrets
-from mosaic.storage.config import ConfigService
+from mosaic.storage.config import KNOWN_PROVIDERS, ConfigService
 
 router = APIRouter(prefix="/api")
 Svc = Depends(services)
@@ -31,7 +31,9 @@ def get_settings(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     return {k: {"value": v.value, "source": v.source} for k, v in _config(svc).settings(me).items()}
 
 
-API_READONLY_SETTINGS = frozenset({"allow_gpl_ffmpeg"})  # dev-only: CLI on the host
+# Changed only with `mosaic config` on the host: a dev-only switch, and the paths of the
+# executables MosAic runs (an API caller must not choose a program to execute).
+API_READONLY_SETTINGS = frozenset({"allow_gpl_ffmpeg", "ai.cli.claude_path", "ai.cli.codex_path"})
 
 
 @router.patch("/settings")
@@ -111,6 +113,9 @@ def validate_secret(ref: str, svc: Services = Svc, me: Principal = Me) -> dict[s
     kind, _, provider = ref.partition("/")
     if kind != "ai" or not provider:
         raise HTTPException(404, "unknown secret")
+    if KNOWN_PROVIDERS.get(provider) == "cli":
+        # Installed apps have no key; checking one runs the app, which is not request work.
+        raise HTTPException(404, f"{provider} has no key to validate; use `mosaic config ai test`")
     r = check_provider(_config(svc), me, provider)
     return {
         "ok": r.ok,

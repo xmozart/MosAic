@@ -1,8 +1,9 @@
 """Versioned prompt files: ``ai/prompts/<name>/v<N>.md`` beside their output schema
 (``schema_v<N>.py``). Prompts are provider-neutral (ADR 0003).
 
-A prompt file has ``## System`` and ``## User`` sections; ``{{name}}`` placeholders are
-filled from the request context (no other templating, so JSON examples stay literal).
+A prompt file has ``## System`` and ``## User`` sections; ``{{name}}`` placeholders (User
+section only: the system text is fixed) are filled from the request context (no other
+templating, so JSON examples stay literal).
 """
 
 from __future__ import annotations
@@ -47,6 +48,10 @@ def load(name: str, version: int) -> Prompt:
     parts = {sections[i]: sections[i + 1].strip() for i in range(1, len(sections) - 1, 2)}
     if "System" not in parts or "User" not in parts:
         raise ValueError(f"{path} needs '## System' and '## User' sections")
+    if _PLACEHOLDER.search(parts["System"]):
+        # The system text is fixed (some adapters pass it in argv, ADR 0014): request
+        # data such as trip context belongs in the User section.
+        raise ValueError(f"{path}: placeholders are not allowed in the System section")
     module = importlib.import_module(f"mosaic.ai.prompts.{name}.schema_v{version}")
     schema: type[BaseModel] = module.Output
     return Prompt(name, version, parts["System"], parts["User"], schema)

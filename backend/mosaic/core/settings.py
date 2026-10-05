@@ -19,6 +19,8 @@ CLOUD_CAPABILITIES = ("vision", "planner", "selector", "critic")
 PROVIDER_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "anthropic": CLOUD_CAPABILITIES,
     "fake": CLOUD_CAPABILITIES,
+    "claude-cli": CLOUD_CAPABILITIES,  # installed apps, user's own sign-in (ADR 0014)
+    "codex-cli": CLOUD_CAPABILITIES,
     "faster-whisper": ("transcriber",),
     "siglip-onnx": ("embedder",),
 }
@@ -36,7 +38,7 @@ class ProviderChoice:
     capability: str
     provider: str
     model: str
-    mode: str  # cloud|local
+    mode: str  # cloud (API key)|cli (installed app, own sign-in)|local
 
 
 @lru_cache(maxsize=1)
@@ -53,6 +55,14 @@ def default_settings() -> dict[str, Any]:
 def default_provider(capability: str) -> ProviderChoice:
     entry = defaults()["providers"][capability]
     return ProviderChoice(capability, entry["provider"], entry["model"], entry["mode"])
+
+
+def preset(provider: str) -> dict[str, str]:
+    """``capability → model`` for ``mosaic config ai use <provider>``."""
+    presets: dict[str, dict[str, str]] = defaults().get("presets", {})
+    if provider not in presets:
+        raise SettingError(f"no preset for {provider!r}; available: {', '.join(sorted(presets))}")
+    return dict(presets[provider])
 
 
 class SettingError(ValueError):
@@ -82,6 +92,12 @@ def coerce(key: str, value: Any) -> Any:
         if number < 0:
             raise SettingError(f"{key} must not be negative")
         return number
+    # ``*_path`` settings name an existing file, ``*_dir`` settings an existing folder.
+    if key.endswith("_path") and value:
+        path = Path(str(value)).expanduser()
+        if not path.is_file():
+            raise SettingError(f"{key}: file not found: {path}")
+        return str(path.resolve())
     if key.endswith("_dir") and value:
         path = Path(str(value)).expanduser()
         if not path.is_dir():

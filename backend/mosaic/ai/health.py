@@ -13,7 +13,7 @@ from mosaic.ai.registry import adapter_for
 from mosaic.ai.types import AdapterError, StructuredRequest
 from mosaic.core.clock import now_iso
 from mosaic.core.principal import Principal
-from mosaic.core.settings import default_provider
+from mosaic.core.settings import SettingError, preset
 from mosaic.storage.config import ConfigService, NotConfiguredError
 from mosaic.storage.models_control import UsageRecord
 
@@ -33,9 +33,10 @@ def model_for(config: ConfigService, principal: Principal, provider: str) -> str
     for status in config.providers(principal).values():
         if status.choice.provider == provider:
             return status.choice.model
-    if provider == "anthropic":
-        return default_provider("vision").model
-    return "fake-1"
+    try:
+        return preset(provider)["vision"]
+    except SettingError:
+        return "fake-1"
 
 
 def check_provider(config: ConfigService, principal: Principal, provider: str) -> HealthResult:
