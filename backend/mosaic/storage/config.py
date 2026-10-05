@@ -15,6 +15,8 @@ from mosaic.core.clock import now_iso
 from mosaic.core.principal import Principal, check
 from mosaic.core.settings import (
     CAPABILITIES,
+    CLOUD_CAPABILITIES,
+    LATER_CAPABILITIES,
     LOCAL_MODELS,
     PROVIDER_CAPABILITIES,
     ProviderChoice,
@@ -22,6 +24,7 @@ from mosaic.core.settings import (
     coerce,
     default_provider,
     default_settings,
+    preset,
 )
 from mosaic.storage import secrets
 from mosaic.storage.control import ControlDB
@@ -47,7 +50,7 @@ class SettingValue:
 @dataclass(frozen=True)
 class ProviderStatus:
     choice: ProviderChoice
-    source: str  # default|user
+    source: str  # default|user|inherited (ADR 0019)
     needs_key: bool
 
 
@@ -66,6 +69,13 @@ class NotConfiguredError(RuntimeError):
 
 def secret_name(provider: str) -> str:
     return f"ai/{provider}"
+
+
+def _preset_models(provider: str) -> dict[str, str]:
+    try:
+        return preset(provider)
+    except SettingError:
+        return {}
 
 
 class ConfigService:
@@ -146,12 +156,25 @@ class ConfigService:
                     select(ProviderProfile).where(ProviderProfile.user_id == principal.user_id)
                 )
             }
+        # A capability added after the owner chose one provider for every AI capability
+        # (e.g. `mosaic config ai use claude-cli`) follows that choice with its preset model
+        # instead of the shipped default; nothing is written (ADR 0019).
+        original = [c for c in CLOUD_CAPABILITIES if c not in LATER_CAPABILITIES]
+        chosen = {rows[c].provider for c in original if c in rows}
+        complete = all(c in rows for c in original)
+        inherit = next(iter(chosen)) if complete and len(chosen) == 1 else None
+        inherited_models = _preset_models(inherit) if inherit else {}
         out: dict[str, ProviderStatus] = {}
         for cap in CAPABILITIES:
             row = rows.get(cap)
             if row is not None:
                 choice = ProviderChoice(cap, row.provider, row.model, row.mode)
                 source = "user"
+            elif inherit is not None and cap in LATER_CAPABILITIES and cap in inherited_models:
+                choice = ProviderChoice(
+                    cap, inherit, inherited_models[cap], KNOWN_PROVIDERS[inherit]
+                )
+                source = "inherited"
             else:
                 choice, source = default_provider(cap), "default"
             out[cap] = ProviderStatus(choice, source, choice.mode == "cloud")

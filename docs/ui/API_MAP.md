@@ -22,7 +22,7 @@ These are the REST endpoints and SSE events the screens need.
 | Method | Path | Used by |
 |---|---|---|
 | GET/PATCH | `/settings` (returns `{key: {value, source}}` with source = default/user) | S22 |
-| GET/PATCH | `/providers` (capability → provider/model/mode) | S1, S22 |
+| GET/PATCH | `/providers` (capability → provider/model/mode, source default/user/inherited, ADR 0019) | S1, S22 |
 | PUT | `/secrets/{ref}` (write-only; returns `{configured, last4}`) | S1, S22 |
 | POST | `/secrets/{ref}/validate` | S1, S22 |
 | GET | `/models/local` · POST `/models/local/{name}/download` (job) | S1 |

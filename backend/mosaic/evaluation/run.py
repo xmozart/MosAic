@@ -88,7 +88,7 @@ def write_ledger(data: dict[str, Any]) -> None:
     p.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def check_configuration(config: ConfigService, me: Principal) -> Path:
+def check_configuration(config: ConfigService, me: Principal, deepen: bool = False) -> Path:
     """The corpus folder, or ``GateStop("G1")`` with the commands that fix the setup."""
     from mosaic.ai.registry import adapter_for
 
@@ -100,7 +100,7 @@ def check_configuration(config: ConfigService, me: Principal) -> Path:
         commands.append(
             "mosaic config set eval.corpus_dir /path/to/corpus  # a folder of trip folders"
         )
-    for cap in ("vision", "planner", "selector"):
+    for cap in ("vision", "planner", "selector", *(("reviewer",) if deepen else ())):
         choice = config.provider(me, cap)
         if choice.provider == "fake":
             problems.append(f"{cap} uses the offline fake provider; the eval needs a real one")
@@ -235,6 +235,7 @@ def run_trip(
             print(f"  deep review of {count} candidates", flush=True)
             if deep_job is not None:
                 _run_job(control, deep_job, "deep review", budget, name)
+                check_deep_review(control, deep_job, name)
             result["deep_review_candidates"] = count
 
         meta = CORPUS_META / name.lower() / "expectations.yaml"
@@ -279,6 +280,17 @@ def run_trip(
         project.close()
     result["finished_at"] = now_iso()
     return result
+
+
+def check_deep_review(control: ControlDB, job_id: int, trip: str) -> None:
+    """A deep review whose tasks were skipped must never look like a finished one."""
+    skipped = [
+        t.error or "no reason recorded"
+        for t in JobStore(control.db).tasks(job_id)
+        if t.kind == "library.review" and t.status == "skipped"
+    ]
+    if skipped:
+        raise GateStop("G1", f"{trip}: deep review skipped ({len(skipped)} tasks): {skipped[0]}")
 
 
 def apply_context(project: Any, path: Path) -> None:
@@ -349,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     me = control.local_principal
     config = ConfigService(control)
     try:
-        corpus = check_configuration(config, me)
+        corpus = check_configuration(config, me, deepen=args.deepen)
         ledger = read_ledger()
         budget = Budget(
             float(config.get(me, "ai.budget.per_eval_run_usd")),

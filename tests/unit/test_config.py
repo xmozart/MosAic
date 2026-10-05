@@ -281,3 +281,75 @@ def test_api_patches_are_atomic_and_never_echo_input(tmp_path: Path) -> None:
     bad = client.put("/api/secrets/ai/anthropic", json={"valu": KEY})
     assert bad.status_code == 422
     assert KEY not in bad.text
+
+
+def test_new_capability_inherits_the_single_chosen_provider() -> None:
+    """`ai use claude-cli` before `reviewer` existed: reviewer follows claude-cli (ADR 0019)."""
+    control = ControlDB()
+    svc = ConfigService(control)
+    me = control.local_principal
+    for cap in ("vision", "planner", "selector", "critic"):
+        svc.set_provider(me, cap, "claude-cli", "claude-sonnet-5-5")
+    provs = svc.providers(me)
+    assert provs["reviewer"].choice.provider == "claude-cli"
+    assert provs["reviewer"].choice.model == "claude-sonnet-5-5"
+    assert provs["reviewer"].source == "inherited"
+    assert not provs["reviewer"].needs_key
+    assert provs["transcriber"].source == "default"  # local capabilities are never inherited
+    svc.set_provider(me, "critic", "anthropic", "claude-sonnet-5-5")  # mixed: no inheritance
+    assert svc.providers(me)["reviewer"].source == "default"
+
+
+def test_one_explicit_capability_never_moves_the_others() -> None:
+    control = ControlDB()
+    svc = ConfigService(control)
+    me = control.local_principal
+    svc.set_provider(me, "vision", "codex-cli", "gpt-5.5")
+    provs = svc.providers(me)
+    for cap in ("planner", "selector", "critic", "reviewer"):
+        assert provs[cap].source == "default", cap
+        assert provs[cap].choice.provider == "anthropic"
+
+
+def test_eval_checks_the_reviewer_and_refuses_skipped_reviews(tmp_path: Path) -> None:
+    import pytest
+
+    from mosaic.evaluation import run as ev
+    from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
+    from mosaic.jobs.store import JobStore
+
+    control = ControlDB()
+    svc = ConfigService(control)
+    me = control.local_principal
+    svc.set(me, "eval.corpus_dir", str(Path(__file__).parent))
+    for cap in ("vision", "planner", "selector"):
+        svc.set_provider(me, cap, "claude-cli", "claude-sonnet-5-5")
+    stub = tmp_path / "claude"  # tests never depend on an installed app
+    stub.write_text("#!/bin/sh\nexit 0\n")
+    stub.chmod(0o755)
+    svc.set(me, "ai.cli.claude_path", str(stub))
+    with pytest.raises(ev.GateStop) as stop:
+        ev.check_configuration(svc, me, deepen=True)
+    msg = str(stop.value)
+    assert "reviewer (anthropic)" in msg  # the only problem: the keyless default reviewer
+    for cap in ("vision", "planner", "selector"):
+        assert f"{cap} (" not in msg
+    # Without --deepen the reviewer is not needed: the same setup passes the check.
+    assert ev.check_configuration(svc, me, deepen=False).is_dir()
+
+    store = JobStore(control.db)
+    job = store.create_job(
+        me,
+        JobSpec(
+            "p",
+            "deepen",
+            tasks=[TaskSpec("library.review", "s", resource_class=ResourceClass.AI_API)],
+        ),
+    )
+    task = store.lease("w", "ai_api")
+    assert task is not None
+    store.skip(task.id, "w", "deep review skipped: not configured")
+    with pytest.raises(ev.GateStop) as stop:
+        ev.check_deep_review(control, job, "Trip")
+    assert stop.value.gate == "G1"
+    assert "1 tasks" in str(stop.value)
