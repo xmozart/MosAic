@@ -108,7 +108,15 @@ class Worker:
         try:
             handler = registry.get(task.kind)
             project = self._project(task.project_id)
-            ctx = TaskContext(task, self.worker_id, self.executor, self.store, project, cancelled)
+            ctx = TaskContext(
+                task,
+                self.worker_id,
+                self.executor,
+                self.store,
+                project,
+                cancelled,
+                control=self.control,
+            )
             if handler.is_done is not None and handler.is_done(ctx):
                 self.executor.complete(task.id, self.worker_id, skipped_existing=True)
                 return
@@ -116,6 +124,8 @@ class Worker:
             result = handler.run(ctx)
             ms = int((time.monotonic() - started) * 1000)
             self.executor.complete(task.id, self.worker_id, result=result or {}, duration_ms=ms)
+        except registry.DeferTask as exc:
+            self.executor.defer(task.id, self.worker_id, str(exc))
         except registry.SkipTask as exc:
             self.executor.skip(task.id, self.worker_id, str(exc))
         except TaskCancelledError:

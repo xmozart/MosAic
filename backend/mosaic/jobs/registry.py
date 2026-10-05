@@ -41,6 +41,10 @@ class PermanentError(Exception):
     """A failure that retrying cannot fix (e.g. undecodable input)."""
 
 
+class DeferTask(Exception):  # noqa: N818 - control-flow signal
+    """The task cannot run now (its job hit the cost limit); return it to the queue."""
+
+
 class UnknownTaskKindError(PermanentError):
     pass
 

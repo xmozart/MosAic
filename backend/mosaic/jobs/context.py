@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import LeasedTask, TaskSpec
 from mosaic.jobs.store import JobStore
+from mosaic.storage.control import ControlDB
 from mosaic.storage.projects import Project
 
 
@@ -28,6 +29,7 @@ class TaskContext:
     store: JobStore
     project: Project
     cancelled: threading.Event = field(default_factory=threading.Event)
+    control: ControlDB | None = None
 
     @property
     def params(self) -> dict[str, Any]:

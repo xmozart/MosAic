@@ -15,11 +15,11 @@ import numpy as np
 from PIL import Image
 from sqlalchemy import delete, select
 
+from mosaic.ai.registry import task_embedder
 from mosaic.core.keys import artifact_key
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import task
-from mosaic.library.embedder import DIM, get_embedder, model_id
 from mosaic.media import inventory
 from mosaic.storage import provenance, sqlite_vec_index
 from mosaic.storage.models_project import Embedding, SampleFrame
@@ -72,7 +72,7 @@ def _key(ctx: TaskContext, samples: list[SampleFrame]) -> str:
         "embed",
         project_id=ctx.project.id,
         inputs={"asset": ctx.params["asset_id"], "images": [sm.image_key for sm in samples]},
-        config={"model": model_id(), "dedupe": DEDUPE_SIM},
+        config={"model": task_embedder(ctx).model, "dedupe": DEDUPE_SIM},
         version=EMBED_VERSION,
     )
 
@@ -87,7 +87,7 @@ def embed_task(ctx: TaskContext) -> dict[str, Any]:
     asset_id = ctx.params["asset_id"]
     samples = _samples(ctx, asset_id)
     key = _key(ctx, samples)
-    embedder = get_embedder()
+    embedder = task_embedder(ctx)
     vectors: dict[int, np.ndarray] = {}
     for i in range(0, len(samples), BATCH):
         ctx.check_cancelled()
@@ -115,7 +115,7 @@ def embed_task(ctx: TaskContext) -> dict[str, Any]:
                 input_keys=[key],
             ),
         )
-        index = sqlite_vec_index.ensure_index(s, embedder.model, DIM, "sample")
+        index = sqlite_vec_index.ensure_index(s, embedder.model, embedder.dim, "sample")
         old = list(
             s.scalars(
                 select(Embedding.id).where(
@@ -132,7 +132,7 @@ def embed_task(ctx: TaskContext) -> dict[str, Any]:
                 owner_kind="sample",
                 owner_id=sm.id,
                 model=embedder.model,
-                dim=DIM,
+                dim=embedder.dim,
                 vector=vectors[sm.id].astype(np.float32).tobytes(),
                 provenance_id=prov,
             )

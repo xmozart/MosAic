@@ -21,11 +21,11 @@ import numpy as np
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from mosaic.ai.registry import task_embedder
 from mosaic.core.keys import artifact_key
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import task
-from mosaic.library.embedder import DIM, model_id
 from mosaic.library.quality import shake_metric_name
 from mosaic.media import inventory
 from mosaic.storage import provenance, sqlite_vec_index
@@ -127,7 +127,7 @@ def _key(ctx: TaskContext) -> str:
     with ctx.project.db.session() as s:
         for row in s.execute(
             select(Embedding.owner_id, Embedding.provenance_id)
-            .where(Embedding.owner_kind == "segment", Embedding.model == model_id())
+            .where(Embedding.owner_kind == "segment", Embedding.model == task_embedder(ctx).model)
             .order_by(Embedding.owner_id)
         ):
             h.update(f"{row[0]}:{row[1]};".encode())
@@ -139,7 +139,11 @@ def _key(ctx: TaskContext) -> str:
         "similarity",
         project_id=ctx.project.id,
         inputs=h.hexdigest(),
-        config={"model": model_id(), "max_distance": MAX_DISTANCE, "neighbours": NEIGHBOURS},
+        config={
+            "model": task_embedder(ctx).model,
+            "max_distance": MAX_DISTANCE,
+            "neighbours": NEIGHBOURS,
+        },
         version=SIMILARITY_VERSION,
     )
 
@@ -150,13 +154,14 @@ def _is_done(ctx: TaskContext) -> bool:
 
 @task("library.similarity", is_done=_is_done)
 def similarity_task(ctx: TaskContext) -> dict[str, Any]:
-    model = model_id()
+    emb = task_embedder(ctx)
+    model = emb.model
     key = _key(ctx)
     quality: dict[int, float] = {}
     with ctx.project.db.session() as s:
         for asset_id in s.scalars(select(Asset.id).where(Asset.kind == "video")):
             quality.update(asset_quality(s, asset_id))
-        index = sqlite_vec_index.index_name(model, DIM, "segment")
+        index = sqlite_vec_index.index_name(model, emb.dim, "segment")
         emb_of = {
             r[0]: r[1]
             for r in s.execute(

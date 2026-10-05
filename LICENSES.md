@@ -93,6 +93,7 @@ Used as imported libraries by the backend.
 | alembic | 1.20.0 | MIT |
 | annotated-doc | 0.0.5 | MIT |
 | annotated-types | 0.8.0 | MIT |
+| anthropic | 1.11.0 | MIT License |
 | anyio | 4.15.1 | MIT |
 | av | 19.0.1 | NOT INSTALLED: excluded by override, its wheels bundle GPL FFmpeg (ADR 0009) |
 | certifi | 2026.7.22 | Mozilla Public License 2.0 (MPL 2.0) |
@@ -101,6 +102,7 @@ Used as imported libraries by the backend.
 | colorama | 0.4.6 | BSD-3-Clause |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause |
 | ctranslate2 | 4.8.2 | MIT |
+| docstring-parser | 0.18.0 | MIT License |
 | fastapi | 0.142.2 | MIT |
 | faster-whisper | 1.2.1 | MIT License |
 | filelock | 4.0.10 | MIT |
@@ -109,13 +111,17 @@ Used as imported libraries by the backend.
 | h11 | 0.16.0 | MIT License |
 | hf-xet | 1.6.0 | Apache-2.0 |
 | httpcore | 1.0.9 | BSD-3-Clause |
+| httpcore2 | 2.13.1 | BSD-3-Clause |
 | httpx | 0.28.1 | BSD License |
+| httpx2 | 2.13.1 | BSD-3-Clause |
+| httpx2-jsfetch | 1.0 | BSD-3-Clause |
 | huggingface-hub | 1.33.0 | Apache Software License |
 | idna | 3.20 | BSD-3-Clause |
 | jaraco-classes | 3.4.0 | MIT License |
 | jaraco-context | 6.1.2 | MIT |
 | jaraco-functools | 4.6.0 | MIT |
 | jeepney | 0.9.0 | MIT |
+| jiter | 0.17.0 | MIT |
 | keyring | 25.7.0 | MIT |
 | mako | 1.4.3 | MIT |
 | markupsafe | 3.0.4 | BSD-3-Clause |
@@ -134,11 +140,13 @@ Used as imported libraries by the backend.
 | pyyaml | 6.0.3 | MIT License |
 | scipy | 1.18.1 | BSD License |
 | secretstorage | 3.5.0 | BSD-3-Clause |
+| sniffio | 1.3.1 | MIT License; Apache Software License |
 | sqlalchemy | 2.1.3 | MIT |
 | sqlite-vec | 0.1.9 | MIT License, Apache License, Version 2.0 |
 | starlette | 1.7.0 | BSD-3-Clause |
 | tokenizers | 0.23.2 | Apache Software License |
 | tqdm | 4.70.1 | MPL-2.0 AND MIT |
+| truststore | 0.10.4 | MIT |
 | typing-extensions | 4.16.0 | PSF-2.0 |
 | typing-inspection | 0.4.4 | MIT |
 | uvicorn | 0.54.0 | BSD-3-Clause |
@@ -150,9 +158,6 @@ Tests, lint and type checks; never shipped.
 | Package | Version | License |
 |---|---|---|
 | ast-serialize | 0.12.1 | MIT |
-| httpcore2 | 2.13.1 | BSD-3-Clause |
-| httpx2 | 2.13.1 | BSD-3-Clause |
-| httpx2-jsfetch | 1.0 | BSD-3-Clause |
 | hypothesis | 6.168.3 | MPL-2.0 |
 | iniconfig | 2.3.0 | MIT |
 | librt | 0.16.0 | MIT |
@@ -165,6 +170,5 @@ Tests, lint and type checks; never shipped.
 | pytest-timeout | 2.4.0 | DFSG approved; MIT License |
 | ruff | 0.16.10 | MIT |
 | sortedcontainers | 2.4.0 | Apache Software License |
-| truststore | 0.10.4 | MIT |
 
 <!-- END python-packages -->

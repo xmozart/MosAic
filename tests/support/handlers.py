@@ -60,3 +60,11 @@ def permanent(_ctx: TaskContext) -> None:
 @task("test.skip")
 def skip(_ctx: TaskContext) -> None:
     raise SkipTask("no audio stream")
+
+
+@task("test.defer")
+def defer(ctx: TaskContext) -> None:
+    from mosaic.jobs.registry import DeferTask
+
+    ctx.store.pause(ctx.task.job_id, cost_limit=True)
+    raise DeferTask("cost limit")

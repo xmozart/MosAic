@@ -9,7 +9,7 @@ _(empty — the agent is working)_
 ## Current
 
 - **Milestone:** M0
-- **Step:** 9 (mosaics, AI provider layer, app config, vision v1, budgets, dispositions). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 9c (mosaics, vision v1, dispositions); 9a and 9b done. The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -29,7 +29,9 @@ _(empty — the agent is working)_
 
 ## Carry-forward notes
 
-- 9b: provider↔capability compatibility table in the AI registry; `mosaic config ai reset-key`; one-session `set_providers_many`; pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
+- Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
+- A job paused at its cost limit needs a way to raise that job's `cost_limit_usd` before resuming (S9/S20, API `resume` parameter).
+- Step 12: wire the per-`make eval` run ($5) and per-milestone ($25) budgets (AGENT_WORKFLOW §4) as job cost limits and a running total.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
 
@@ -37,8 +39,6 @@ _(empty — the agent is working)_
 - `media.telemetry` re-runs (and ends skipped) on every analysis for assets without GPMF; cheap, but could cache a 'no telemetry' artifact.
 
 - Artifact GC: old `frame`/`motion`/proxy artifacts stay when keys change (M1 storage cleanup).
-- Step 9: move image embeddings behind `Embedder` in `ai/adapters/` with the model from settings instead of `MOSAIC_EMBED_VARIANT` (ADR 0011).
-- Step 9: move transcription behind `Transcriber` in `ai/adapters/faster_whisper/`; choose the Whisper model from the analysis mode + settings instead of `MOSAIC_STT_MODEL` (ADR 0009).
 - Dev note: tests share Whisper/SigLIP weights in MosAic's real app-data `models/` folder (`MOSAIC_MODELS_DIR`), so they download once.
 
 - Dev gotcha: an auto-started worker lives ~20 s after its last job and keeps running the code it loaded; wait or kill it after code changes.
@@ -62,3 +62,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.7 · audio: streaming BS.1770 loudness, Silero VAD, faster-whisper word ticks from proxy audio, LibriSpeech fixture; PyAV excluded (ADR 0009); bundled runtime libs documented (ADR 0010, Q-1); LRF flake fixed
 - 2026-10-04 · M0.8 · SigLIP (ONNX) sample/segment embeddings in per-kind sqlite-vec indexes, segments with usable_range, leader-clustered similarity groups, GPMF gyro shake; asset-scoped keys and purge-before-rebuild fixes (ADR 0011)
 - 2026-10-04 · M0.9a · app configuration: settings/provider profiles/secret refs/usage tables, keyring secrets, `mosaic config` CLI, /api/settings, /api/providers, /api/secrets (ADR 0003)
+- 2026-10-04 · M0.9b · AI provider layer: capability protocols, registry, Anthropic + fake/replay adapters, AIClient (cache, atomic budget reservation, validate+retry, usage/provenance), ai test/reset-key, validate endpoint; Whisper/SigLIP behind adapters (ADR 0012)

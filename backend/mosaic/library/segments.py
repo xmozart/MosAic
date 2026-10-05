@@ -20,12 +20,12 @@ from typing import Any
 import numpy as np
 from sqlalchemy import select
 
+from mosaic.ai.registry import task_embedder
 from mosaic.core.keys import artifact_key
 from mosaic.core.time import Rounding, SourceTime, parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import PermanentError, task
-from mosaic.library.embedder import DIM, model_id
 from mosaic.library.purge import purge_segments
 from mosaic.library.quality import shake_metric_name
 from mosaic.media import inventory
@@ -172,7 +172,7 @@ def _key(ctx: TaskContext, asset_id: int) -> str:
         project_id=ctx.project.id,
         inputs={"asset": asset_id, "upstream": stamp},
         config={
-            "model": model_id(),
+            "model": task_embedder(ctx).model,
             "max": MAX_SEG,
             "split_min": SPLIT_MIN,
             "visual": VISUAL_CHANGE,
@@ -190,7 +190,8 @@ def _is_done(ctx: TaskContext) -> bool:
 def segments_task(ctx: TaskContext) -> dict[str, Any]:
     asset_id = ctx.params["asset_id"]
     key = _key(ctx, asset_id)
-    model = model_id()
+    embedder = task_embedder(ctx)
+    model = embedder.model
     with ctx.project.db.session() as s:
         asset = s.get(Asset, asset_id)
         if asset is None or asset.tb is None:
@@ -297,7 +298,7 @@ def segments_task(ctx: TaskContext) -> dict[str, Any]:
                 kind="segments", algorithm_version=SEGMENT_VERSION, input_keys=[key]
             ),
         )
-        index = sqlite_vec_index.ensure_index(s, model, DIM, "segment")
+        index = sqlite_vec_index.ensure_index(s, model, embedder.dim, "segment")
         purge_segments(s, asset_id)
         for i, (shot_id, a, b) in enumerate(pieces):
             ua, ub = usable[i]
@@ -327,7 +328,7 @@ def segments_task(ctx: TaskContext) -> dict[str, Any]:
                     owner_kind="segment",
                     owner_id=seg.id,
                     model=model,
-                    dim=DIM,
+                    dim=embedder.dim,
                     vector=pooled.tobytes(),
                     provenance_id=prov,
                 )

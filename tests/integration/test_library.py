@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 from fractions import Fraction
 
 import numpy as np
 import pytest
 from sqlalchemy import select
 
-from mosaic.library.embedder import DIM, model_id
+from mosaic.ai.adapters.siglip_onnx.embedder import DIM
+from mosaic.ai.adapters.siglip_onnx.embedder import model_id as _model_id
 from mosaic.storage import sqlite_vec_index
 from mosaic.storage.models_project import (
     Asset,
@@ -172,3 +174,7 @@ def test_rerunning_visual_rebuilds_downstream_without_orphans(
             rowids = set(s.scalars(text(f"SELECT rowid FROM {name}")))
             assert rowids == {e for k, _, e in owners if k == kind}, kind
     project.close()
+
+
+def model_id() -> str:
+    return _model_id(os.environ["MOSAIC_EMBED_VARIANT"])

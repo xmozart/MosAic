@@ -34,6 +34,7 @@ class Executor(Protocol):
     ) -> bool: ...
     def skip(self, task_id: int, worker_id: str, reason: str) -> bool: ...
     def fail(self, task_id: int, worker_id: str, error: str, *, retryable: bool) -> bool: ...
+    def defer(self, task_id: int, worker_id: str, reason: str) -> bool: ...
 
 
 class LocalExecutor:
@@ -93,3 +94,6 @@ class LocalExecutor:
 
     def fail(self, task_id: int, worker_id: str, error: str, *, retryable: bool) -> bool:
         return self.store.fail(task_id, worker_id, error, retryable=retryable)
+
+    def defer(self, task_id: int, worker_id: str, reason: str) -> bool:
+        return self.store.defer(task_id, worker_id, reason)

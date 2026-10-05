@@ -10,8 +10,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 from PIL import Image
 
+from mosaic.ai.adapters.siglip_onnx.embedder import preprocess
 from mosaic.library.embed_task import dedupe_by_embedding
-from mosaic.library.embedder import preprocess
 from mosaic.library.segments import (
     MAX_SEG,
     SPEECH_STRETCH,

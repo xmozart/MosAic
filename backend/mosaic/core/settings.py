@@ -14,6 +14,22 @@ DEFAULTS_FILE = Path(__file__).with_name("defaults.toml")
 CAPABILITIES = ("vision", "planner", "selector", "critic", "transcriber", "embedder")
 CLOUD_CAPABILITIES = ("vision", "planner", "selector", "critic")
 
+# Which capabilities each provider's adapter can serve. A provider serves VisionAnalyzer
+# only if it supports image input and structured output (ADR 0003).
+PROVIDER_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "anthropic": CLOUD_CAPABILITIES,
+    "fake": CLOUD_CAPABILITIES,
+    "faster-whisper": ("transcriber",),
+    "siglip-onnx": ("embedder",),
+}
+
+# Local providers accept only these models (pinned weights; invariant 9). Kept in step with
+# the adapters by tests/unit/test_ai.py.
+LOCAL_MODELS: dict[str, tuple[str, ...]] = {
+    "faster-whisper": ("small", "medium"),
+    "siglip-onnx": ("base", "quantized"),
+}
+
 
 @dataclass(frozen=True)
 class ProviderChoice:

@@ -60,7 +60,7 @@ def test_float_seconds_become_integer_ticks_at_the_boundary() -> None:
 
 
 def test_av_shim_lets_faster_whisper_import_without_pyav() -> None:
-    from mosaic.audio import av_shim
+    from mosaic.ai.adapters.faster_whisper import av_shim
 
     av_shim.install()
     import faster_whisper

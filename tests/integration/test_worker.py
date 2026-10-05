@@ -167,3 +167,28 @@ def test_resume_after_kill_9_does_not_redo_finished_tasks(tmp_path: Path) -> Non
     assert all(started[tid] == 1 for tid in done_before)
     assert all(started.get(t.id, 0) >= 1 for t in store.tasks(job))
     project.close()
+
+
+@pytest.mark.usefixtures("handlers")
+def test_worker_defers_task_on_cost_limit(tmp_path: Path) -> None:
+    control = ControlDB()
+    project = init_project(control, control.local_principal, tmp_path)
+    store = JobStore(control.db)
+    job = store.create_job(
+        control.local_principal, JobSpec(project.id, "t", tasks=[TaskSpec("test.defer", "s")])
+    )
+    worker = Worker(control, slots={"cpu": 1})
+    th = threading.Thread(target=worker.run, daemon=True)
+    th.start()
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        j = store.job(job)
+        if j is not None and j.status == "paused_cost_limit":
+            break
+        time.sleep(0.05)
+    worker.stop.set()
+    th.join(timeout=10)
+    t = store.tasks(job)[0]
+    assert (t.status, t.attempts) == ("ready", 0)
+    assert "deferred" in [e.event for e in store.events(job)]
+    project.close()

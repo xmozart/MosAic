@@ -114,6 +114,53 @@ def ai_set(capability: str, provider: str, model: str) -> None:
         control.db.dispose()
 
 
+@ai.command("test")
+@click.option("--provider", default=None, help="Default: every provider the profile uses.")
+def ai_test(provider: str | None) -> None:
+    """Validate provider keys with one minimal call each."""
+    from mosaic.ai.health import check_provider
+
+    control, svc = _service()
+    me = control.local_principal
+    try:
+        if provider:
+            providers = [provider]
+        else:
+            providers = sorted(
+                {
+                    st.choice.provider
+                    for st in svc.providers(me).values()
+                    if st.needs_key or st.choice.provider == "fake"
+                }
+            )
+        failed = False
+        for p in providers:
+            r = check_provider(svc, me, p)
+            if r.ok:
+                click.echo(f"{p}: ok ({r.model}, {r.latency_ms} ms, ${r.cost_usd:.5f})")
+            else:
+                failed = True
+                click.echo(f"{p}: FAILED — {r.message}")
+        if failed:
+            raise click.ClickException("provider check failed")
+    finally:
+        control.db.dispose()
+
+
+@ai.command("reset-key")
+@click.option("--provider", required=True)
+def ai_reset_key(provider: str) -> None:
+    """Remove a provider key from the OS keyring."""
+    control, svc = _service()
+    try:
+        svc.reset_key(control.local_principal, provider)
+        click.echo(f"{provider} key removed")
+    except (SettingError, secrets.SecretError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        control.db.dispose()
+
+
 @ai.command("set-key")
 @click.option("--provider", required=True)
 def ai_set_key(provider: str) -> None:

@@ -422,6 +422,42 @@ class JobStore:
             job.cost_usd = (job.cost_usd or 0.0) + usd
             return job.cost_usd
 
+    def reserve_cost(self, job_id: int, usd: float) -> bool:
+        """Atomically add ``usd`` to the job's spend if it stays within the job's cost
+        limit (no limit: always). False means the budget would be exceeded."""
+        with self.db.session() as s:
+            limit = Job.cost_limit_usd
+            res = s.execute(
+                update(Job)
+                .where(Job.id == job_id, (limit.is_(None)) | (Job.cost_usd + usd <= limit))
+                .values(cost_usd=Job.cost_usd + usd, updated_at=now_iso())
+            )
+            return bool(res.rowcount)  # type: ignore[attr-defined]
+
+    def adjust_cost(self, job_id: int, delta_usd: float) -> None:
+        """Replace a reservation by the actual cost (``delta`` = actual − reserved)."""
+        with self.db.session() as s:
+            s.execute(
+                update(Job)
+                .where(Job.id == job_id)
+                .values(cost_usd=Job.cost_usd + delta_usd, updated_at=now_iso())
+            )
+
+    def defer(self, task_id: int, worker_id: str, reason: str) -> bool:
+        """Put a leased task back to ready without counting the attempt (e.g. its job was
+        paused at the cost limit)."""
+        with self.db.session() as s:
+            if not self._release(s, task_id, worker_id):
+                return False
+            res = s.execute(
+                update(Task)
+                .where(Task.id == task_id, Task.status == TaskStatus.LEASED.value)
+                .values(status=TaskStatus.READY.value, attempts=Task.attempts - 1)
+            )
+            if res.rowcount:  # type: ignore[attr-defined]
+                self._event(s, task_id, "deferred", worker_id, reason)
+            return True
+
     def set_job_result(self, job_id: int, result: dict[str, Any]) -> None:
         with self.db.session() as s:
             job = s.get(Job, job_id)

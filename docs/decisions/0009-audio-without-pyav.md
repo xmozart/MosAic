@@ -26,7 +26,7 @@ starts before or after its video must stay aligned.
 Option 3, as ADR 0002 anticipated:
 
 - `pyproject.toml` `[tool.uv] override-dependencies = ["av; sys_platform == 'never'"]`, so
-  PyAV is never installed. `mosaic.audio.av_shim.install()` registers a module that raises
+  PyAV is never installed. `mosaic.ai.adapters.faster_whisper.av_shim.install()` registers a module that raises
   a clear error if anything tries to use it.
 - Audio is decoded from the asset's **proxy**, whose audio track is already aligned to
   logical time 0, concatenated across chapters and pinned to each chapter's video length
@@ -37,7 +37,7 @@ Option 3, as ADR 0002 anticipated:
 - Whisper and Silero VAD times (float seconds) become ticks in `mosaic.audio.analysis`,
   the module boundary (ADR 0002 G).
 
-## Interim: direct faster-whisper call until the provider layer (step 9)
+## Interim: direct faster-whisper call until the provider layer (step 9) — resolved in step 9b
 
 `ARCHITECTURE.md §11` puts transcription behind the `Transcriber` capability, with local
 faster-whisper as a v1 provider in `ai/adapters/`. That interface and the provider registry
@@ -45,6 +45,10 @@ arrive in M0 step 9. Until then `mosaic.audio.analysis` calls faster-whisper dir
 takes the model from `MOSAIC_STT_MODEL` (default `medium`, `small` in tests). Step 9 moves
 it behind `Transcriber` in `ai/adapters/faster_whisper/`, with the model chosen from the
 analysis mode (Quick small, Balanced medium, Thorough large) and the app settings.
+
+Resolved in M0 step 9b: transcription now lives in `ai/adapters/faster_whisper/` and
+the model comes from the `transcriber` provider profile (`MOSAIC_STT_MODEL` remains a
+test/CI override).
 
 ## Consequences
 

@@ -7,8 +7,6 @@ become ticks here, at the module boundary (ADR 0002 G).
 
 from __future__ import annotations
 
-import os
-import threading
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -17,11 +15,10 @@ import numpy as np
 import numpy.typing as npt
 from sqlalchemy import delete
 
-from mosaic.audio import av_shim
+from mosaic.ai.registry import task_transcriber
 from mosaic.audio.loudness import RATE as LOUD_RATE
 from mosaic.audio.loudness import AudioStats, LoudnessMeter
 from mosaic.core.keys import artifact_key
-from mosaic.core.paths import models_dir
 from mosaic.core.time import Rounding, SourceTime, parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
@@ -44,50 +41,11 @@ AUDIO_VERSION = "audio/1"
 STT_RATE = 16_000
 BLOCK = Fraction(600)  # transcribe in 10-minute blocks (bounded memory)
 OVERLAP = Fraction(2)
-ENV_MODEL = "MOSAIC_STT_MODEL"
-DEFAULT_MODEL = "medium"  # Balanced (ANALYSIS_MODES.md §2); CI uses "small"
-# Pinned Hugging Face revisions (Systran/faster-whisper-*), so a key always means the same
-# weights (invariant 9).
-MODEL_REVISIONS = {
-    "small": "536b0662742c02347bc0e980a01041f333bce120",
-    "medium": "08e178d48790749d25932bbc082711ddcfdfbc4f",
-}
-BEAM = 5
-
-_models: dict[str, Any] = {}
-_models_lock = threading.Lock()
 
 
-def stt_model_name() -> str:
-    return os.environ.get(ENV_MODEL, DEFAULT_MODEL)
-
-
-def whisper(name: str) -> Any:
-    """Load (once per process) a faster-whisper model into MosAic's models directory."""
-    with _models_lock:
-        if name not in _models:
-            av_shim.install()
-            from faster_whisper import WhisperModel
-
-            _models[name] = WhisperModel(
-                name,
-                revision=MODEL_REVISIONS.get(name),
-                device="cpu",
-                compute_type="int8",
-                download_root=str(models_dir() / "whisper"),
-            )
-        return _models[name]
-
-
-def _config() -> dict[str, Any]:
-    from importlib.metadata import version
-
+def _config(ctx: TaskContext) -> dict[str, Any]:
     return {
-        "model": stt_model_name(),
-        "revision": MODEL_REVISIONS.get(stt_model_name()),
-        "faster_whisper": version("faster-whisper"),
-        "ctranslate2": version("ctranslate2"),
-        "beam": BEAM,
+        **task_transcriber(ctx).version_info(),
         "block": BLOCK,
         "overlap": OVERLAP,
         "vad": "silero",
@@ -100,7 +58,7 @@ def _key(ctx: TaskContext) -> str:
         "audio",
         project_id=ctx.project.id,
         inputs={"proxy": px.key, "asset": ctx.params["asset_id"]},
-        config=_config(),
+        config=_config(ctx),
         version=AUDIO_VERSION,
     )
 
@@ -148,6 +106,7 @@ def _block_audio(
 @task("audio.analyze", is_done=_is_done)
 def audio_task(ctx: TaskContext) -> dict[str, Any]:
     asset_id = ctx.params["asset_id"]
+    tr = task_transcriber(ctx)
     key = _key(ctx)
     px = load_proxy(ctx.project, asset_id)
     with ctx.project.db.session() as s:
@@ -163,9 +122,9 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
             provenance.ProvenanceInfo(
                 kind="audio",
                 algorithm_version=AUDIO_VERSION,
-                model=stt_model_name(),
-                model_version=MODEL_REVISIONS.get(stt_model_name()),
-                provider="faster-whisper",
+                model=tr.model,
+                model_version=tr.model,
+                provider=tr.provider,
                 input_keys=[px.key],
             ),
         )
@@ -236,9 +195,6 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
             )
 
     ctx.set_stage("transcription")
-    av_shim.install()
-    from faster_whisper.vad import VadOptions, get_speech_timestamps
-
     total = duration * tb
     words = speech = 0
     start = Fraction(0)
@@ -252,13 +208,13 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
         def owned(t: Fraction, _start: Fraction = start, _end: Fraction = end) -> bool:
             return _start <= t < _end
 
-        spans = get_speech_timestamps(audio, VadOptions())
+        spans = tr.speech_spans(audio)
         with ctx.write() as s:
             for sp in spans:
                 # Each block records the part of a span inside its own [start, end): a span
                 # crossing a block edge becomes two adjacent events, nothing is lost.
-                sp_start: Fraction = max(read_from + Fraction(int(sp["start"]), STT_RATE), start)
-                sp_end: Fraction = min(read_from + Fraction(int(sp["end"]), STT_RATE), end)
+                sp_start: Fraction = max(read_from + Fraction(sp.start_sample, STT_RATE), start)
+                sp_end: Fraction = min(read_from + Fraction(sp.end_sample, STT_RATE), end)
                 if sp_end > sp_start:
                     s.add(
                         AudioEvent(
@@ -271,17 +227,11 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
                     )
                     speech += 1
         if spans:
-            segments, info = whisper(stt_model_name()).transcribe(
-                audio,
-                word_timestamps=True,
-                vad_filter=True,
-                beam_size=BEAM,
-                condition_on_previous_text=False,
-            )
+            segments = tr.transcribe(audio)
             for seg in segments:
                 seg_words = [
                     w
-                    for w in (seg.words or [])
+                    for w in seg.words
                     if owned(SourceTime.from_float_offset(read_from, w.start, tb).seconds)
                 ]
                 if not seg_words:
@@ -291,8 +241,8 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
                         asset_id=asset_id,
                         start_ticks=float_to_ticks(read_from, seg_words[0].start, tb),
                         end_ticks=min(float_to_ticks(read_from, seg_words[-1].end, tb), duration),
-                        text="".join(w.word for w in seg_words).strip(),
-                        language=info.language,
+                        text="".join(w.text for w in seg_words).strip(),
+                        language=seg.language,
                         avg_logprob=float(seg.avg_logprob),
                         no_speech_prob=float(seg.no_speech_prob),
                         provenance_id=prov,
@@ -306,7 +256,7 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
                                 segment_id=row.id,
                                 start_ticks=float_to_ticks(read_from, w.start, tb),
                                 end_ticks=min(float_to_ticks(read_from, w.end, tb), duration),
-                                word=w.word.strip(),
+                                word=w.text.strip(),
                                 probability=float(w.probability),
                             )
                         )
@@ -316,7 +266,7 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
         "lufs": stats.integrated_lufs,
         "speech_spans": speech,
         "words": words,
-        "model": stt_model_name(),
+        "model": tr.model,
     }
     ctx.project.artifacts.put_json("audio", key, summary, provenance_id=prov)
     return summary

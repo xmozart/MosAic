@@ -79,10 +79,7 @@ def patch_providers(
 ) -> dict[str, Any]:
     cfg = _config(svc)
     try:
-        for cap, choice in body.items():  # validate everything before writing anything
-            cfg.validate_provider(cap, choice.provider, choice.model)
-        for cap, choice in body.items():
-            cfg.set_provider(me, cap, choice.provider, choice.model)
+        cfg.set_providers_many(me, {cap: (c.provider, c.model) for cap, c in body.items()})
     except SettingError as exc:
         raise HTTPException(422, str(exc)) from exc
     return _providers_json(cfg, me)
@@ -105,3 +102,20 @@ def put_secret(
     except (SettingError, secrets.SecretError) as exc:
         raise HTTPException(422, secrets.redact(str(exc), body.value)) from None
     return {"configured": ks.configured, "last4": ks.last4}
+
+
+@router.post("/secrets/{ref:path}/validate")
+def validate_secret(ref: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    from mosaic.ai.health import check_provider
+
+    kind, _, provider = ref.partition("/")
+    if kind != "ai" or not provider:
+        raise HTTPException(404, "unknown secret")
+    r = check_provider(_config(svc), me, provider)
+    return {
+        "ok": r.ok,
+        "provider": r.provider,
+        "model": r.model,
+        "message": r.message,
+        "latency_ms": r.latency_ms,
+    }

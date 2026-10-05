@@ -14,6 +14,18 @@ class UnsupportedModeError(ValueError):
     pass
 
 
+def job_cost_limit(principal: Principal) -> float:
+    """Per-job AI budget from the ``ai.budget.per_job_usd`` setting (ANALYSIS_MODES §4)."""
+    from mosaic.storage.config import ConfigService
+    from mosaic.storage.control import ControlDB
+
+    control = ControlDB()
+    try:
+        return float(ConfigService(control).get(principal, "ai.budget.per_job_usd"))
+    finally:
+        control.db.dispose()
+
+
 def submit_analysis(
     executor: Executor, principal: Principal, project: Project, mode: str = "balanced"
 ) -> int:
@@ -28,6 +40,7 @@ def submit_analysis(
             project_id=project.id,
             kind="analysis",
             params={"mode": mode},
+            cost_limit_usd=job_cost_limit(principal),
             tasks=[
                 TaskSpec(
                     kind="analysis.scan",

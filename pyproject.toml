@@ -5,6 +5,7 @@ description = "MosAic: turns a folder of trip footage into story-driven edits."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
+    "anthropic>=1.11.0",
     "click>=8.1",
     "fastapi>=0.142.2",
     "faster-whisper>=1.2.1",

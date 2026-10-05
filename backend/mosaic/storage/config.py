@@ -15,6 +15,8 @@ from mosaic.core.clock import now_iso
 from mosaic.core.principal import Principal, check
 from mosaic.core.settings import (
     CAPABILITIES,
+    LOCAL_MODELS,
+    PROVIDER_CAPABILITIES,
     ProviderChoice,
     SettingError,
     coerce,
@@ -176,6 +178,15 @@ class ConfigService:
             )
         if not model.strip():
             raise SettingError("model must not be empty")
+        local = LOCAL_MODELS.get(provider)
+        if local is not None and model.strip() not in local:
+            raise SettingError(f"{provider} supports models {', '.join(local)}")
+        unsupported = [c for c in caps if c not in PROVIDER_CAPABILITIES.get(provider, ())]
+        if unsupported:
+            raise SettingError(
+                f"{provider} cannot serve {', '.join(unsupported)}; it serves "
+                f"{', '.join(PROVIDER_CAPABILITIES.get(provider, ())) or 'nothing'}"
+            )
         return caps
 
     def set_provider(
@@ -224,6 +235,39 @@ class ConfigService:
                 )
             )
         return KeyStatus(provider, ref, True, secrets.last4(value))
+
+    def reset_key(self, principal: Principal, provider: str) -> None:
+        check(principal, "secrets.write", provider)
+        ref = self.secret_ref(principal, provider)
+        if ref is None:
+            return
+        secrets.delete(ref)
+        with self.control.db.session() as s:
+            s.execute(
+                delete(SecretRef).where(
+                    SecretRef.user_id == principal.user_id, SecretRef.name == secret_name(provider)
+                )
+            )
+
+    def set_providers_many(self, principal: Principal, choices: dict[str, tuple[str, str]]) -> None:
+        """Validate every ``capability → (provider, model)`` and write them in one session."""
+        planned = []
+        for cap, (provider, model) in choices.items():
+            check(principal, "providers.write", cap)
+            for c in self.validate_provider(cap, provider, model):
+                planned.append((c, provider, model.strip(), KNOWN_PROVIDERS[provider]))
+        with self.control.db.session() as s:
+            for cap, provider, model, mode in planned:
+                s.merge(
+                    ProviderProfile(
+                        user_id=principal.user_id,
+                        capability=cap,
+                        provider=provider,
+                        model=model,
+                        mode=mode,
+                        updated_at=now_iso(),
+                    )
+                )
 
     def key_status(self, principal: Principal, provider: str) -> KeyStatus:
         ref = self.secret_ref(principal, provider)

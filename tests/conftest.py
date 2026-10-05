@@ -24,6 +24,8 @@ def _isolated_home(
     keyring.set_keyring(MemoryKeyring())
     # Subprocesses (CLI, auto-started workers) must never reach the real OS keychain.
     monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
+    # No test may reach a real AI provider: the SDK is pointed at a closed local port.
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9")
     home = tmp_path_factory.mktemp("mosaic-home")
     monkeypatch.setenv("MOSAIC_HOME", str(home))
     if "MOSAIC_MODELS_DIR" not in os.environ:
