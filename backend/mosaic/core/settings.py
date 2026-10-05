@@ -11,8 +11,16 @@ from typing import Any
 
 DEFAULTS_FILE = Path(__file__).with_name("defaults.toml")
 
-CAPABILITIES = ("vision", "planner", "selector", "critic", "transcriber", "embedder")
-CLOUD_CAPABILITIES = ("vision", "planner", "selector", "critic")
+CAPABILITIES = (
+    "vision",
+    "planner",
+    "selector",
+    "critic",
+    "reviewer",  # L3 Thorough deep review (ANALYSIS_MODES.md)
+    "transcriber",
+    "embedder",
+)
+CLOUD_CAPABILITIES = ("vision", "planner", "selector", "critic", "reviewer")
 
 # Which capabilities each provider's adapter can serve. A provider serves VisionAnalyzer
 # only if it supports image input and structured output (ADR 0003).

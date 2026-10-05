@@ -487,6 +487,52 @@ def encoder_trial(encoder: str) -> FFmpegCommand:
     )
 
 
+def still_frame(
+    src: Path,
+    stream_index: int,
+    at: Fraction,
+    seek: Fraction,
+    max_px: int,
+    hdr: bool = False,
+) -> FFmpegCommand:
+    """The first frame at or after absolute stream time ``at`` (seconds, ``-copyts``) of
+    video stream ``stream_index``, after a fast input seek to ``seek`` (≤ at, seconds from
+    the file start) — the renderer's cut method, so stills match the edit's frames.
+    Scaled to fit ``max_px`` in display orientation; HLG/PQ tone-mapped when ``hdr``.
+    Used for L3 full-resolution review, where a distant subject must stay visible."""
+    vf: list[Filter] = [
+        Filter.of("trim", start=seconds_expr(at)),
+        Filter.of(
+            "scale",
+            w=max_px,
+            h=max_px,
+            force_original_aspect_ratio="decrease",
+            force_divisible_by=2,
+            flags="lanczos",
+        ),
+    ]
+    if hdr:
+        vf += list(TONEMAP_TO_SDR)
+    vf.append(Filter.of("format", "yuvj420p"))
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(src), [("-ss", seconds_expr(seek))])],
+        outputs=[
+            OutputSpec(
+                "pipe:1",
+                [
+                    ("-map", f"0:{stream_index}"),
+                    ("-vf", chain(*vf)),
+                    ("-frames:v", 1),
+                    ("-q:v", 3),
+                    ("-f", "mjpeg"),
+                ],
+            )
+        ],
+        global_options=[("-copyts", None)],
+        description=f"still {src.name} @{seconds_expr(at)}",
+    )
+
+
 MAX_SELECT_FRAMES = 64
 
 

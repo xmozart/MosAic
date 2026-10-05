@@ -140,3 +140,12 @@ def test_context_api_and_cli(tmp_path: Path) -> None:
     assert (
         json.loads(runner.invoke(cli, ["context", "show", str(folder)]).output)["trip_name"] == ""
     )
+
+
+def test_best_frame_must_exist() -> None:
+    from types import SimpleNamespace
+
+    from mosaic.library.review import check_best_frame
+
+    assert check_best_frame(SimpleNamespace(best_frame="F3"), 3) == []
+    assert "does not exist" in check_best_frame(SimpleNamespace(best_frame="F7"), 3)[0]

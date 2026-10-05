@@ -196,7 +196,12 @@ def _job_cost(control: ControlDB, job_id: int) -> float:
 
 
 def run_trip(
-    control: ControlDB, me: Principal, trip: Path, budget: Budget, render: bool
+    control: ControlDB,
+    me: Principal,
+    trip: Path,
+    budget: Budget,
+    render: bool,
+    deepen: bool = False,
 ) -> dict[str, Any]:
     from mosaic.editing.service import create_edit, get_version, submit_generate
     from mosaic.media.pipeline import submit_analysis
@@ -217,6 +222,20 @@ def run_trip(
             raise GateStop("G2", "the eval budget is used up for this run or milestone")
         job = submit_analysis(executor, me, project, cost_limit_usd=budget.remaining)
         _run_job(control, job, "analysis", budget, name)
+        # Context first: the L3 review prompt includes it.
+        apply_context(project, CORPUS_META / name.lower() / "context.json")
+        if deepen:
+            from mosaic.library.review import submit_deepen
+
+            if budget.remaining <= 0:
+                raise GateStop("G2", "the eval budget is used up for this run or milestone")
+            deep_job, count, _ = submit_deepen(
+                executor, me, project, cost_limit_usd=budget.remaining
+            )
+            print(f"  deep review of {count} candidates", flush=True)
+            if deep_job is not None:
+                _run_job(control, deep_job, "deep review", budget, name)
+            result["deep_review_candidates"] = count
 
         meta = CORPUS_META / name.lower() / "expectations.yaml"
         expect = exp.load(meta)
@@ -227,7 +246,6 @@ def run_trip(
             shown = meta.relative_to(REPO) if meta.is_relative_to(REPO) else meta
             print(f"  drafted {shown} (draft: true)", flush=True)
 
-        apply_context(project, CORPUS_META / name.lower() / "context.json")
         spec = DEFAULT_EDIT | TRIP_EDITS.get(name.lower(), {}) | expect.get("edit", {})
         request = EditRequest.model_validate(spec)
         edit_id = create_edit(project, request, control, me)
@@ -325,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="make eval")
     ap.add_argument("--trip", action="append", help="only this trip folder name (repeatable)")
     ap.add_argument("--no-render", action="store_true")
+    ap.add_argument("--deepen", action="store_true", help="run the L3 deep review (Thorough)")
     args = ap.parse_args(argv)
     control = ControlDB()
     me = control.local_principal
@@ -344,7 +363,9 @@ def main(argv: list[str] | None = None) -> int:
         ok = True
         try:
             for trip in selected:
-                res = run_trip(control, me, trip, budget, render=not args.no_render)
+                res = run_trip(
+                    control, me, trip, budget, render=not args.no_render, deepen=args.deepen
+                )
                 write_results(res)
                 results.append(res)
                 ok = ok and blocking_ok(res)

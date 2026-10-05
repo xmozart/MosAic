@@ -146,3 +146,21 @@ def test_only_encoders_that_work_are_used() -> None:
     assert set(working) <= set(caps.h264_encoders())
     assert list(working) == [e for e in caps.h264_encoders() if e in working]  # order kept
     assert working, "no H.264 encoder works here"
+
+
+def test_still_frame_command() -> None:
+    from fractions import Fraction
+    from pathlib import Path
+
+    from mosaic.media.ffmpeg.builders import still_frame
+
+    cmd = still_frame(Path("/x.mp4"), 2, Fraction(9, 2), Fraction(3, 2), 1568, hdr=True)
+    argv = cmd.argv(Path("/bin/ffmpeg"))
+    joined = " ".join(argv)
+    assert argv[argv.index("-ss") + 1] == "1.500000"  # fast seek before the cut
+    assert "-copyts" in argv
+    assert "trim=start=4.500000" in joined  # exact cut at the absolute stream time
+    assert argv[argv.index("-map") + 1] == "0:2"  # the asset's video stream, not v:0
+    assert "scale=w=1568:h=1568:force_original_aspect_ratio=decrease" in joined
+    assert "tonemap" in joined
+    assert argv[argv.index("-frames:v") + 1] == "1"

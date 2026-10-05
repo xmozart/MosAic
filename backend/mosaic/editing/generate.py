@@ -43,6 +43,7 @@ from mosaic.storage.artifacts import dumps_json
 from mosaic.storage.config import NotConfiguredError
 from mosaic.storage.models_project import (
     Asset,
+    DeepReview,
     Disposition,
     Edit,
     EditVersion,
@@ -223,6 +224,12 @@ def _inputs_digest(session: Session, cands: list[Candidate]) -> str:
             .order_by(VisualObservation.segment_id)
         ):
             h.update(f"v{tuple(row)};".encode())
+        for rev in session.execute(
+            select(DeepReview.segment_id, DeepReview.provenance_id)
+            .where(DeepReview.segment_id.in_(part))
+            .order_by(DeepReview.segment_id)
+        ):
+            h.update(f"r{tuple(rev)};".encode())
         for drow in session.execute(
             select(
                 Disposition.segment_id,

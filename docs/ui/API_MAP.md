@@ -51,7 +51,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/projects/{pid}/analysis/estimate?mode=&scope=` | S8, S25 |
 | POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}` | S8, S25 |
 | GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, cost) | S9, S0 |
-| POST | `/jobs/{id}/pause` · `/resume` · `/cancel` · `/retry-failed` | S9, S20 |
+| POST | `/jobs/{id}/pause` · `/resume` (optional body `{cost_limit_usd}`: raise the AI cost limit of a job paused at it; must exceed what the job has spent; ADR 0018) · `/cancel` · `/retry-failed` | S9, S20 |
 | GET | `/events?project=` (SSE) | all |
 
 SSE event types:

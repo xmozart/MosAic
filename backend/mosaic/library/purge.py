@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from mosaic.storage import sqlite_vec_index
 from mosaic.storage.models_project import (
+    DeepReview,
     Disposition,
     Mosaic,
     MosaicTile,
@@ -41,6 +42,7 @@ def purge_segments(session: Session, asset_id: int) -> None:
             .where(SimilarityGroup.best_segment_id.in_(seg_ids))
             .values(best_segment_id=None)
         )
+        session.execute(delete(DeepReview).where(DeepReview.segment_id.in_(seg_ids)))
         session.execute(
             delete(Disposition).where(
                 Disposition.segment_id.in_(seg_ids), Disposition.source != "user"

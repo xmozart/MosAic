@@ -9,10 +9,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
-from mosaic.core.principal import Principal
+from mosaic.core.principal import Principal, check
 from mosaic.core.time import format_display
 from mosaic.jobs.model import JOB_TERMINAL, JobProgress
 from mosaic.storage.models_control import Job
@@ -94,18 +95,39 @@ def get_job(job_id: int, svc: Services = Svc, _me: Principal = Me) -> dict[str, 
     return out
 
 
+class ResumeBody(BaseModel):
+    """Optional on resume: a higher AI cost limit (a cost-limit pause needs one)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cost_limit_usd: float | None = Field(default=None, ge=0)
+
+
 @router.post("/jobs/{job_id}/{action}")
 def control_job(
-    job_id: int, action: str, svc: Services = Svc, me: Principal = Me
+    job_id: int,
+    action: str,
+    body: ResumeBody | None = None,
+    svc: Services = Svc,
+    me: Principal = Me,
 ) -> dict[str, Any]:
-    if svc.store.job(job_id) is None:
+    current = svc.store.job(job_id)
+    if current is None:
         raise HTTPException(404, "job not found")
     ex = svc.executor
+    if body is not None and action != "resume":
+        raise HTTPException(422, f"{action} takes no body")
     if action == "cancel":
         ex.cancel(me, job_id)
     elif action == "pause":
         ex.pause(me, job_id)
     elif action == "resume":
+        check(me, "job.resume", str(job_id))  # before touching the limit
+        if body is not None and body.cost_limit_usd is not None:
+            # Equal to the spend would pause again at the next reservation.
+            if body.cost_limit_usd <= (current.cost_usd or 0):
+                raise HTTPException(422, "the cost limit must be above what the job has spent")
+            svc.store.set_cost_limit(job_id, body.cost_limit_usd)
         ex.resume(me, job_id)
     elif action == "retry-failed":
         ex.retry_failed(me, job_id)

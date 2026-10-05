@@ -285,6 +285,89 @@ def render_cmd(
         control.db.dispose()
 
 
+@cli.command()
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--day", type=int, default=None, help="Only this trip day (1 = first day).")
+@click.option("--segment", "segments", multiple=True, help="Only these segments (seg_000123).")
+def deepen(folder: Path, day: int | None, segments: tuple[str, ...]) -> None:
+    """Thorough L3 review of candidate clips at full resolution (uses the reviewer model)."""
+    from mosaic.editing.retrieval import parse_ref
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from mosaic.library.review import submit_deepen
+
+    ids = []
+    for ref in segments:
+        sid = parse_ref(ref)
+        if sid is None:
+            raise click.ClickException(f"not a segment id: {ref}")
+        ids.append(sid)
+    control = _control()
+    project = _open(control, folder)
+    try:
+        job, count, dropped = submit_deepen(
+            LocalExecutor(JobStore(control.db)),
+            control.local_principal,
+            project,
+            day=day,
+            segment_ids=ids or None,
+        )
+        if dropped:
+            click.echo(
+                "Not candidates (rejected, a non-recommended look-alike, or unknown): "
+                + ", ".join(f"seg_{i:06d}" for i in dropped)
+            )
+        if job is None:
+            click.echo("Nothing to review in this scope.")
+            return
+        click.echo(f"Deep review of {count} candidate clips — job {job}")
+        status = _follow(control, job)
+    finally:
+        project.close()
+        control.db.dispose()
+    if status != "done":
+        raise click.ClickException(f"deep review {status}")
+    click.echo("Deep review complete. New edits use it; regenerate an edit to apply it.")
+
+
+@cli.group()
+def jobs() -> None:
+    """Background jobs."""
+
+
+@jobs.command("resume")
+@click.argument("job_id", type=int)
+@click.option("--cost-limit", type=float, default=None, help="New AI cost limit in USD.")
+def jobs_resume(job_id: int, cost_limit: float | None) -> None:
+    """Resume a paused job, optionally raising its AI cost limit first."""
+    from mosaic.core.principal import check
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+
+    control = _control()
+    try:
+        store = JobStore(control.db)
+        job = store.job(job_id)
+        if job is None:
+            raise click.ClickException(f"no job {job_id}")
+        # Equal to the spend would pause again at the next reservation.
+        if cost_limit is not None and (cost_limit < 0 or cost_limit <= (job.cost_usd or 0)):
+            raise click.ClickException(
+                f"the job has already spent ${job.cost_usd:.2f}; the limit must be higher"
+            )
+        executor = LocalExecutor(store)
+        check(control.local_principal, "job.resume", str(job_id))
+        if cost_limit is not None:
+            store.set_cost_limit(job_id, cost_limit)
+        executor.resume(control.local_principal, job_id)
+        click.echo(f"Job {job_id} resumed")
+        status = _follow(control, job_id)
+    finally:
+        control.db.dispose()
+    if status != "done":
+        raise click.ClickException(f"job {status}")
+
+
 @cli.group()
 def context() -> None:
     """Trip context: what the trip is about (optional; improves stories and titles)."""

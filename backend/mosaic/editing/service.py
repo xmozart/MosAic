@@ -20,6 +20,7 @@ from mosaic.storage.control import ControlDB
 from mosaic.storage.models_project import (
     Asset,
     AssetFile,
+    DeepReview,
     Disposition,
     Edit,
     EditVersion,
@@ -150,7 +151,8 @@ def report(
             sid = int(e["segment_id"][4:])
             aid = int(e["asset_id"][4:])
             sel = selections.get(e["origin"]["selection_ref"], {})
-            obs = s.scalar(
+            # The L3 full-resolution observation, when present, is what selection used.
+            obs = s.scalar(select(DeepReview.data).where(DeepReview.segment_id == sid)) or s.scalar(
                 select(VisualObservation.data).where(VisualObservation.segment_id == sid)
             )
             tb = parse_rational(e["source_in"]["tb"])

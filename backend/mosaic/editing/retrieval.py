@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any
 
@@ -23,7 +23,13 @@ from sqlalchemy.orm import Session
 
 from mosaic.core.time import parse_rational
 from mosaic.library.dispositions import effective, segment_facts
-from mosaic.storage.models_project import Asset, Segment, TranscriptSegment, VisualObservation
+from mosaic.storage.models_project import (
+    Asset,
+    DeepReview,
+    Segment,
+    TranscriptSegment,
+    VisualObservation,
+)
 
 MAX_CANDIDATES = 200
 FALLBACK_FACTOR = 3
@@ -140,6 +146,28 @@ def _capture(asset: Asset) -> datetime | None:
         return None
 
 
+def capture_dates(assets: list[Asset]) -> dict[int, date]:
+    """Asset id → local capture date (each in its own recorded offset), when known."""
+    out = {}
+    for a in assets:
+        c = _capture(a)
+        if c is not None:
+            out[a.id] = c.date()
+    return out
+
+
+def trip_day(capture_time: str | None, offset_s: Fraction, first: date | None) -> int:
+    """1-based trip day of a moment ``offset_s`` into a recording; 0 when unknown. Dates,
+    not datetimes, are compared, so recordings with and without a UTC offset mix."""
+    if first is None or not capture_time:
+        return 0
+    try:
+        start = datetime.fromisoformat(capture_time.replace("Z", "+00:00"))
+    except ValueError:
+        return 0
+    return ((start + timedelta(seconds=float(offset_s))).date() - first).days + 1
+
+
 def _transcript(session: Session, asset_id: int, a: int, b: int) -> str:
     texts = session.scalars(
         select(TranscriptSegment.text)
@@ -169,8 +197,7 @@ def retrieve(
         if gid is not None
     }
     assets = list(session.scalars(select(Asset).where(Asset.kind == "video").order_by(Asset.id)))
-    starts = [c for c in (_capture(a) for a in assets) if c is not None]
-    first_day = min(starts).date() if starts else None
+    first_day = min(capture_dates(assets).values(), default=None)
     for asset in assets:
         if asset.tb is None:
             continue
@@ -185,6 +212,10 @@ def retrieve(
             for o in session.scalars(
                 select(VisualObservation).where(VisualObservation.segment_id.in_(ids))
             )
+        }
+        obs |= {  # L3 (full resolution) supersedes L2
+            r.segment_id: r.data
+            for r in session.scalars(select(DeepReview).where(DeepReview.segment_id.in_(ids)))
         }
         facts = segment_facts(session, asset)
         base = _capture(asset)
@@ -204,7 +235,7 @@ def retrieve(
             capture = (
                 base + timedelta(seconds=float(Fraction(g.start_ticks) * tb)) if base else None
             )
-            day = (capture.date() - first_day).days + 1 if capture and first_day else 0
+            day = trip_day(asset.capture_time, Fraction(g.start_ticks) * tb, first_day)
             f = facts.get(g.id)
             shake = [p for _, p in f.shake if p is not None] if f else []
             (similar if duplicate else found).append(

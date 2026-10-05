@@ -213,6 +213,26 @@ def _selector(request: StructuredRequest) -> dict[str, Any]:
     return {"beats": beats}
 
 
+@responder("review")
+def _review(request: StructuredRequest) -> dict[str, Any]:
+    """A neutral full-resolution observation that keeps the quick description."""
+    return {
+        "description": f"Reviewed at full resolution: {request.context.get('l2_description', '')}"[
+            :290
+        ],
+        "subjects": ["scene"],
+        "shot_type": "wide",
+        "camera_motion": "static",
+        "people": "none",
+        "interest": "medium",
+        "composition": "good",
+        "issues": [],
+        "usable": True,
+        "best_frame": "F2",
+        "main_subject_visible": False,
+    }
+
+
 @responder("context_parse")
 def _context_parse(request: StructuredRequest) -> dict[str, Any]:
     """Keeps the notes as free notes; never invents names, dates or places."""

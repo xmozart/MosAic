@@ -36,6 +36,7 @@ from mosaic.media import inventory
 from mosaic.storage import provenance
 from mosaic.storage.models_project import (
     Asset,
+    DeepReview,
     Disposition,
     SampleFrame,
     Segment,
@@ -258,6 +259,10 @@ def _key(ctx: TaskContext) -> str:
             )
         ):
             h.update(f"v{tuple(obs)};".encode())
+        for rev in s.execute(
+            select(DeepReview.segment_id, DeepReview.provenance_id).order_by(DeepReview.segment_id)
+        ):
+            h.update(f"r{tuple(rev)};".encode())
         for pid in s.scalars(
             select(TechMetric.provenance_id).distinct().order_by(TechMetric.provenance_id)
         ):
@@ -310,6 +315,13 @@ def dispositions_task(ctx: TaskContext) -> dict[str, Any]:
                     select(VisualObservation).where(
                         VisualObservation.segment_id.in_(list(segments))
                     )
+                )
+            }
+            # L3 (full resolution, Thorough) supersedes the L2 thumbnail observation.
+            observations |= {
+                r.segment_id: r.data
+                for r in s.scalars(
+                    select(DeepReview).where(DeepReview.segment_id.in_(list(segments)))
                 )
             }
         with ctx.write() as s:

@@ -379,6 +379,13 @@ class JobStore:
                 .values(status=status.value, updated_at=now_iso())
             )
 
+    def set_cost_limit(self, job_id: int, usd: float) -> None:
+        """Raise (or set) a job's AI cost limit, e.g. before resuming a cost-limit pause."""
+        with self.db.session() as s:
+            s.execute(
+                update(Job).where(Job.id == job_id).values(cost_limit_usd=usd, updated_at=now_iso())
+            )
+
     def resume(self, job_id: int) -> None:
         with self.db.session() as s:
             s.execute(

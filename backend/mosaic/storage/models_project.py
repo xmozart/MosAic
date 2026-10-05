@@ -448,3 +448,16 @@ class TripContextRow(ProjectBase):
     revision: Mapped[int] = mapped_column(Integer)
     source: Mapped[str] = mapped_column(String(12))  # user|ai_parsed
     updated_at: Mapped[str] = mapped_column(String(40))
+
+
+class DeepReview(ProjectBase):
+    """L3 observation of one segment from full-resolution frames (ANALYSIS_MODES.md §1).
+    Same vocabulary as ``visual_observation``; takes precedence over it when present."""
+
+    __tablename__ = "deep_review"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    segment_id: Mapped[int] = mapped_column(ForeignKey("segment.id"), unique=True)
+    key: Mapped[str] = mapped_column(String(128))  # everything the review depends on
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    context_digest: Mapped[str] = mapped_column(String(16))
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
