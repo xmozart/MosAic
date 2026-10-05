@@ -44,6 +44,18 @@ EFFORT = {
 MAX_IMAGE_PX = 1568  # longer edges are downscaled by the API
 
 
+def limits(model: str) -> AdapterLimits:
+    """Static per-model limits; needs no key (mosaic geometry is planned from them)."""
+    return AdapterLimits(
+        max_image_px=MAX_IMAGE_PX,
+        max_images=20,
+        supports_video=False,
+        structured_output=True,
+        context_window=200_000 if model.startswith("claude-haiku") else 1_000_000,
+        local=False,
+    )
+
+
 class AnthropicAdapter:
     provider = PROVIDER
 
@@ -59,15 +71,7 @@ class AnthropicAdapter:
         return clone
 
     def limits(self, model: str) -> AdapterLimits:
-        context = 200_000 if model.startswith("claude-haiku") else 1_000_000
-        return AdapterLimits(
-            max_image_px=MAX_IMAGE_PX,
-            max_images=20,
-            supports_video=False,
-            structured_output=True,
-            context_window=context,
-            local=False,
-        )
+        return limits(model)
 
     def cost_usd(self, model: str, tokens_in: int, tokens_out: int) -> float:
         if model not in PRICES:

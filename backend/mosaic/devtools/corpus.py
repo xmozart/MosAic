@@ -307,6 +307,57 @@ class CorpusGenerator:
             )
         )
 
+    def accidental(self) -> None:
+        """A 1.2 s recording: the camera was started and stopped by mistake."""
+        n = self._video("accidental.mp4", frames=36, seed=15)
+        self._add(
+            CaseInfo(
+                "accidental",
+                ["accidental.mp4"],
+                "accidental recording rejected by rule",
+                rate="30000/1001",
+                frames=n,
+                width=640,
+                height=360,
+                audio_tracks=1,
+            )
+        )
+
+    def pocket(self) -> None:
+        """Camera recording inside a pocket: dark, flat frames (barcode band kept)."""
+        w, h, rate = 640, 360, Fraction(30000, 1001)
+        n = int(6 * rate)
+        spec = SynthSpec(
+            out=self.out / "pocket.mp4",
+            width=w,
+            height=h,
+            rate=rate,
+            frames=n,
+            encoding=_h264(self.caps),
+            color=ColorTags(),
+            audio=(_sine(200, volume="0.05"),),
+        )
+
+        def frame(i: int) -> np.ndarray:
+            img = np.full((h, w, 3), 6, dtype=np.uint8)
+            barcode.draw(img, i)
+            return img
+
+        _write_frames(self.bin, spec, frame)
+        self._last_scene_len = n
+        self._add(
+            CaseInfo(
+                "pocket",
+                ["pocket.mp4"],
+                "pocket / covered-lens recording rejected by rule",
+                rate="30000/1001",
+                frames=n,
+                width=w,
+                height=h,
+                audio_tracks=1,
+            )
+        )
+
     # ----------------------------------------------------------------- cases
 
     def basic(self) -> None:
@@ -625,6 +676,8 @@ class CorpusGenerator:
             "shaky": self.shaky,
             "duplicate": self.duplicate,
             "wobble": self.wobble,
+            "accidental": self.accidental,
+            "pocket": self.pocket,
             "speech": self.speech,
             "corrupt": self.corrupt,
             "portrait_photo": self.portrait_photo,

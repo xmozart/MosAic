@@ -8,15 +8,16 @@
    from the artifact cache with **zero** provider calls (M0 acceptance 5);
 3. reserves the estimated cost against the job's cost limit before calling; if the limit
    would be exceeded the job is paused (``paused_cost_limit``) and the task deferred;
-4. validates the answer with the prompt's Pydantic schema, retries once with the
-   validation errors, then fails the task — output is never partially accepted;
+4. validates the answer with the prompt's Pydantic schema and the caller's ``validate``
+   check (rules a schema cannot express, such as "every segment answered exactly once"),
+   retries once with the errors, then fails the task — never partially accepted;
 5. records usage (control DB) and provenance (project DB) with tokens and cost.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,6 +38,9 @@ from mosaic.storage.control import ControlDB
 from mosaic.storage.models_control import Job, UsageRecord
 
 AI_CACHE_VERSION = "ai-cache/1"
+
+Validator = Callable[[Any], list[str]]
+"""Extra checks on a schema-valid answer; returns error messages (empty when valid)."""
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,7 @@ class AIClient:
         *,
         max_tokens: int = 4096,
         variant: int = 0,
+        validate: Validator | None = None,
     ) -> AIResult:
         choice = self.config.provider(self.principal, capability)
         prompt = load(prompt_name, version)
@@ -101,6 +106,8 @@ class AIClient:
             version=AI_CACHE_VERSION,
         )
         store = self.ctx.project.artifacts
+        # A cached answer passed ``validate`` when it was stored; the rendered prompt
+        # (which carries everything a validator checks against) is part of the key.
         if store.exists("ai", key):
             cached = store.get_json("ai", key)
             return AIResult(
@@ -116,7 +123,9 @@ class AIClient:
             adapter = adapter_for(self.config, self.principal, choice.provider)
         except NotConfiguredError as exc:
             raise PermanentError(str(exc)) from exc
-        return self._call(adapter, request, choice.provider, choice.model, schema_json, key)
+        return self._call(
+            adapter, request, choice.provider, choice.model, schema_json, key, validate
+        )
 
     # ------------------------------------------------------------------ calls
 
@@ -168,6 +177,7 @@ class AIClient:
         model: str,
         schema_json: dict[str, Any],
         key: str,
+        validate: Validator | None,
     ) -> AIResult:
         feedback: str | None = None
         total_in = total_out = 0
@@ -199,14 +209,17 @@ class AIClient:
             served = raw.model
             try:
                 data = request.schema.model_validate(json.loads(raw.text))
-                break
+                errors = validate(data) if validate else []
             except (ValidationError, json.JSONDecodeError) as exc:
-                feedback = str(exc)[:4000]
-                if attempt == 2:
-                    raise PermanentError(
-                        f"{request.prompt_name}/v{request.prompt_version}: invalid output "
-                        f"after retry: {feedback[:500]}"
-                    ) from None
+                errors = [str(exc)]
+            if not errors:
+                break
+            feedback = "\n".join(errors)[:4000]
+            if attempt == 2:
+                raise PermanentError(
+                    f"{request.prompt_name}/v{request.prompt_version}: invalid output "
+                    f"after retry: {feedback[:500]}"
+                )
         with self.ctx.write() as s:
             prov = provenance.record(
                 s,

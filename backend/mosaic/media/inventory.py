@@ -49,7 +49,9 @@ _REPAIR = "Check that the copy finished; copy the file again from the camera or 
 class StageDef:
     """A pipeline stage. Per-asset stages run once per video asset, after the stages named
     in ``after``; project stages run once, after every per-asset task and the project
-    stages before them."""
+    stages before them (``after`` is checked against the registration order). A stage's
+    module imports the modules of the stages it runs after, so registration order never
+    depends on which module happens to be imported first."""
 
     name: str
     kind: str
@@ -63,11 +65,12 @@ PROJECT_STAGES: list[StageDef] = []
 
 def plan_stages(asset_ids: list[int]) -> list[TaskSpec]:
     """Task specs for all registered stages; ``deps`` index into the returned list."""
-    names = [st.name for st in ASSET_STAGES]
-    for st in ASSET_STAGES:
-        unknown = [a for a in st.after if a not in names[: names.index(st.name)]]
-        if unknown:
-            raise RuntimeError(f"stage {st.name!r} runs after unregistered or later {unknown}")
+    for stages in (ASSET_STAGES, PROJECT_STAGES):
+        names = [st.name for st in stages]
+        for st in stages:
+            unknown = [a for a in st.after if a not in names[: names.index(st.name)]]
+            if unknown:
+                raise RuntimeError(f"stage {st.name!r} runs after unregistered or later {unknown}")
     specs: list[TaskSpec] = []
     for aid in asset_ids:
         local: dict[str, int] = {}

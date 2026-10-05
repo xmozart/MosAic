@@ -121,7 +121,7 @@ Moment        optional point of interest inside a segment (reaction peak, reveal
 
 Other tables:
 - **Sampling and analysis:** `sample_frame`, `mosaic`, `mosaic_tile` (tile index ↔ sample_frame), `visual_observation`, `transcript_word`, `transcript_segment`, `audio_event`, `tech_metric`, `embedding`.
-- **Library:** `similarity_group`, `disposition` (USE/MAYBE/REJECT with reasons and source ai or user), `user_rating`, `user_note`, `user_tag`, `include_rule` (always/never), `lock`, `trip_context`, `summary` (shot, scene, day and trip levels).
+- **Library:** `similarity_group`, `disposition` (USE/MAYBE/REJECT with reasons and source ai or user, anchored to its source range so user decisions survive re-segmentation, ADR 0013), `user_rating`, `user_note`, `user_tag`, `include_rule` (always/never), `lock`, `trip_context`, `summary` (shot, scene, day and trip levels).
 - **Labeling (S24):** `labeling_question` (kind: place, same_person or event; candidate asset ids; status), `person_link` (asset ids linked to a trip-context person label). This is a user-confirmed link only: no face embeddings or biometric data are stored.
 - **Photos:** `asset.live_motion_enabled` for Live Photos; `burst_group` with the best pick.
 - **Editing:** `edit`, `edit_version`, `edit_draft_op`, `finding` (severity, timecode, text, suggested op, status: open, applied or ignored, applied_in_version), `render`, `provenance`.
@@ -202,8 +202,8 @@ Stages per asset, all tasks:
 7. **audio.** VAD, then transcription with word timestamps, loudness, clipping and wind estimate.
 8. **segments.** Split shots into Segments using motion changes, speech boundaries and sample clustering. Compute `usable_range` by trimming camera-start and camera-stop wobble, as detected from motion.
 9. **embeddings.** Local SigLIP image embeddings per sample, then pooled per segment.
-10. **mosaics.** Build contact sheets per the active analysis mode. Tiles come from one asset or shot where possible, so the model sees continuity. Each tile has a burned-in label (`T07 · ast_0123 · 00:02:14.3`) and a sidecar mapping. The model must reference tiles by index (`T07`), and code resolves the index to source ticks.
-11. **vision.** A structured observation for each segment. The mosaic is the transport format; the segment is the unit.
+10. **mosaics.** Build contact sheets per the active analysis mode, sized to the vision provider's effective image size (ADR 0013). Tiles come from one asset or shot where possible, so the model sees continuity. Each tile has a burned-in label (`T07 · ast_0123 · 00:02:14.3`) and a sidecar mapping. The model must reference tiles by index (`T07`), and code resolves the index to source ticks.
+11. **vision.** A structured observation for each segment. The mosaic is the transport format; the segment is the unit. Skipped with a "not configured" reason when no vision provider can be used; dispositions then use rules only (ADR 0013).
 12. **similarity.** Cluster segments by embedding (M0) and later visual observation, and pick the recommended best per cluster. Leader clustering against group seeds prevents chaining (ADR 0011).
 13. **disposition.** Deterministic rules (technical failure, accidental recording) plus AI judgement produce USE/MAYBE/REJECT with reasons.
 14. **summaries.** Shot → scene → day → trip, including trip context when present. Summaries are cheap to regenerate when context changes.

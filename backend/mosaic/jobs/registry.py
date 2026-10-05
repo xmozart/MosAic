@@ -23,7 +23,10 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.media.telemetry",
     "mosaic.library.embed_task",
     "mosaic.library.segments",
+    "mosaic.library.mosaics",
+    "mosaic.library.vision",
     "mosaic.library.similarity",
+    "mosaic.library.dispositions",
 )
 """Modules that register production handlers; extended as pipeline stages land."""
 

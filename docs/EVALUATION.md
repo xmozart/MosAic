@@ -17,6 +17,8 @@ An AI editor improves only if changes to prompts, models and algorithms are meas
 | Multi-audio-track clip | Audio track selection |
 | 120 fps clip | HFR detection |
 | Corrupt file | Graceful unsupported handling |
+| 1.2 s accidental recording | Accidental-recording REJECT rule (ADR 0013) |
+| Dark, flat "pocket" clip | Black-frame / obstruction REJECT rules (ADR 0013) |
 | HEIC + MOV Live Photo pair | Live Photo pairing (generated from M1, ADR 0004) |
 | Portrait JPEG with EXIF orientation | Photo orientation |
 | Full-range 8-bit (`yuvj420p`) | Color-range handling |

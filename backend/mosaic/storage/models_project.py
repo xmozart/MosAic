@@ -318,3 +318,67 @@ class Segment(ProjectBase):
     )
     group_best: Mapped[bool] = mapped_column(Boolean, default=False)
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+# ------------------------------------------------------------ L2 vision and decisions
+
+
+class Mosaic(ProjectBase):
+    """A labelled contact sheet sent to the vision model (ARCHITECTURE.md §8 stage 10)."""
+
+    __tablename__ = "mosaic"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    index: Mapped[int] = mapped_column(Integer)
+    image_key: Mapped[str] = mapped_column(String(128))
+    cols: Mapped[int] = mapped_column(Integer)
+    rows: Mapped[int] = mapped_column(Integer)
+    tile_width: Mapped[int] = mapped_column(Integer)
+    tile_height: Mapped[int] = mapped_column(Integer)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class MosaicTile(ProjectBase):
+    """Tile ``T07`` ↔ sample: the model cites tiles, code resolves them to source ticks."""
+
+    __tablename__ = "mosaic_tile"
+    mosaic_id: Mapped[int] = mapped_column(ForeignKey("mosaic.id"), primary_key=True)
+    tile: Mapped[int] = mapped_column(Integer, primary_key=True)  # 1-based: T01
+    sample_id: Mapped[int] = mapped_column(ForeignKey("sample_frame.id"))
+    segment_id: Mapped[int] = mapped_column(ForeignKey("segment.id"), index=True)
+    ticks: Mapped[int] = mapped_column(BigInteger)
+
+
+class VisualObservation(ProjectBase):
+    """The structured vision observation of one segment (ARCHITECTURE.md §5.3 ``visual``)."""
+
+    __tablename__ = "visual_observation"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    segment_id: Mapped[int] = mapped_column(ForeignKey("segment.id"), unique=True)
+    mosaic_id: Mapped[int] = mapped_column(ForeignKey("mosaic.id"))
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class Disposition(ProjectBase):
+    """USE/MAYBE/REJECT for a segment, with reasons. ``source`` user rows are hard
+    constraints that analysis never overwrites (invariant 10).
+
+    Rows are anchored to the source range they were made on (``anchor_*``, asset ticks):
+    when segments are rebuilt, user rows are detached (``segment_id`` NULL) instead of
+    deleted and re-attached to the new segment they overlap most (ADR 0013)."""
+
+    __tablename__ = "disposition"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    segment_id: Mapped[int | None] = mapped_column(ForeignKey("segment.id"), index=True)
+    anchor_start_ticks: Mapped[int] = mapped_column(BigInteger)
+    anchor_end_ticks: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(8))  # ai|user
+    status: Mapped[str] = mapped_column(String(8))  # USE|MAYBE|REJECT
+    reasons: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    roles: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    provenance_id: Mapped[int | None] = mapped_column(ForeignKey("provenance.id"))
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+    __table_args__ = (Index("ux_disposition_segment_source", "segment_id", "source", unique=True),)

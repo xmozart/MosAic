@@ -21,14 +21,17 @@ import numpy as np
 from sqlalchemy import select
 
 from mosaic.ai.registry import task_embedder
+from mosaic.audio import analysis as _audio  # noqa: F401
 from mosaic.core.keys import artifact_key
 from mosaic.core.time import Rounding, SourceTime, parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import PermanentError, task
-from mosaic.library.purge import purge_segments
+from mosaic.library import embed_task as _embed  # noqa: F401 - stages this one runs after
+from mosaic.library.purge import purge_segments, reattach_user_dispositions
 from mosaic.library.quality import shake_metric_name
 from mosaic.media import inventory
+from mosaic.media import telemetry as _telemetry  # noqa: F401
 from mosaic.storage import provenance, sqlite_vec_index
 from mosaic.storage.models_project import (
     Asset,
@@ -335,6 +338,7 @@ def segments_task(ctx: TaskContext) -> dict[str, Any]:
                 s.add(emb)
                 s.flush()
                 sqlite_vec_index.upsert(s, index, emb.id, pooled)
+        reattach_user_dispositions(s, asset_id)
     ctx.project.artifacts.put_json("segments", key, {"segments": len(pieces)}, provenance_id=prov)
     return {"segments": len(pieces)}
 

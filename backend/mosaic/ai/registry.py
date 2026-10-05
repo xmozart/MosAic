@@ -14,6 +14,7 @@ from typing import Any
 
 from mosaic.ai.adapters.base import Adapter
 from mosaic.ai.capabilities import Embedder, Transcriber
+from mosaic.ai.types import AdapterLimits
 from mosaic.core.principal import Principal
 from mosaic.core.settings import ProviderChoice
 from mosaic.jobs.context import TaskContext
@@ -38,16 +39,37 @@ def _fake(_key: str | None) -> Adapter:
     return FakeAdapter()
 
 
+def _anthropic_limits(model: str) -> AdapterLimits:
+    from mosaic.ai.adapters.anthropic.adapter import limits
+
+    return limits(model)
+
+
+def _fake_limits(model: str) -> AdapterLimits:
+    from mosaic.ai.adapters.fake.adapter import limits
+
+    return limits(model)
+
+
 @dataclass(frozen=True)
 class ProviderEntry:
     factory: Callable[[str | None], Adapter]
     needs_key: bool
+    limits: Callable[[str], AdapterLimits]
 
 
 PROVIDERS: dict[str, ProviderEntry] = {
-    "anthropic": ProviderEntry(_anthropic, needs_key=True),
-    "fake": ProviderEntry(_fake, needs_key=False),
+    "anthropic": ProviderEntry(_anthropic, needs_key=True, limits=_anthropic_limits),
+    "fake": ProviderEntry(_fake, needs_key=False, limits=_fake_limits),
 }
+
+
+def limits_for(choice: ProviderChoice) -> AdapterLimits:
+    """The configured model's limits, without a key or a network call."""
+    entry = PROVIDERS.get(choice.provider)
+    if entry is None:
+        raise NotConfiguredError(f"no adapter for provider {choice.provider!r}")
+    return entry.limits(choice.model)
 
 
 @dataclass(frozen=True)
@@ -56,7 +78,10 @@ class Resolved:
     choice: ProviderChoice
 
 
-def adapter_for(config: ConfigService, principal: Principal, provider: str) -> Adapter:
+def _ready(
+    config: ConfigService, principal: Principal, provider: str
+) -> tuple[ProviderEntry, str | None]:
+    """The provider's entry and key, or ``NotConfiguredError`` naming the fix."""
     entry = PROVIDERS.get(provider)
     if entry is None:
         raise NotConfiguredError(f"no adapter for provider {provider!r}")
@@ -66,6 +91,11 @@ def adapter_for(config: ConfigService, principal: Principal, provider: str) -> A
             "`mosaic config set ai.local_only false` or choose a local provider"
         )
     key = config.key_for(principal, provider) if entry.needs_key else None
+    return entry, key
+
+
+def adapter_for(config: ConfigService, principal: Principal, provider: str) -> Adapter:
+    entry, key = _ready(config, principal, provider)
     return entry.factory(key)
 
 
@@ -132,6 +162,19 @@ def _task_config(ctx: TaskContext) -> tuple[ConfigService, Principal]:
     job = ctx.store.job(ctx.task.job_id)
     owner = Principal(user_id=job.user_id) if job else ctx.control.local_principal
     return ConfigService(ctx.control), owner  # the job owner's profile, like AIClient
+
+
+def task_choice(ctx: TaskContext, capability: str) -> ProviderChoice:
+    """The job owner's provider and model for ``capability``."""
+    config, owner = _task_config(ctx)
+    return config.provider(owner, capability)
+
+
+def task_check_ready(ctx: TaskContext, capability: str) -> None:
+    """Raise ``NotConfiguredError`` (naming the fix) if a call for ``capability`` could not
+    be made now: unknown provider, cloud provider with ``ai.local_only`` on, or no key."""
+    config, owner = _task_config(ctx)
+    _ready(config, owner, config.provider(owner, capability).provider)
 
 
 def task_embedder(ctx: TaskContext) -> Embedder:

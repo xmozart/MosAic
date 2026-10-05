@@ -61,6 +61,7 @@ def analyzed_corpus(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):
     from mosaic.jobs.executor import LocalExecutor
     from mosaic.jobs.store import JobStore
     from mosaic.media.pipeline import submit_analysis
+    from mosaic.storage.config import ConfigService
     from mosaic.storage.control import ControlDB
     from mosaic.storage.projects import init_project
     from tests.support.runner import run_job
@@ -74,6 +75,8 @@ def analyzed_corpus(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):
         root = tmp_path_factory.mktemp("analyzed") / "trip"
         shutil.copytree(corpus_dir, root)
         control = ControlDB()
+        # Vision runs through the offline fake adapter (ADR 0002 H); never a real provider.
+        ConfigService(control).set_provider(control.local_principal, "vision", "fake", "fake")
         project = init_project(control, control.local_principal, root)
         job = submit_analysis(LocalExecutor(JobStore(control.db)), control.local_principal, project)
         assert run_job(control, job, timeout=1800) == "done"

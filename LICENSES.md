@@ -67,6 +67,11 @@ SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIME
 
 ## Notes on bundled native libraries
 
+- **Aileron Regular** (dotcolon.net, CC0 1.0) is embedded in Pillow and used through
+  `ImageFont.load_default(size=…)` for the tile labels burned into mosaics (M0 step 9c).
+  It is never fetched at runtime. The UI fonts (Geist, SIL OFL) are bundled with the
+  frontend separately.
+
 - **MIT-0** (cffi) is MIT without the attribution clause, so it is within the allow-list.
 
 - **CTranslate2** (faster-whisper) Linux and Windows wheels statically link Intel oneMKL

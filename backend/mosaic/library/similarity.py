@@ -26,6 +26,7 @@ from mosaic.core.keys import artifact_key
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import task
+from mosaic.library import segments as _segments  # noqa: F401 - registers stages first
 from mosaic.library.quality import shake_metric_name
 from mosaic.media import inventory
 from mosaic.storage import provenance, sqlite_vec_index
@@ -212,5 +213,5 @@ def similarity_task(ctx: TaskContext) -> dict[str, Any]:
 
 
 inventory.PROJECT_STAGES.append(
-    inventory.StageDef("similarity", "library.similarity", ResourceClass.CPU)
+    inventory.StageDef("similarity", "library.similarity", ResourceClass.CPU, after=("normalize",))
 )

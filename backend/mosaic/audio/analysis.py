@@ -24,6 +24,7 @@ from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import PermanentError, task
 from mosaic.media import inventory
+from mosaic.media import proxy as _proxy  # noqa: F401 - registers "proxy" first
 from mosaic.media.ffmpeg import builders
 from mosaic.media.ffmpeg.run import stream_stdout
 from mosaic.media.proxy import load_proxy

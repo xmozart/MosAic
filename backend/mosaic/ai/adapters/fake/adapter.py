@@ -47,18 +47,22 @@ def request_hash(request: StructuredRequest, model: str) -> str:
     )
 
 
+def limits(model: str) -> AdapterLimits:
+    return AdapterLimits(
+        max_image_px=1568,
+        max_images=20,
+        supports_video=False,
+        structured_output=True,
+        context_window=200_000,
+        local=True,
+    )
+
+
 class FakeAdapter:
     provider = PROVIDER
 
     def limits(self, model: str) -> AdapterLimits:
-        return AdapterLimits(
-            max_image_px=1568,
-            max_images=20,
-            supports_video=False,
-            structured_output=True,
-            context_window=200_000,
-            local=True,
-        )
+        return limits(model)
 
     def cost_usd(self, model: str, tokens_in: int, tokens_out: int) -> float:
         return 0.0
@@ -108,3 +112,26 @@ class FakeAdapter:
 @responder("healthcheck")
 def _healthcheck(_request: StructuredRequest) -> dict[str, Any]:
     return {"ok": True}
+
+
+@responder("vision")
+def _vision(request: StructuredRequest) -> dict[str, Any]:
+    """One neutral observation per listed segment; tests override for specific answers."""
+    return {
+        "segments": [
+            {
+                "segment": seg["ref"],
+                "description": f"Footage from {request.context['asset']}, segment {seg['ref']}.",
+                "subjects": ["scene"],
+                "shot_type": "wide",
+                "camera_motion": "static",
+                "people": "none",
+                "interest": "medium",
+                "composition": "good",
+                "issues": [],
+                "usable": True,
+                "best_tile": seg["tiles"][len(seg["tiles"]) // 2],
+            }
+            for seg in request.context["segments"]
+        ]
+    }

@@ -21,6 +21,7 @@ from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import task
 from mosaic.media import inventory
+from mosaic.media import visual as _visual  # noqa: F401 - registers "visual" first
 from mosaic.storage import provenance, sqlite_vec_index
 from mosaic.storage.models_project import Embedding, SampleFrame
 
