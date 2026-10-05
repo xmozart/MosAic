@@ -37,11 +37,12 @@ from mosaic.media.profiles import (
 )
 from mosaic.media.scan import MediaType, ScannedFile, fingerprint, is_offline, scan
 from mosaic.media.tools import media_tools
+from mosaic.media.unsupported import CATALOG, unsupported_codec
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
 
-PROBE_VERSION = "probe/1"
-GROUP_VERSION = "group/1"
+PROBE_VERSION = "probe/2"  # 2: Insta360, DJI and Nikon profiles (ADR 0024)
+GROUP_VERSION = "group/2"
 PROXY_SIDECARS = (".lrf", ".lrv")
 _REPAIR = "Check that the copy finished; copy the file again from the camera or card."
 
@@ -287,7 +288,7 @@ def _place(s: Session, row: MediaFile, f: ScannedFile) -> TaskSpec | None:
         row.status, row.reason = "deferred", "Photos are analyzed from M1."
         return None
     if f.media_type is MediaType.OTHER:
-        row.status, row.reason = "unsupported", "Not a video, photo or audio file."
+        row.status, row.reason = "unsupported", CATALOG["not_media"].reason
         return None
     if f.media_type is MediaType.SIDECAR and Path(f.rel_path).suffix.lower() not in (
         PROXY_SIDECARS
@@ -323,7 +324,11 @@ def _probe_done(ctx: TaskContext) -> bool:
         if row is None or row.status in ("pending", "offline", "missing"):
             return False
         if row.status == "unsupported":
-            return True  # recorded with its reason; a changed file resets to pending
+            # Recorded with its reason; a changed file resets to pending. One classified
+            # under an older probe version is probed again (profiles may now support it).
+            return row.probe_key is None or row.probe_key == _probe_key(
+                ctx, row.fingerprint, row.rel_path
+            )
         return (
             row.probe_key is not None
             and row.probe_key == _probe_key(ctx, row.fingerprint, row.rel_path)
@@ -437,6 +442,10 @@ def probe_task(ctx: TaskContext) -> dict[str, Any]:
         _mark(ctx, "unsupported", capability.reason, capability.fix, fp=fp, probe_key=key)
         return {"status": "unsupported"}
     video = result.video_streams
+    raw = unsupported_codec(video[0].codec_name, video[0].codec_tag) if video else None
+    if raw is not None:
+        _mark(ctx, "unsupported", raw.reason, raw.fix, fp=fp, probe_key=key)
+        return {"status": "unsupported"}
     if video:
         err = probing.decode_check(binaries, path, f"{video[0].index}")
         if err:
@@ -558,7 +567,7 @@ class _Grouper:
         v = probe.video_streams[0] if probe and probe.video_streams else None
         a = select_audio(probe) if probe else None
         asset.kind, asset.status, asset.reason = g.kind, g.status, g.reason
-        asset.suggested_fix = None
+        asset.suggested_fix = g.fix
         asset.profile = g.profile
         asset.color_hint = profile.color_hint(probe) if probe else "sdr"
         asset.video_stream_index = v.index if v else None

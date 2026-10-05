@@ -106,6 +106,7 @@ class ProxyPlan:
     vfr: bool
     source: str = "original"  # original | camera (the chapters are LRF/LRV sidecars)
     bitrate: str = PROXY_BITRATE
+    projection: str | None = None  # 360 footage: a forward view (ADR 0024)
 
     @property
     def fingerprints(self) -> list[str]:
@@ -119,7 +120,15 @@ class ProxyPlan:
             project_id=project_id,
             inputs={"files": self.fingerprints, "v": self.video_index, "a": self.audio_index}
             # Only camera-proxy plans carry a source, so 720p keys are unchanged from M0.
-            | ({"source": self.source} if self.source != "original" else {}),
+            | ({"source": self.source} if self.source != "original" else {})
+            | (
+                {
+                    "projection": self.projection,
+                    "fov": [builders.LENS_FOV, builders.FORWARD_HFOV, builders.FORWARD_VFOV],
+                }
+                if self.projection
+                else {}
+            ),
             config={
                 "w": self.width,
                 "h": self.height,
@@ -171,25 +180,21 @@ def plan_for(project: Project, asset_id: int, mode: ModeConfig | None = None) ->
             "vfr": asset.vfr,
             "bitrate": QUICK_BITRATE if quick else PROXY_BITRATE,
         }
+        projection = next(
+            (f.split(":", 1)[1] for f in (asset.flags or []) if f.startswith("projection:")),
+            None,
+        )
+        if projection:
+            # A 360 recording: the forward view is 16:9 whatever the sensor layout, at the
+            # usual proxy size (it may upscale a small lens; these assets are only analyzed,
+            # never rendered into an edit).
+            w, h = proxy_size(1920, 1080, short_side)
+            return _flat_plan(s, rows, streams, asset, common, w, h, projection)
         if quick:
             camera = _camera_plan(s, rows, short_side, common, asset.audio_stream_index is not None)
             if camera is not None:
                 return camera
-        chapters = []
-        for r in rows:
-            st = streams[r.AssetFile.media_file_id]
-            chapters.append(
-                ChapterInfo(
-                    rel_path=r.rel_path,
-                    fingerprint=r.fingerprint,
-                    video_index=st.stream_index,
-                    tb=parse_rational(st.time_base),
-                    start_pts=st.start_pts,
-                    logical_start_ticks=r.AssetFile.logical_start_ticks,
-                    duration_ticks=r.AssetFile.duration_ticks,
-                    nb_frames=st.nb_frames,
-                )
-            )
+        chapters = _chapters(rows, streams)
         first = streams[rows[0].AssetFile.media_file_id]
         w, h = proxy_size(
             asset.display_width or first.width or 1280,
@@ -206,6 +211,49 @@ def plan_for(project: Project, asset_id: int, mode: ModeConfig | None = None) ->
             height=h,
             **common,
         )
+
+
+def _flat_plan(
+    s: Any,
+    rows: list[Any],
+    streams: dict[int, MediaStream],
+    asset: Asset,
+    common: dict[str, Any],
+    w: int,
+    h: int,
+    projection: str,
+) -> ProxyPlan:
+    first = streams[rows[0].AssetFile.media_file_id]
+    return ProxyPlan(
+        chapters=_chapters(rows, streams),
+        video_index=asset.video_stream_index or 0,
+        audio_index=asset.audio_stream_index,
+        color_hint=asset.color_hint,
+        color_range=first.color_range,
+        width=w,
+        height=h,
+        projection=projection,
+        **common,
+    )
+
+
+def _chapters(rows: list[Any], streams: dict[int, MediaStream]) -> list[ChapterInfo]:
+    out = []
+    for r in rows:
+        st = streams[r.AssetFile.media_file_id]
+        out.append(
+            ChapterInfo(
+                rel_path=r.rel_path,
+                fingerprint=r.fingerprint,
+                video_index=st.stream_index,
+                tb=parse_rational(st.time_base),
+                start_pts=st.start_pts,
+                logical_start_ticks=r.AssetFile.logical_start_ticks,
+                duration_ticks=r.AssetFile.duration_ticks,
+                nb_frames=st.nb_frames,
+            )
+        )
+    return out
 
 
 def _camera_plan(
@@ -433,6 +481,8 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
     plan = plan_for(ctx.project, ctx.params["asset_id"], task_mode(ctx))
     encoder = _encoder()
     hdr = plan.color_hint if plan.color_hint in ("hlg", "pq") else None
+    if plan.projection and not caps.has_filter("v360"):
+        raise PermanentError("360 footage needs the v360 filter; this FFmpeg build lacks it")
     if hdr and not caps.can_tonemap:
         raise PermanentError("HDR source needs zscale + tonemap; this FFmpeg build lacks them")
     # TODO(log profiles): a "log(<name>)" color hint needs a per-camera LUT
@@ -461,6 +511,7 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
         video_starts=[c.start_pts * c.tb for c in plan.chapters],
         video_durations=[c.duration_ticks * plan.tb for c in plan.chapters],
         hwaccel="videotoolbox" if encoder == "h264_videotoolbox" else None,
+        projection=plan.projection,
     )
     with ctx.project.artifacts.writer("proxy", key, ".mp4", provenance_id=prov) as tmp:
         spec.out = tmp

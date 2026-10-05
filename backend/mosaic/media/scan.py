@@ -43,6 +43,8 @@ VIDEO_EXT = frozenset(
         ".wmv",
         ".mxf",
         ".nev",
+        ".braw",  # recognized so they are listed with a reason (unsupported catalog)
+        ".r3d",
     }
 )
 PHOTO_EXT = frozenset(

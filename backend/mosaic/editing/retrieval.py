@@ -186,7 +186,7 @@ def retrieve(
     session: Session, min_seconds: Fraction, want_seconds: Fraction
 ) -> tuple[list[Candidate], dict[str, int]]:
     """All eligible candidates (capped), sorted by capture time, plus filter counts."""
-    counts = {"segments": 0, "rejected": 0, "too_short": 0, "duplicate": 0}
+    counts = {"segments": 0, "rejected": 0, "too_short": 0, "duplicate": 0, "analysis_only": 0}
     found: list[Candidate] = []
     similar: list[Candidate] = []
     best_of: dict[int, int] = {
@@ -200,6 +200,11 @@ def retrieve(
     first_day = min(capture_dates(assets).values(), default=None)
     for asset in assets:
         if asset.tb is None:
+            continue
+        if "analysis_only" in (asset.flags or []):
+            # Raw 360 footage: analyzed through a forward view, never cut into an edit
+            # until reframing exists (MEDIA_SUPPORT.md §2, ADR 0024).
+            counts["analysis_only"] += 1
             continue
         tb = parse_rational(asset.tb)
         segs = list(session.scalars(select(Segment).where(Segment.asset_id == asset.id)))

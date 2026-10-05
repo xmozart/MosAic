@@ -1,4 +1,5 @@
-"""Camera profiles (MEDIA_SUPPORT.md §1–2). M0 ships ``iphone``, ``gopro`` and ``generic``.
+"""Camera profiles (MEDIA_SUPPORT.md §1–2): ``iphone``, ``gopro``, ``insta360``, ``dji``,
+``nikon_z`` and ``generic`` (ADR 0024).
 
 A profile recognizes its files, groups them into assets (chapters, Live Photo pairs),
 associates sidecars and gives color, capability and capture-time hints. Adding a camera
@@ -18,6 +19,7 @@ from typing import Protocol
 
 from mosaic.media.probe import HFR_THRESHOLD, ProbeResult, StreamInfo
 from mosaic.media.scan import MediaType
+from mosaic.media.unsupported import CATALOG, unsupported_by_extension
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class AssetGroup:
     status: str = "ok"  # ok|deferred
     reason: str | None = None
     flags: list[str] = field(default_factory=list)
+    fix: str | None = None  # suggested fix shown with ``reason``
 
 
 @dataclass(frozen=True)
@@ -157,22 +160,6 @@ def _single(profile: str, rec: FileRecord) -> AssetGroup:
     return group
 
 
-_UNSUPPORTED_FORMATS = {
-    ".360": (
-        "GoPro MAX .360 files are not supported yet.",
-        "Export a flat MP4 from GoPro Player.",
-    ),
-    ".nev": (
-        "Nikon N-RAW video cannot be decoded.",
-        "Export H.264, HEVC or ProRes from NX Studio or your editor.",
-    ),
-    ".insv": (
-        "Raw Insta360 files arrive in a later version.",
-        "Export an MP4 from Insta360 Studio.",
-    ),
-}
-
-
 # ------------------------------------------------------------------- profiles
 
 
@@ -201,12 +188,12 @@ class GenericProfile:
         return stream_color_hint(v[0] if v else None)
 
     def capability(self, probe: ProbeResult | None, path: str) -> Capability:
-        ext = PurePosixPath(path).suffix.lower()
-        if ext in _UNSUPPORTED_FORMATS:
-            reason, fix = _UNSUPPORTED_FORMATS[ext]
-            return Capability("unsupported", reason, fix)
+        known = unsupported_by_extension(path)
+        if known is not None:
+            return Capability("unsupported", known.reason, known.fix)
         if probe is not None and not probe.video_streams and not probe.audio_streams:
-            return Capability("unsupported", "No playable video or audio stream.", None)
+            entry = CATALOG["no_stream"]
+            return Capability("unsupported", entry.reason, entry.fix)
         return FULL
 
     def capture_time(self, probe: ProbeResult) -> str | None:
@@ -338,8 +325,17 @@ class GoProProfile(GenericProfile):
         self, parent: str, rec_key: str, part: int, files: list[FileRecord]
     ) -> AssetGroup:
         suffix = f"#{part}" if part else ""
+        first = files[0].probe
+        # TimeWarp and timelapse recordings have no sound (MEDIA_SUPPORT.md §2).
+        flags = (
+            ["timelapse"] if _gopro_confirmed(first) and first and not first.audio_streams else []
+        )
         return AssetGroup(
-            key=f"gopro:{parent}/{rec_key}{suffix}", profile=self.id, kind="video", files=files
+            key=f"gopro:{parent}/{rec_key}{suffix}",
+            profile=self.id,
+            kind="video",
+            files=files,
+            flags=flags,
         )
 
     def sidecars(
@@ -369,7 +365,240 @@ class GoProProfile(GenericProfile):
         return ("GoPro", None) if _gopro_confirmed(probe) else (None, None)
 
 
-PROFILES: tuple[CameraProfile, ...] = (IPhoneProfile(), GoProProfile(), GenericProfile())
+# ------------------------------------------------------------------- Insta360
+
+_INSTA_NAME = re.compile(r"^(VID|LRV|IMG)_(\d{8}_\d{6})_(\d{2})_(\d{3})$", re.I)
+
+
+def _maker(probe: ProbeResult | None) -> str:
+    if probe is None:
+        return ""
+    return " ".join(
+        v
+        for v in (probe.tag("make"), probe.tag("com.apple.quicktime.make"), probe.tag("encoder"))
+        if v
+    ).lower()
+
+
+def insta_projection(probe: ProbeResult | None, path: str) -> str | None:
+    """``dfisheye`` (both lenses side by side in one frame), ``fisheye`` (one lens per
+    stream or file), or None for flat footage (single-lens modes, Studio exports)."""
+    ext = PurePosixPath(path).suffix.lower()
+    if probe is None or ext != ".insv":
+        return None
+    video = [v for v in probe.video_streams if not v.attached_pic]
+    if len(video) >= 2:
+        return "fisheye"  # one lens per stream: the front lens (first stream) is used
+    if video and video[0].width and video[0].height:
+        if video[0].width == 2 * video[0].height:
+            return "dfisheye"
+        if video[0].width == video[0].height:
+            return "fisheye"  # one lens of a pair stored as two files
+    return None
+
+
+class Insta360Profile(GenericProfile):
+    id = "insta360"
+
+    def detect(self, probe: ProbeResult | None, path: str) -> float:
+        if "insta360" in _maker(probe):
+            return 0.95
+        p = PurePosixPath(path)
+        if p.suffix.lower() in (".insv", ".insp", ".lrv"):
+            return 0.9
+        # 0.55: ``IMG_<date>_<time>_<lens>_<seq>`` also starts like an iPhone name (0.5).
+        return 0.55 if _INSTA_NAME.match(p.stem) else 0.0
+
+    def group(self, files: Sequence[FileRecord]) -> list[AssetGroup]:
+        """Flat files are single assets. Raw 360 is ``analysis_only`` (ADR 0024): sampled
+        through a fixed forward view, never placed in an edit. A pair of lens files
+        (``_00_`` front, ``_10_`` back) is one recording: the front lens is analyzed and
+        the back lens is kept as part of it, not analyzed separately."""
+        groups: list[AssetGroup] = []
+        names = {(f.parent, f.stem.lower()): f for f in files}
+        for f in files:
+            m = _INSTA_NAME.match(f.stem)
+            if m and m.group(3) == "10" and f.media_type is MediaType.VIDEO:
+                front = names.get((f.parent, f"{m.group(1)}_{m.group(2)}_00_{m.group(4)}".lower()))
+                if front is not None:
+                    groups.append(
+                        AssetGroup(
+                            key=f"insta360:back:{f.rel_path}",
+                            profile=self.id,
+                            kind="video",
+                            files=[f],
+                            status="deferred",
+                            reason="Back lens of a 360 recording; the front lens is analyzed.",
+                        )
+                    )
+                    continue
+            group = _single(self.id, f)
+            projection = insta_projection(f.probe, f.rel_path)
+            if projection and group.kind == "video":
+                group.flags = ["analysis_only", f"projection:{projection}"]
+                entry = CATALOG["insta360_raw_360"]
+                group.reason, group.fix = entry.reason, entry.fix
+            groups.append(group)
+        return groups
+
+    def sidecars(
+        self, sidecars: Sequence[FileRecord], owners: Sequence[FileRecord]
+    ) -> list[SidecarLink]:
+        """``LRV_<date>_<time>_<nn>_<seq>`` previews belong to the front-lens
+        ``VID_<date>_<time>_00_<seq>``. A 360 recording's preview is never its proxy: the
+        analysis needs the forward view of the original."""
+        owner_by_take: dict[tuple[str, str, str], FileRecord] = {}
+        for o in owners:
+            m = _INSTA_NAME.match(o.stem)
+            if m and m.group(1).upper() == "VID" and m.group(3) == "00":
+                owner_by_take[(o.parent, m.group(2), m.group(4))] = o
+        fallback = {link.sidecar.id: link for link in super().sidecars(sidecars, owners)}
+        out: list[SidecarLink] = []
+        for sc in sidecars:
+            ext = sc.name.rsplit(".", 1)[-1].lower()
+            m = _INSTA_NAME.match(sc.stem)
+            owner = owner_by_take.get((sc.parent, m.group(2), m.group(4))) if m else None
+            link = (
+                SidecarLink(sc, owner, ext, proxy_candidate=ext == "lrv")
+                if owner is not None
+                else fallback[sc.id]
+            )
+            if link.owner is not None and insta_projection(link.owner.probe, link.owner.rel_path):
+                link = SidecarLink(sc, link.owner, ext, proxy_candidate=False)
+            out.append(link)
+        return out
+
+    def capability(self, probe: ProbeResult | None, path: str) -> Capability:
+        base = super().capability(probe, path)
+        if base.level != "full":
+            return base
+        if insta_projection(probe, path):
+            entry = CATALOG["insta360_raw_360"]
+            return Capability("analysis_only", entry.reason, entry.fix)
+        return FULL
+
+    def camera(self, probe: ProbeResult) -> tuple[str | None, str | None]:
+        return ("Insta360", probe.tag("model")) if "insta360" in _maker(probe) else (None, None)
+
+
+# ------------------------------------------------------------------------ DJI
+
+_DJI_NAME = re.compile(r"^DJI_(?:(\d{14})_)?(\d{4})(?:_[A-Z])?$", re.I)
+CHAPTER_GAP_S = Fraction(2)  # a next chapter starts within this of the previous one's end
+
+
+def dji_number(stem: str) -> int | None:
+    m = _DJI_NAME.match(stem)
+    return int(m.group(2)) if m else None
+
+
+class DJIProfile(GenericProfile):
+    id = "dji"
+
+    def detect(self, probe: ProbeResult | None, path: str) -> float:
+        if "dji" in _maker(probe):
+            return 0.95
+        v = probe.video_streams if probe else []
+        if v and "DJI" in (v[0].handler or ""):
+            return 0.9
+        return 0.6 if dji_number(PurePosixPath(path).stem) is not None else 0.0
+
+    def group(self, files: Sequence[FileRecord]) -> list[AssetGroup]:
+        """Chapters split at the size limit: consecutive numbers with compatible streams
+        whose capture times continue (the next starts where the previous ends)."""
+        numbered = sorted(
+            (
+                (dji_number(f.stem), f)
+                for f in files
+                if f.media_type is MediaType.VIDEO and dji_number(f.stem) is not None
+            ),
+            key=lambda t: (t[1].parent, t[0] or 0),
+        )
+        used: set[int] = set()
+        groups: list[AssetGroup] = []
+        run: list[tuple[int, FileRecord]] = []
+
+        def flush() -> None:
+            if run:
+                first = run[0][1]
+                groups.append(
+                    AssetGroup(
+                        key=f"dji:{first.rel_path}",
+                        profile=self.id,
+                        kind="video",
+                        files=[f for _, f in run],
+                    )
+                )
+                used.update(f.id for _, f in run)
+                run.clear()
+
+        for n, f in numbered:
+            assert n is not None
+            if run and not (
+                run[-1][1].parent == f.parent
+                and n == run[-1][0] + 1
+                and GoProProfile._compatible(run[-1][1], f)
+                and self._continues(run[-1][1], f)
+            ):
+                flush()
+            run.append((n, f))
+        flush()
+        groups += [_single(self.id, f) for f in files if f.id not in used]
+        return groups
+
+    def _continues(self, a: FileRecord, b: FileRecord) -> bool:
+        if a.probe is None or b.probe is None or a.probe.duration is None:
+            return False
+        ta, tb = self.capture_time(a.probe), self.capture_time(b.probe)
+        if ta is None or tb is None:
+            return False
+        start_a, start_b = datetime.fromisoformat(ta), datetime.fromisoformat(tb)
+        if (start_a.tzinfo is None) != (start_b.tzinfo is None):
+            return False  # one with an offset, one without: not comparable
+        # Capture times have 1 s resolution, inside the 2 s tolerance.
+        gap = Fraction((start_b - start_a).total_seconds()) - a.probe.duration
+        return abs(gap) <= CHAPTER_GAP_S
+
+    def sidecars(
+        self, sidecars: Sequence[FileRecord], owners: Sequence[FileRecord]
+    ) -> list[SidecarLink]:
+        """``.LRF`` camera proxies and ``.SRT`` telemetry share the clip's stem."""
+        return super().sidecars(sidecars, owners)
+
+    def camera(self, probe: ProbeResult) -> tuple[str | None, str | None]:
+        return ("DJI", probe.tag("model")) if "dji" in _maker(probe) else (None, None)
+
+
+# --------------------------------------------------------------------- Nikon
+
+_NIKON_NAME = re.compile(r"^_?DSC[N_]?\d{4}$", re.I)
+
+
+class NikonProfile(GenericProfile):
+    id = "nikon_z"
+
+    def detect(self, probe: ProbeResult | None, path: str) -> float:
+        if "nikon" in _maker(probe):
+            return 0.95
+        p = PurePosixPath(path)
+        if p.suffix.lower() in (".nev", ".nef"):
+            return 0.9
+        return 0.4 if _NIKON_NAME.match(p.stem) else 0.0
+
+    def camera(self, probe: ProbeResult) -> tuple[str | None, str | None]:
+        if "nikon" not in _maker(probe):
+            return None, None
+        return probe.tag("make"), probe.tag("model")
+
+
+PROFILES: tuple[CameraProfile, ...] = (
+    IPhoneProfile(),
+    GoProProfile(),
+    Insta360Profile(),
+    DJIProfile(),
+    NikonProfile(),
+    GenericProfile(),
+)
 
 
 def profile_for(rec: FileRecord) -> CameraProfile:

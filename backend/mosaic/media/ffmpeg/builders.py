@@ -136,6 +136,8 @@ class SynthSpec:
     timescale: int = 90000
     fps_mode_passthrough: bool = False
     container: str | None = None  # explicit muxer, e.g. "mp4" for camera ".LRF" files
+    metadata: tuple[tuple[str, str], ...] = ()  # container tags (camera fixtures)
+    video_metadata: tuple[tuple[str, str], ...] = ()  # e.g. the camera's handler_name
 
 
 def synth_from_rawvideo(spec: SynthSpec) -> FFmpegCommand:
@@ -191,13 +193,37 @@ def synth_from_rawvideo(spec: SynthSpec) -> FFmpegCommand:
     if spec.audio:
         opts += [("-c:a", "aac"), ("-b:a", "128k"), ("-ar", 48000)]
         opts.append(("-shortest", None))
-    opts += [("-movflags", "+faststart")]
+    for k, v in spec.metadata:
+        opts.append(("-metadata", f"{k}={v}"))
+    for k, v in spec.video_metadata:
+        opts.append(("-metadata:s:v:0", f"{k}={v}"))
+    # Arbitrary keys (make, model…) are written only with use_metadata_tags.
+    flags = "+faststart+use_metadata_tags" if spec.metadata else "+faststart"
+    opts += [("-movflags", flags)]
     if spec.container:
         opts.append(("-f", spec.container))
     return FFmpegCommand(
         inputs=inputs,
         outputs=[OutputSpec(media_path(spec.out), opts)],
         description=f"synth {spec.out.name}",
+    )
+
+
+def mux_video_streams(
+    sources: Sequence[Path], out: Path, *, container: str | None = None
+) -> FFmpegCommand:
+    """Copy the first video stream of each source into one file, in order (a camera that
+    records one stream per lens, for test fixtures)."""
+    opts: list[tuple[str, OptionValue]] = []
+    for i in range(len(sources)):
+        opts.append(("-map", f"{i}:v:0"))
+    opts += [("-c", "copy")]
+    if container:
+        opts.append(("-f", container))
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(p)) for p in sources],
+        outputs=[OutputSpec(media_path(out), opts)],
+        description=f"mux {out.name}",
     )
 
 
@@ -316,6 +342,15 @@ class ProxySpec:
     video_durations: list[Fraction] = field(default_factory=list)  # per input, seconds
     hwaccel: str | None = None
     out: Path | None = None
+    projection: str | None = None  # "fisheye" | "dfisheye": a forward view of 360 footage
+
+
+# Insta360 lenses see about 200° (``ih_fov``/``iv_fov`` are per lens, also for
+# ``dfisheye``). The forward view is a 100°-wide rectilinear 16:9 window: square pixels
+# need tan(v/2) = tan(50°)·9/16, so v ≈ 67.67° (not 100·9/16; flat output scales by tan).
+LENS_FOV = 200
+FORWARD_HFOV = 100
+FORWARD_VFOV = Fraction(6767, 100)
 
 
 def proxy(spec: ProxySpec) -> FFmpegCommand:
@@ -359,7 +394,23 @@ def proxy(spec: ProxySpec) -> FFmpegCommand:
     else:
         vin, ain = "[v0]", "[a0]"
 
-    vfilters: list[Filter] = [
+    vfilters: list[Filter] = []
+    if spec.projection:
+        # 360 footage is analyzed through a fixed forward view (MEDIA_SUPPORT.md §2).
+        vfilters.append(
+            Filter.of(
+                "v360",
+                input=spec.projection,
+                output="flat",
+                ih_fov=LENS_FOV,
+                iv_fov=LENS_FOV,
+                h_fov=FORWARD_HFOV,
+                v_fov=FORWARD_VFOV,
+                w=spec.width,
+                h=spec.height,
+            )
+        )
+    vfilters += [
         Filter.of(
             "scale",
             w=spec.width,

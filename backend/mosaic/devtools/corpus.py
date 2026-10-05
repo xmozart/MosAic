@@ -189,6 +189,8 @@ class CorpusGenerator:
         container: str | None = None,
         shake_px: int = 0,
         shake_frames: int | None = None,
+        metadata: tuple[tuple[str, str], ...] = (),
+        video_metadata: tuple[tuple[str, str], ...] = (),
     ) -> int:
         n = frames if frames is not None else int(seconds * rate)
         scene_len = int(scene_seconds * rate)
@@ -205,6 +207,8 @@ class CorpusGenerator:
             setpts_expr=setpts,
             fps_mode_passthrough=setpts is not None,
             container=container,
+            metadata=metadata,
+            video_metadata=video_metadata,
         )
         _write_frames(
             self.bin,
@@ -659,6 +663,126 @@ class CorpusGenerator:
 
     # ---------------------------------------------------------------- driver
 
+    # ----------------------------------------------------------------- cameras
+    # Synthetic stand-ins for cameras without real fixtures yet (M1 step 8, ADR 0024):
+    # file names, tags and stream layouts as those cameras write them. Opt-in
+    # (``generate(only={"cameras"})``), so the shared corpus is unchanged.
+
+    def cameras(self) -> None:
+        r = Fraction(30000, 1001)
+        ins = (("make", "Insta360"), ("model", "Insta360 X3"))
+        # Studio export: flat → full.
+        self._video("VID_20250301_101500_00_001.mp4", seconds=4, seed=21, metadata=ins)
+        self._add(CaseInfo("insta360_flat", ["VID_20250301_101500_00_001.mp4"], "full"))
+        # Raw 360, both lenses side by side in one frame → analysis_only (dfisheye).
+        self._video(
+            "VID_20250301_102000_00_002.insv",
+            w=640,
+            h=320,
+            seconds=4,
+            seed=22,
+            metadata=ins,
+            container="mp4",
+        )
+        self._add(CaseInfo("insta360_dfisheye", ["VID_20250301_102000_00_002.insv"], "360"))
+        # Raw 360, one stream per lens in one file → analysis_only (front lens, fisheye).
+        lens = [self._tmp / "lens0.mp4", self._tmp / "lens1.mp4"]
+        for i, p in enumerate(lens):
+            self._video(p.name, w=320, h=320, seconds=4, seed=23 + i, out=p, audio=())
+        run(
+            self.bin,
+            builders.mux_video_streams(
+                lens, self.out / "VID_20250301_103000_00_003.insv", container="mp4"
+            ),
+        )
+        self._add(CaseInfo("insta360_two_stream", ["VID_20250301_103000_00_003.insv"], "360"))
+        # Raw 360 as two files (front _00_, back _10_) plus the camera's preview.
+        for lens_id, seed in (("00", 25), ("10", 26)):
+            self._video(
+                f"VID_20250301_104000_{lens_id}_004.insv",
+                w=320,
+                h=320,
+                seconds=4,
+                seed=seed,
+                metadata=ins,
+                container="mp4",
+            )
+        self._video(
+            "LRV_20250301_104000_01_004.lrv",
+            w=160,
+            h=160,
+            seconds=4,
+            seed=25,
+            container="mp4",
+        )
+        self._add(
+            CaseInfo(
+                "insta360_pair",
+                ["VID_20250301_104000_00_004.insv", "VID_20250301_104000_10_004.insv"],
+                "360 pair",
+                sidecars=["LRV_20250301_104000_01_004.lrv"],
+            )
+        )
+        # DJI: two chapters that continue in time, then a separate recording; LRF + SRT.
+        dji = (("make", "DJI"), ("model", "Mini 4 Pro"))
+        n1 = self._video(
+            "DJI_0001.MP4",
+            seconds=6,
+            rate=r,
+            seed=27,
+            metadata=(*dji, ("creation_time", "2025-03-01T10:00:00.000000Z")),
+        )
+        self._video(
+            "DJI_0002.MP4",
+            seconds=4,
+            rate=r,
+            seed=27,
+            first_index=n1,
+            metadata=(*dji, ("creation_time", "2025-03-01T10:00:06.000000Z")),
+        )
+        self._video(
+            "DJI_0003.MP4",
+            seconds=4,
+            rate=r,
+            seed=28,
+            metadata=(*dji, ("creation_time", "2025-03-01T10:05:00.000000Z")),
+        )
+        self._video("DJI_0001.LRF", w=320, h=180, seconds=6, rate=r, seed=27, container="mp4")
+        (self.out / "DJI_0001.SRT").write_text(
+            "1\n00:00:00,000 --> 00:00:00,033\n[iso : 100] [latitude: 0.0] [longitude: 0.0]\n"
+        )
+        self._add(
+            CaseInfo(
+                "dji_chapters",
+                ["DJI_0001.MP4", "DJI_0002.MP4", "DJI_0003.MP4"],
+                "chapters by numbering and continuous time",
+                chapters=2,
+                sidecars=["DJI_0001.LRF", "DJI_0001.SRT"],
+            )
+        )
+        # Nikon: a MOV that names its maker, and an N-RAW file (unsupported, with a fix).
+        self._video(
+            "DSC_0001.MOV",
+            seconds=4,
+            seed=29,
+            metadata=(("make", "NIKON CORPORATION"), ("model", "NIKON Z 6_2")),
+        )
+        (self.out / "DSC_0002.NEV").write_bytes(b"NEV" + bytes(4096))
+        self._add(CaseInfo("nikon", ["DSC_0001.MOV"], "full"))
+        self._add(CaseInfo("nikon_nraw", ["DSC_0002.NEV"], "unsupported", expect_unsupported=True))
+        # GoPro TimeWarp: GoPro-tagged, silent → flagged timelapse.
+        self._video(
+            "GX010500.MP4",
+            seconds=4,
+            seed=30,
+            audio=(),
+            video_metadata=(("handler_name", "GoPro AVC"),),
+        )
+        self._add(CaseInfo("gopro_timelapse", ["GX010500.MP4"], "timelapse"))
+        # A Blackmagic RAW file: unsupported, with a fix.
+        (self.out / "A001_C001.braw").write_bytes(b"BRAW" + bytes(4096))
+        self._add(CaseInfo("braw", ["A001_C001.braw"], "unsupported", expect_unsupported=True))
+
     def generate(self, only: set[str] | None = None) -> list[CaseInfo]:
         self.out.mkdir(parents=True, exist_ok=True)
         steps: dict[str, Callable[[], None]] = {
@@ -682,6 +806,8 @@ class CorpusGenerator:
             "corrupt": self.corrupt,
             "portrait_photo": self.portrait_photo,
         }
+        if only and "cameras" in only:
+            steps["cameras"] = self.cameras  # opt-in: not part of the shared corpus
         try:
             for key, fn in steps.items():
                 if only is None or key in only:
