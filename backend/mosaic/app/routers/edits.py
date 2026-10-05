@@ -48,7 +48,8 @@ def _project(svc: Services, me: Principal, pid: str) -> Iterator[Project]:
     try:
         yield project
     finally:
-        project.close()
+        # Request-scoped: snapshots follow stages and edit commits, not every request.
+        project.close(checkpoint=False)
 
 
 @contextmanager

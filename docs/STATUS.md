@@ -9,7 +9,7 @@ _(empty — the agent is working on M1)_
 ## Current
 
 - **Milestone:** M1
-- **Step:** M1 step 6 (storage placement); steps 1–5 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries).
+- **Step:** M1 step 7 (project lifecycle and relink); steps 1–6 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -36,7 +36,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - [x] 3. Airshow re-eval with context + Thorough → compare against M0 (aircraft share, crowd share, F-35 coverage)
 - [x] 4. Analysis modes Quick/Balanced/Thorough/Custom (ANALYSIS_MODES.md): per-mode detectors, tile density, LRF proxies in Quick, estimates
 - [x] 5. Hierarchical summaries shot → day → trip (context changes re-run summaries only)
-- [ ] 6. Storage placement split/external (macOS and Linux detection), artifact store relocation, DB snapshots via the backup API, cloud placeholders, read-only folders (acceptance 1, 2)
+- [x] 6. Storage placement split/external (macOS and Linux detection), artifact store relocation, DB snapshots via the backup API, cloud placeholders, read-only folders (acceptance 1, 2)
 - [ ] 7. Project lifecycle: reopen, relink by fingerprint, new/missing/changed files, lease locks with read-only open (acceptance 3)
 - [ ] 8. Camera profiles insta360, nikon, dji and the unsupported-reason catalog (acceptance 4)
 - [ ] 9. Photos: HEIC/JPEG/NEF/DNG ingest, Live Photo pairing, bursts, photo+video moments, photos in mosaics and vision (licence-clean decoders)
@@ -61,6 +61,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Dev note: tests share Whisper/SigLIP weights in MosAic's real app-data `models/` folder (`MOSAIC_MODELS_DIR`), so they download once.
 
 - Dev gotcha: an auto-started worker lives ~20 s after its last job and keeps running the code it loaded; wait or kill it after code changes.
+- Follow-ups from placement (M1.6): surface "a newer snapshot from another computer is waiting" in project status (UI, M2); shorter open-lock wait for API requests (~5 s) than for the worker; a ProjectBusyError in the worker should defer the task, not fail it; Windows locks (M3).
 - M1 follow-ups from summaries (M1.5): flag in the M1 report that acceptance 5 is read as footage-analysis calls (ADR 0021; alternative: lazy summary refresh); check the context digest before the day loop; keyed shot/scene summary rows; bound the trip call for very long trips (week level) and the day call size (~80 items); tests for the highlight retry path, the unconfigured-summarizer skip and the CLI context/summary commands; summarizer calls in estimates.
 - M1 follow-ups from analysis modes (M1.4): LRF first-frame PTS alignment check in `lrf_matches` (a one-frame offset passes today); SQL aggregates in `library/estimate.py` and a scoped photo count for deepen estimates; move `_project` to `app/deps.py`; hypothesis test for `plan_samples`/`threshold_cuts`.
 - M1 follow-ups from step 4: GoPro timelapse flag; Apple Log / GoPro flat `log(<name>)` color hints; Live Photo pairing by the still's own content identifier; relink-by-fingerprint probe keys.
@@ -100,3 +101,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M1.3 · Airshow re-eval: AI 'obstructed' rejects only unusable clips (accidental/pocket always), primary-subject metric; aircraft 79 %, crowd 2 %, 0 must-exclude violations; Q-2 on the confirmed must-include list
 - 2026-10-05 · M1.4 · Analysis modes Quick/Balanced/Thorough/Custom: per-job ModeConfig, LRF camera proxies (frame-accurate) and 540p in Quick, threshold detector, mode tiles and Whisper model, L2/L3 stage levels, scoped deepening that adds L2 then L3 (acceptance 5), estimates API, `analysis-runs` API, `mosaic analyze --mode/--set/--estimate` (ADR 0020)
 - 2026-10-05 · M1.5 · Hierarchical summaries: composed shot/scene summaries, AI day and trip summaries with the `summarizer` capability (Haiku; inherits), keyed and bounded; context changes re-run summaries only (API and CLI); `GET /summaries`, `mosaic summary` (ADR 0021)
+- 2026-10-05 · M1.6 · Split and external placement: live DB and cache in app data for network/cloud/read-only folders, backup-API snapshots copied into the folder at every project-level checkpoint and on close (never opened by SQLite there), seeding from a snapshot, external projects found by folder fingerprint, `mosaic init --placement` with relocation (ADR 0022; acceptance 1, 2)

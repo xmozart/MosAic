@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from mosaic.app.routers import analysis, config, context, edits, jobs, system
 from mosaic.app.services import Services
+from mosaic.storage.projects import ProjectBusyError, SnapshotConflictError
 
 BIND_HOST = "127.0.0.1"
 
@@ -21,6 +22,12 @@ def create_app(services: Services | None = None) -> FastAPI:
         # Never echo request input: a malformed secrets request would return the key.
         errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": errors})
+
+    @app.exception_handler(ProjectBusyError)
+    @app.exception_handler(SnapshotConflictError)
+    async def _conflict(_request: Request, exc: Exception) -> JSONResponse:
+        # The project is being moved, or changed here and on another computer (ADR 0022).
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     app.include_router(system.router)
     app.include_router(jobs.router)

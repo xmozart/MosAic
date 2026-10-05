@@ -10,7 +10,7 @@ import click
 from mosaic.cli.config_cmd import config as config_group
 from mosaic.storage.control import ControlDB
 from mosaic.storage.placement import PlacementRefusedError
-from mosaic.storage.projects import Project
+from mosaic.storage.projects import Project, ProjectBusyError, SnapshotConflictError
 
 
 @click.group()
@@ -26,20 +26,34 @@ def _control() -> ControlDB:
 @cli.command()
 @click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--name", default=None, help="Project name (default: folder name).")
-def init(folder: Path, name: str | None) -> None:
+@click.option(
+    "--placement",
+    type=click.Choice(["in_folder", "split", "external"]),
+    default=None,
+    help="Override where project data lives (default: chosen from the folder's storage); "
+    "an existing project is moved.",
+)
+def init(folder: Path, name: str | None, placement: str | None) -> None:
     """Create a project for FOLDER. Original footage is never modified."""
+    from mosaic.storage.placement import Placement
     from mosaic.storage.projects import init_project
 
     control = _control()
     try:
-        project = init_project(control, control.local_principal, folder, name)
-        click.echo(f"Project {project.descriptor.name} ({project.id})")
-        click.echo(
-            f"Placement: {project.descriptor.placement.value} — workspace {project.workspace}"
+        project = init_project(
+            control,
+            control.local_principal,
+            folder,
+            name,
+            Placement(placement) if placement else None,
         )
+        click.echo(f"Project {project.descriptor.name} ({project.id})")
+        click.echo(f"Placement: {project.placement.value}")
+        click.echo(f"  live database and cache: {project.live_dir}")
+        click.echo(f"  edits, renders and snapshots: {project.outputs_dir}")
         click.echo("Original footage stays where it is and will not be modified.")
         project.close()
-    except PlacementRefusedError as exc:
+    except (PlacementRefusedError, ProjectBusyError, SnapshotConflictError) as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
         control.db.dispose()
@@ -68,7 +82,12 @@ def _open(control: ControlDB, folder: Path) -> Project:
 
     try:
         return open_project(control, control.local_principal, folder)
-    except (NotAProjectError, PlacementRefusedError) as exc:
+    except (
+        NotAProjectError,
+        PlacementRefusedError,
+        ProjectBusyError,
+        SnapshotConflictError,
+    ) as exc:
         raise click.ClickException(str(exc)) from exc
 
 

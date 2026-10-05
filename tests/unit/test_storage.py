@@ -48,11 +48,18 @@ def test_network_and_read_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert c.placement.value == "external"
 
 
-@pytest.mark.parametrize("cls", [FsClass.NETWORK, FsClass.CLOUD_SYNCED, FsClass.READ_ONLY])
-def test_m0_refuses_non_local(cls: FsClass) -> None:
+@pytest.mark.parametrize("cls", [FsClass.NETWORK, FsClass.CLOUD_SYNCED])
+def test_in_folder_is_refused_on_network_and_cloud(cls: FsClass) -> None:
+    from mosaic.storage.projects import check_placement
+
     c = placement.Classification(cls, placement.PLACEMENT_FOR_CLASS[cls], "x", "r")
-    with pytest.raises(PlacementRefusedError, match="later version"):
-        placement.require_supported(c)
+    with pytest.raises(PlacementRefusedError, match="split"):
+        check_placement(placement.Placement.IN_FOLDER, c)
+    check_placement(placement.Placement.SPLIT, c)
+    check_placement(placement.Placement.EXTERNAL, c)
+    ro = placement.Classification(FsClass.READ_ONLY, placement.Placement.EXTERNAL, "x", "r")
+    with pytest.raises(PlacementRefusedError, match="external"):
+        check_placement(placement.Placement.SPLIT, ro)
 
 
 def test_live_db_refused_on_cloud(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,13 +103,20 @@ def test_open_non_project(tmp_path: Path) -> None:
         open_project(control, control.local_principal, tmp_path)
 
 
-def test_cli_init_refuses_cloud(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_init_cloud_is_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     trip = tmp_path.resolve()
     monkeypatch.setattr(placement, "is_cloud_synced", lambda p, _h=None: p == trip)
-    result = CliRunner().invoke(cli, ["init", str(tmp_path)])
-    assert result.exit_code != 0
-    assert "cloud-synced" in result.output
+    refused = CliRunner().invoke(cli, ["init", str(tmp_path), "--placement", "in_folder"])
+    assert refused.exit_code != 0
+    assert "cloud-synced" in refused.output
     assert not (tmp_path / ".mosaic-project.json").exists()
+    result = CliRunner().invoke(cli, ["init", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "Placement: split" in result.output
+    assert (tmp_path / ".mosaic-project.json").is_file()
+    # The folder holds only a snapshot (written on close), never a live DB's WAL files.
+    assert (tmp_path / "MosAic" / "project.db").is_file()
+    assert not list((tmp_path / "MosAic").glob("project.db-*"))
 
 
 def test_cli_init_ok(tmp_path: Path) -> None:
@@ -250,21 +264,33 @@ def test_newer_descriptor_is_refused(tmp_path: Path) -> None:
         open_project(control, control.local_principal, tmp_path)
 
 
-def test_split_descriptor_refused_in_m0(tmp_path: Path) -> None:
-    (tmp_path / ".mosaic-project.json").write_text(
-        json.dumps(
-            {
-                "format_version": 2,
-                "project_id": "X",
-                "name": "n",
-                "placement": "split",
-                "created_at": "2026-01-01T00:00:00+00:00",
-            }
-        )
-    )
+def test_split_snapshot_and_relocation(tmp_path: Path) -> None:
+    """In-folder → split moves the live DB out of the folder; closing snapshots it back;
+    split → in-folder brings the live DB home."""
+    from mosaic.storage.placement import Placement
+
     control = ControlDB()
-    with pytest.raises(PlacementRefusedError, match="split"):
-        open_project(control, control.local_principal, tmp_path)
+    me = control.local_principal
+    p = init_project(control, me, tmp_path)
+    prov = _prov(p)
+    key = artifact_key("probe", project_id=p.id, inputs={"f": "a"}, version="1")
+    p.artifacts.put_json("probe", key, {"x": 1}, provenance_id=prov)
+    p.close()
+    split = init_project(control, me, tmp_path, placement=Placement.SPLIT)
+    assert split.placement is Placement.SPLIT
+    assert not split.live_dir.is_relative_to(tmp_path)
+    assert split.artifacts.get_json("probe", key) == {"x": 1}, "cache moved with the DB"
+    assert not (tmp_path / "MosAic" / "cache").exists()
+    split.close()
+    assert (tmp_path / "MosAic" / "project.db").is_file(), "snapshot on close"
+    back = init_project(control, me, tmp_path, placement=Placement.IN_FOLDER)
+    assert back.live_dir == tmp_path / "MosAic"
+    assert back.artifacts.get_json("probe", key) == {"x": 1}
+    with back.db.session() as s:
+        assert s.get(Provenance, prov) is not None
+    back.close()
+    desc = json.loads((tmp_path / ".mosaic-project.json").read_text())
+    assert desc["placement"] == "in_folder"
 
 
 def test_cli_analyze_modes_and_overrides(tmp_path: Path) -> None:

@@ -153,7 +153,7 @@ def _is_done(ctx: TaskContext) -> bool:
     return ctx.project.artifacts.exists("similarity", _key(ctx))
 
 
-@task("library.similarity", is_done=_is_done)
+@task("library.similarity", is_done=_is_done, checkpoint=True)
 def similarity_task(ctx: TaskContext) -> dict[str, Any]:
     emb = task_embedder(ctx)
     model = emb.model

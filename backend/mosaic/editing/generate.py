@@ -296,7 +296,7 @@ def _write_export(path: Path, payload: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------- task
 
 
-@task("edit.generate")
+@task("edit.generate", checkpoint=True)
 def generate_task(ctx: TaskContext) -> dict[str, Any]:
     edit_id = int(ctx.params["edit_id"])
     with ctx.project.db.session() as s:

@@ -78,6 +78,7 @@ Rules:
 - **Snapshots** use the SQLite online backup API to write `<root>/MosAic/project.db` at checkpoints: analysis stage complete, edit committed, and project close. When a folder containing only a snapshot is opened elsewhere, the snapshot seeds a new live DB.
 - **Cloud placeholders.** Before probing, check whether each file is locally present. Offline files are listed with total size and an offer to download them first. Probing must never trigger silent downloads.
 - The **artifact store** abstracts locations. Code asks for `artifact(kind, key)` and never builds paths itself.
+- Split and external projects keep their live DB and cache in app data under `projects/<project_id>/`; external projects also keep their descriptor and outputs there and are found by folder path or folder fingerprint (ADR 0022).
 
 Project descriptor, `<root>/.mosaic-project.json` (always small, written when the folder is writable):
 

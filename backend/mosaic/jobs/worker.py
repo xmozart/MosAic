@@ -78,6 +78,12 @@ class Worker:
                 )
             return self._projects[project_id]
 
+    def _checkpoint(self, project: Project) -> None:
+        try:
+            project.checkpoint()
+        except Exception:
+            log.exception("snapshot of project %s failed; the live DB is unaffected", project.id)
+
     # ---------------------------------------------------------------- execution
 
     def _heartbeat_loop(
@@ -124,6 +130,10 @@ class Worker:
             result = handler.run(ctx)
             ms = int((time.monotonic() - started) * 1000)
             self.executor.complete(task.id, self.worker_id, result=result or {}, duration_ms=ms)
+            if handler.checkpoint:
+                # A stage finished (analysis stage, edit commit, render): snapshot a split
+                # project's DB into its folder (§4). Never affects the task's outcome.
+                self._checkpoint(project)
         except registry.DeferTask as exc:
             self.executor.defer(task.id, self.worker_id, str(exc))
         except registry.SkipTask as exc:

@@ -36,6 +36,8 @@ class ProjectRegistry(ControlBase):
     fs_class: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[str] = mapped_column(String(40))
     last_opened_at: Mapped[str] = mapped_column(String(40))
+    # External placement keys a project by its folder's content (ARCHITECTURE.md §4).
+    folder_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
 
 
 class EditIndex(ControlBase):

@@ -252,7 +252,7 @@ def day_label(day: int, first: date | None) -> str:
     return f"day {day} ({(first + timedelta(days=day - 1)).isoformat()})"
 
 
-@task("library.summaries")
+@task("library.summaries", checkpoint=True)
 def summaries_task(ctx: TaskContext) -> dict[str, Any]:
     if task_mode(ctx).l3 and not ctx.params.get("final"):
         # Thorough: the deep review stage ends with summaries over the reviewed clips;

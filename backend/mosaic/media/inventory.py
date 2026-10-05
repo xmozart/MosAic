@@ -568,7 +568,7 @@ class _Grouper:
             s.execute(delete(Sidecar).where(Sidecar.id.in_(gone)))
 
 
-@task("media.group")
+@task("media.group", checkpoint=True)
 def group_task(ctx: TaskContext) -> dict[str, Any]:
     """Group probed files into assets (chapters, pairs) and associate sidecars, one
     directory at a time."""

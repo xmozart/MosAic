@@ -62,14 +62,19 @@ class Handler:
     kind: str
     run: Run
     is_done: IsDone | None = None
+    # A project checkpoint follows this task: split projects snapshot their DB into the
+    # folder (ARCHITECTURE.md §4, ADR 0022). Only stage-completing project tasks set it.
+    checkpoint: bool = False
 
 
 _HANDLERS: dict[str, Handler] = {}
 
 
-def task(kind: str, *, is_done: IsDone | None = None) -> Callable[[Run], Run]:
+def task(
+    kind: str, *, is_done: IsDone | None = None, checkpoint: bool = False
+) -> Callable[[Run], Run]:
     def register(fn: Run) -> Run:
-        _HANDLERS[kind] = Handler(kind, fn, is_done)
+        _HANDLERS[kind] = Handler(kind, fn, is_done, checkpoint)
         return fn
 
     return register

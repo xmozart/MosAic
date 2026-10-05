@@ -289,7 +289,7 @@ def _is_done(ctx: TaskContext) -> bool:
     return ctx.project.artifacts.exists("dispositions", _key(ctx))
 
 
-@task("library.dispositions", is_done=_is_done)
+@task("library.dispositions", is_done=_is_done, checkpoint=True)
 def dispositions_task(ctx: TaskContext) -> dict[str, Any]:
     key = _key(ctx)
     with ctx.write() as s:

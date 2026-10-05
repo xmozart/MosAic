@@ -46,6 +46,7 @@ class ControlDB:
         root: Path,
         placement: str,
         fs_class: str,
+        folder_fingerprint: str | None = None,
     ) -> None:
         with self.db.session() as s:
             row = s.get(ProjectRegistry, project_id)
@@ -61,10 +62,32 @@ class ControlDB:
                         fs_class=fs_class,
                         created_at=now,
                         last_opened_at=now,
+                        folder_fingerprint=folder_fingerprint,
                     )
                 )
             else:
                 row.root_path, row.last_opened_at, row.name = str(root), now, name
+                row.placement, row.fs_class = placement, fs_class
+                row.folder_fingerprint = folder_fingerprint or row.folder_fingerprint
+
+    def find_project(self, root: Path) -> ProjectRegistry | None:
+        """The most recently opened project registered for this folder."""
+        with self.db.session() as s:
+            return s.scalar(
+                select(ProjectRegistry)
+                .where(ProjectRegistry.root_path == str(root))
+                .order_by(ProjectRegistry.last_opened_at.desc())
+                .limit(1)
+            )
+
+    def find_by_fingerprint(self, fingerprint: str) -> list[ProjectRegistry]:
+        """Projects whose folder had this fingerprint (external placement)."""
+        with self.db.session() as s:
+            return list(
+                s.scalars(
+                    select(ProjectRegistry).where(ProjectRegistry.folder_fingerprint == fingerprint)
+                )
+            )
 
     def project_root(self, project_id: str) -> Path | None:
         with self.db.session() as s:

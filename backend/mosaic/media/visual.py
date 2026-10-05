@@ -366,7 +366,7 @@ def visual_task(ctx: TaskContext) -> dict[str, Any]:
     return {"shots": len(shots), "samples": len(candidates), "kept": kept}
 
 
-@task("analysis.normalize")
+@task("analysis.normalize", checkpoint=True)
 def normalize_task(ctx: TaskContext) -> dict[str, Any]:
     """Project-normalized percentiles for every deterministic metric (§5.3)."""
     with ctx.write() as s:

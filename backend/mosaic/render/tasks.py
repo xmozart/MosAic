@@ -298,7 +298,7 @@ def output_path(workspace: Path, r: Render) -> Path:
     return workspace / "renders" / f"edt_{r.edit_id:04d}" / name
 
 
-@task("render.assemble")
+@task("render.assemble", checkpoint=True)
 def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     binaries, _ = media_tools()
     r, v = _render(ctx)

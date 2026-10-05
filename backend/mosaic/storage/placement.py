@@ -1,9 +1,5 @@
-"""Storage placement policy (ARCHITECTURE.md §4).
-
-The classifier recognizes every class. In M0 only ``local`` is accepted for a project
-(ADR 0002 A); the others are refused with a clear message, and the split and external
-modes arrive in M1.
-"""
+"""Storage placement policy (ARCHITECTURE.md §4): classify a folder's filesystem and
+choose where the live project data goes (``storage/projects.py``, ADR 0022)."""
 
 from __future__ import annotations
 
@@ -74,7 +70,7 @@ class Classification:
 
 
 class PlacementRefusedError(RuntimeError):
-    """The folder's storage class is not supported for a live project in this version."""
+    """A placement the folder's storage class does not allow (invariant 2)."""
 
 
 def _macos_fs_type(path: Path) -> str | None:
@@ -177,30 +173,6 @@ def classify(path: Path, *, home: Path | None = None) -> Classification:
     else:
         cls, reason = FsClass.LOCAL, f"local filesystem ({ftype})"
     return Classification(cls, PLACEMENT_FOR_CLASS[cls], ftype, reason)
-
-
-_REFUSAL = {
-    FsClass.NETWORK: (
-        "This folder is on a network drive. Keeping the live project database there can "
-        "corrupt it, and split placement (database on this computer, results in the folder) "
-        "arrives in a later version. Copy the footage to a local or external disk for now."
-    ),
-    FsClass.CLOUD_SYNCED: (
-        "This folder is in a cloud-synced location (iCloud, OneDrive, Dropbox or similar). "
-        "Sync can corrupt a live database and would upload large caches. Split placement "
-        "arrives in a later version; move the footage to a folder outside cloud sync for now."
-    ),
-    FsClass.READ_ONLY: (
-        "This folder is read-only. Projects for read-only folders arrive in a later version; "
-        "copy the footage to a writable disk for now."
-    ),
-}
-
-
-def require_supported(c: Classification) -> None:
-    """M0 accepts only ``local`` (ADR 0002 A)."""
-    if c.fs_class is not FsClass.LOCAL:
-        raise PlacementRefusedError(_REFUSAL[c.fs_class])
 
 
 def assert_live_db_allowed(db_path: Path) -> None:
