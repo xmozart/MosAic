@@ -1,6 +1,6 @@
 # ADR 0001 — M0 findings: weakest quality areas and the focus for M1–M4
 
-- **Status:** proposed by the agent at the end of M0. The owner reviews it at gate G6.
+- **Status:** accepted by the owner at gate G6 (2026-10-05): "Context is probably the key here." The owner asks for more aircraft footage (especially the F-35 demo) and fewer crowd shots on Airshow.
 - **Date:** 2026-10-05
 - **Evidence:**
   - `make eval` on the owner's corpus with Claude Code (`claude-cli`): Haiku 4.5 for
@@ -68,9 +68,11 @@
 
 ## Recommended focus
 
-- **M1:**
-  - Trip context in vision and planning prompts (PRODUCT §3). It is the single biggest
-    lever for items 1–3.
+- **M1 (owner-confirmed priority first):**
+  - Trip context (PRODUCT §3) in the planner, selector and summaries, plus an L3
+    (Thorough) full-resolution review of aircraft and sky candidates that is aware of the
+    context. The root cause is resolution as much as context: in a 392 px tile, a jet is
+    a speck.
   - Calibrate `MAX_DISTANCE`, `VISUAL_CHANGE` and the disposition thresholds on Airshow
     and Dubai, using the confirmed expectations.
   - Horizon/tilt detection from gyro (GoPro GPMF) as a MAYBE reason.

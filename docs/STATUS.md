@@ -4,16 +4,12 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-**Gate G6: M0 quality review.** M0's acceptance tests pass; the report is `docs/reports/M0.md` and the findings are `docs/decisions/0001-m0-findings.md`.
-
-1. Watch `Samples/Airshow/MosAic/renders/edt_0001/v002-final-r0002.mp4` and `Samples/Dubai/MosAic/renders/edt_0001/v001-final-r0001.mp4`, then score the rubric in `tests/evaluation/results/M0/airshow.md` and `dubai.md`.
-2. Confirm or edit `tests/evaluation/corpus/{airshow,dubai}/expectations.yaml` and set `draft: false`.
-3. Confirm or adjust the M1 focus in ADR 0001. Then M1 starts.
+_(empty — the agent is working on M1)_
 
 ## Current
 
-- **Milestone:** M0
-- **Step:** M0 complete; waiting at G6 (see above). Next: M1 after the owner's review. Owner decisions: ADRs 0002, 0003 and 0014 (CLI providers).
+- **Milestone:** M1
+- **Step:** M1 planning. M0 passed G6 (2026-10-05); owner feedback: Airshow needs more aircraft (F-35 demo) and fewer crowd shots, so trip context and the L3 review come first.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -76,3 +72,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M0.11 · Render: per-event chunks (copyts trims across chapters, nearest-frame conform, tone mapping, pillarbox, gain/fades, silence fill, exact frame and sample counts), stream-copy assembly with two-pass loudnorm, preview/final/lossless profiles, chunk reuse, `mosaic render`, render API, barcode frame-accuracy checker (ADR 0016)
 - 2026-10-05 · M0.12a · Acceptance suite (every synthetic case analyze → edit → lossless render, barcode-exact; no float times; zero repeat AI calls), `make eval` runner (G1/G2 gates, budgets via job cost limits and a ledger, drafted expectations, results, rubric), paused-job handling in the CLI (ADR 0017). Stopped at G1.
 - 2026-10-05 · M0.12c · `make eval` on the owner's corpus via Claude Code: Airshow 3:00 (49 shots) and Dubai 1:15 (16 shots), exact durations, every blocking metric 0, −14.2/−13.9 LUFS, $0 API spend. Fixed: FFmpeg select-term limit, AAC sample check, AI 'not usable' → MAYBE, CLI served-model provenance. Report M0.md and ADR 0001 written → G6.
+\n- 2026-10-05 · G6 · Owner reviewed M0: results not bad; Airshow needs aircraft/F-35 focus, fewer crowds; context is key. Recorded in results and ADR 0001 (accepted). M1 starts.\n

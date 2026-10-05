@@ -1,5 +1,5 @@
 trip: Dubai
-draft: true
+draft: false
 note: Generated from analysis; confirm or edit at gate G6 (EVALUATION.md §1).
 must_include:
 - file: GX010287.MP4
