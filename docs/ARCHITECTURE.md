@@ -351,7 +351,7 @@ Behaviour:
 - **Paths.** Canonicalize every path. Reject paths outside the project root or the configured media roots, and reject symlinks that escape them. Browser clients receive project-relative paths only.
 - **Secrets.** Redact them in logs and exceptions. Never persist Authorization headers. Pass keys to subprocesses via environment or stdin, never argv. The UI shows only `configured` and the last 4 characters.
 - **Desktop API.** Require the per-launch token on every request, allow only `127.0.0.1` and `tauri://` in CORS, and check the Host header.
-- **Project locks.** A lease file `MosAic/.lock` (holder, host, pid, expiry) plus a control-DB record. Read-only open never takes the lock. A stale lease can be taken over after expiry; a live lease can be force-unlocked only after a warning.
+- **Project locks.** A lease file `MosAic/.lock` (holder installation, host, pid, expiry); the file is the single source of truth (ADR 0023). Read-only open never takes the lock. A stale lease can be taken over after expiry; a live lease can be force-unlocked only after a warning.
 
 ## 15. Packaging
 

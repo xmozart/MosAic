@@ -505,6 +505,7 @@ class JobStore:
         project_id: str | None = None,
         active: bool | None = None,
         *,
+        kind: str | None = None,
         cursor: int | None = None,
         limit: int = 200,
     ) -> list[Job]:
@@ -513,6 +514,8 @@ class JobStore:
             q = select(Job)
             if project_id:
                 q = q.where(Job.project_id == project_id)
+            if kind:
+                q = q.where(Job.kind == kind)
             if active is True:
                 q = q.where(Job.status.notin_([x.value for x in JOB_TERMINAL]))
             if cursor is not None:

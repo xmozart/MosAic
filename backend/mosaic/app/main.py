@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from mosaic.app.routers import analysis, config, context, edits, jobs, system
+from mosaic.app.routers import analysis, config, context, edits, jobs, projects, system
 from mosaic.app.services import Services
-from mosaic.storage.projects import ProjectBusyError, SnapshotConflictError
+from mosaic.storage.lease import LeaseHeldError
+from mosaic.storage.projects import (
+    ProjectBusyError,
+    ReadOnlyProjectError,
+    SnapshotConflictError,
+)
 
 BIND_HOST = "127.0.0.1"
 
 
 def create_app(services: Services | None = None) -> FastAPI:
-    app = FastAPI(title="MosAic", version="0.0.1")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        app.state.services.leases.shutdown()  # release held project leases (ADR 0023)
+
+    app = FastAPI(title="MosAic", version="0.0.1", lifespan=lifespan)
     app.state.services = services or Services.create()
 
     @app.exception_handler(RequestValidationError)
@@ -25,9 +38,22 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.exception_handler(ProjectBusyError)
     @app.exception_handler(SnapshotConflictError)
+    @app.exception_handler(ReadOnlyProjectError)
     async def _conflict(_request: Request, exc: Exception) -> JSONResponse:
-        # The project is being moved, or changed here and on another computer (ADR 0022).
+        # Being moved; changed here and on another computer (ADR 0022); open read-only.
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(LeaseHeldError)
+    async def _held(_request: Request, exc: LeaseHeldError) -> JSONResponse:
+        # Open for editing on another computer (ADR 0023): holder info for the S0 dialog.
+        h = exc.lease
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "holder": {"host": h.host, "since": h.acquired_at, "until": h.expires_at},
+            },
+        )
 
     app.include_router(system.router)
     app.include_router(jobs.router)
@@ -35,6 +61,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(edits.router)
     app.include_router(context.router)
     app.include_router(analysis.router)
+    app.include_router(projects.router)
     return app
 
 

@@ -50,6 +50,7 @@ from mosaic.core.clock import now_iso
 from mosaic.core.ids import new_ulid
 from mosaic.core.paths import DESCRIPTOR_NAME, WORKSPACE_DIR, app_data_dir
 from mosaic.core.principal import Principal, check
+from mosaic.storage import lease
 from mosaic.storage.artifacts import ArtifactStore
 from mosaic.storage.control import ControlDB
 from mosaic.storage.db import Database
@@ -90,6 +91,10 @@ class ProjectBusyError(RuntimeError):
 
 class SnapshotConflictError(RuntimeError):
     """This computer's live DB and the folder's newer snapshot both have changes."""
+
+
+class ReadOnlyProjectError(RuntimeError):
+    """A write to a project opened read-only (it is open for editing elsewhere)."""
 
 
 def local_dir(project_id: str) -> Path:
@@ -144,6 +149,7 @@ class Project:
     artifacts: ArtifactStore
     live_dir: Path
     outputs_dir: Path
+    read_only: bool = False
     _open_lock: FileLock | None = field(default=None, repr=False)
     _checkpoint_mutex: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
@@ -164,6 +170,10 @@ class Project:
     def write(self) -> Iterator[Session]:
         """The project's single writer (ARCHITECTURE.md §7). Do not record artifacts or
         open another write while it is held."""
+        if self.read_only:
+            raise ReadOnlyProjectError(
+                "this project is open read-only (it is being edited on another computer)"
+            )
         with self.artifacts.gate.hold(), self.db.session() as s:
             yield s
 
@@ -175,7 +185,7 @@ class Project:
           stats are the cheap test. When they differ (a write, or SQLite merging its WAL
           on close), a local backup's digest decides.
         - A newer snapshot from another computer is never overwritten."""
-        if self.placement is not Placement.SPLIT:
+        if self.placement is not Placement.SPLIT or self.read_only:
             return None
         dest = self.outputs_dir / PROJECT_DB
         state_path = self.live_dir / STATE_FILE
@@ -572,12 +582,22 @@ def _relocate(root: Path, old: ProjectDescriptor, new: Placement) -> ProjectDesc
                 (old_live / name).unlink(missing_ok=True)
 
 
+def _take_lease(control: ControlDB, project: Project, take_over: bool) -> None:
+    try:
+        lease.acquire(project.outputs_dir, control.installation_id, force=take_over)
+    except BaseException:
+        project.close(checkpoint=False)
+        raise
+
+
 def init_project(
     control: ControlDB,
     principal: Principal,
     folder: Path,
     name: str | None = None,
     placement: Placement | None = None,
+    *,
+    take_over: bool = False,
 ) -> Project:
     """Create (or re-open) the project for ``folder``. ``placement`` overrides the policy
     (Advanced settings); an existing project is moved to it."""
@@ -598,15 +618,30 @@ def init_project(
         )
         _save_descriptor(root, descriptor)
     elif descriptor.placement is not wanted:
+        _, out = locations(descriptor.placement, root, descriptor.project_id)
+        lease.acquire(out, control.installation_id, force=take_over)  # never move it under
         descriptor = _relocate(root, descriptor, wanted)
+        if locations(wanted, root, descriptor.project_id)[1] != out:
+            lease.release(out, control.installation_id)
     if wanted is Placement.EXTERNAL and fingerprint is None:
         fingerprint = folder_fingerprint(root)
     project = _open_handles(root, descriptor)
+    _take_lease(control, project, take_over)
     _register(control, principal, root, descriptor, c, fingerprint)
     return project
 
 
-def open_project(control: ControlDB, principal: Principal, folder: Path) -> Project:
+def open_project(
+    control: ControlDB,
+    principal: Principal,
+    folder: Path,
+    *,
+    read_only: bool = False,
+    take_over: bool = False,
+) -> Project:
+    """Open a project for editing, which takes (or renews) its lease and raises
+    ``lease.LeaseHeldError`` if another computer holds it; or ``read_only``, which never
+    takes the lease and refuses writes."""
     root = folder.expanduser().resolve()
     descriptor, fingerprint = _find_descriptor(control, root)
     if descriptor is None:
@@ -617,5 +652,9 @@ def open_project(control: ControlDB, principal: Principal, folder: Path) -> Proj
     if descriptor.placement is Placement.EXTERNAL and fingerprint is None:
         fingerprint = folder_fingerprint(root)
     project = _open_handles(root, descriptor)
+    project.read_only = read_only
+    project.artifacts.read_only = read_only
+    if not read_only:
+        _take_lease(control, project, take_over)
     _register(control, principal, root, descriptor, c, fingerprint)
     return project

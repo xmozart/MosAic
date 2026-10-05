@@ -35,7 +35,7 @@ from mosaic.media.profiles import (
     profile_for,
     select_audio,
 )
-from mosaic.media.scan import MediaType, fingerprint, is_offline, scan
+from mosaic.media.scan import MediaType, ScannedFile, fingerprint, is_offline, scan
 from mosaic.media.tools import media_tools
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
@@ -128,49 +128,83 @@ def scan_task(ctx: TaskContext) -> dict[str, Any]:
     seen: set[str] = set()
     counts: dict[str, int] = {}
     offline_bytes = 0
+    relinked = 0
+    # Walk and fingerprint outside the single writer (fingerprints read file contents,
+    # slow on network folders); the write session then only applies the results.
+    with ctx.project.db.session() as s:
+        known = {
+            rel: (size, mtime, fp, status)
+            for rel, size, mtime, fp, status in s.execute(
+                select(
+                    MediaFile.rel_path,
+                    MediaFile.size,
+                    MediaFile.mtime_ns,
+                    MediaFile.fingerprint,
+                    MediaFile.status,
+                )
+            )
+        }
+    files: list[ScannedFile] = []
+    for f in scan(root):
+        ctx.check_cancelled()
+        files.append(f)
+    on_disk = {f.rel_path for f in files}
+    gone_sizes = {k[0] for rel, k in known.items() if rel not in on_disk and k[2]}
+    fps: dict[str, str | None] = {}
+    for f in files:
+        ctx.check_cancelled()
+        k = known.get(f.rel_path)
+        if f.offline:
+            continue
+        if k is None:
+            if f.size in gone_sizes:  # possibly a moved file
+                fps[f.rel_path] = _fingerprint_or_none(root / f.rel_path, f.size)
+        elif ((k[0], k[1]) != (f.size, f.mtime_ns) or k[3] in ("offline", "missing")) and (
+            k[2] and k[0] == f.size
+        ):
+            fps[f.rel_path] = _fingerprint_or_none(root / f.rel_path, f.size)
     with ctx.write() as s:
         existing = {m.rel_path: m for m in s.scalars(select(MediaFile))}
-        for f in scan(root):
-            ctx.check_cancelled()
+        new_files: list[ScannedFile] = []
+        for f in files:
             seen.add(f.rel_path)
             counts[f.media_type.value] = counts.get(f.media_type.value, 0) + 1
             row = existing.get(f.rel_path)
-            changed = row is None or (row.size, row.mtime_ns) != (f.size, f.mtime_ns)
+            if row is None:
+                new_files.append(f)  # placed after the walk: it may be a moved file
+                continue
+            if _settle(row, f, fps.get(f.rel_path)):
+                relinked += 1
+            spec = _place(s, row, f)
+            if spec is not None:
+                probe_specs.append(spec)
+            offline_bytes += f.size if f.offline else 0
+        # Files no longer at their path. A new path with the same size and fingerprint is
+        # the same file moved or renamed: its row (and so its asset's history) follows it.
+        gone = {rel: row for rel, row in existing.items() if rel not in seen}
+        by_size: dict[int, list[MediaFile]] = {}
+        for row in gone.values():
+            if row.fingerprint:
+                by_size.setdefault(row.size, []).append(row)
+        for f in new_files:
+            row = _moved_row(f, by_size, fps.get(f.rel_path))
             if row is None:
                 row = MediaFile(rel_path=f.rel_path, created_at=now)
                 s.add(row)
-            if changed or row.status in ("offline", "missing"):
-                row.size, row.mtime_ns, row.media_type = f.size, f.mtime_ns, f.media_type.value
-                row.fingerprint, row.status, row.probe_key = "", "pending", None
-                row.reason = row.suggested_fix = None
-            if f.offline:
-                row.status, row.reason = "offline", "File is in the cloud and not downloaded."
-                offline_bytes += f.size
-                continue
-            if f.media_type is MediaType.PHOTO:
-                row.status, row.reason = "deferred", "Photos are analyzed from M1."
-                continue
-            if f.media_type is MediaType.OTHER:
-                row.status, row.reason = "unsupported", "Not a video, photo or audio file."
-                continue
-            if f.media_type is MediaType.SIDECAR and Path(f.rel_path).suffix.lower() not in (
-                PROXY_SIDECARS
-            ):
-                row.status = "ok"
-                continue
-            s.flush()
-            probe_specs.append(
-                TaskSpec(
-                    kind="media.probe",
-                    stage="probe",
-                    resource_class=ResourceClass.IO,
-                    params={"media_file_id": row.id},
-                    label=f.rel_path,
-                )
-            )
-        for rel, row in existing.items():
-            if rel not in seen:
-                row.status, row.reason = "missing", "File is no longer in the folder."
+                _reset(row, f)
+            else:
+                gone.pop(row.rel_path, None)
+                row.rel_path = f.rel_path
+                relinked += 1
+                # The probe key includes the path (camera profiles read file names), so a
+                # moved file is probed again; its content-keyed analysis is reused.
+                _reset(row, f, keep_fingerprint=True)
+            spec = _place(s, row, f)
+            if spec is not None:
+                probe_specs.append(spec)
+            offline_bytes += f.size if f.offline else 0
+        for row in gone.values():
+            row.status, row.reason = "missing", "File is no longer in the folder."
     ids = ctx.spawn(probe_specs)
     ctx.spawn(
         [
@@ -184,7 +218,90 @@ def scan_task(ctx: TaskContext) -> dict[str, Any]:
         ]
     )
     ctx.set_stage("probe")
-    return {"files": counts, "probes": len(probe_specs), "offline_bytes": offline_bytes}
+    return {
+        "files": counts,
+        "probes": len(probe_specs),
+        "offline_bytes": offline_bytes,
+        "relinked": relinked,
+    }
+
+
+def _reset(row: MediaFile, f: ScannedFile, *, keep_fingerprint: bool = False) -> None:
+    row.size, row.mtime_ns, row.media_type = f.size, f.mtime_ns, f.media_type.value
+    if not keep_fingerprint:
+        row.fingerprint = ""
+    row.status, row.probe_key = "pending", None
+    row.reason = row.suggested_fix = None
+
+
+def _settle(row: MediaFile, f: ScannedFile, fp: str | None) -> bool:
+    """Bring a known path's row up to date. A changed mtime with the same size and
+    content fingerprint (a folder copied to another disk) changes nothing else, so no
+    re-probe and no re-analysis follow. Returns True for such a relink."""
+    if (row.size, row.mtime_ns) == (f.size, f.mtime_ns) and row.status not in (
+        "offline",
+        "missing",
+    ):
+        return False
+    if (
+        not f.offline
+        and row.fingerprint
+        and row.size == f.size
+        and row.status != "offline"
+        and fp == row.fingerprint
+    ):
+        row.mtime_ns = f.mtime_ns
+        if row.status == "missing":  # back again: probe it, reusing its keyed analysis
+            _reset(row, f, keep_fingerprint=True)
+        return True
+    _reset(row, f)
+    return False
+
+
+def _fingerprint_or_none(path: Path, size: int) -> str | None:
+    try:
+        return fingerprint(path, size)
+    except OSError:
+        return None
+
+
+def _moved_row(
+    f: ScannedFile, by_size: dict[int, list[MediaFile]], fp: str | None
+) -> MediaFile | None:
+    candidates = by_size.get(f.size)
+    if not candidates or f.offline or fp is None:
+        return None
+    for row in candidates:
+        if row.fingerprint == fp:
+            candidates.remove(row)
+            return row
+    return None
+
+
+def _place(s: Session, row: MediaFile, f: ScannedFile) -> TaskSpec | None:
+    """Status for files that are not probed, or the probe task for one that is."""
+    if f.offline:
+        row.status, row.reason = "offline", "File is in the cloud and not downloaded."
+        return None
+    if f.media_type is MediaType.PHOTO:
+        row.status, row.reason = "deferred", "Photos are analyzed from M1."
+        return None
+    if f.media_type is MediaType.OTHER:
+        row.status, row.reason = "unsupported", "Not a video, photo or audio file."
+        return None
+    if f.media_type is MediaType.SIDECAR and Path(f.rel_path).suffix.lower() not in (
+        PROXY_SIDECARS
+    ):
+        row.status = "ok"
+        return None
+    s.flush()
+    return TaskSpec(
+        kind="media.probe",
+        stage="probe",
+        resource_class=ResourceClass.IO,
+        params={"media_file_id": row.id},
+        label=f.rel_path,
+    )
 
 
 # ------------------------------------------------------------------------ probe
@@ -404,9 +521,29 @@ class _Grouper:
     def _count(self, key: str) -> None:
         self.summary[key] = self.summary.get(key, 0) + 1
 
-    def _asset(self, s: Session, key: str) -> Asset:
+    def _asset(
+        self, s: Session, key: str, member_ids: list[int] | None = None, kind: str | None = None
+    ) -> Asset:
         self.produced.add(key)
         asset = s.scalar(select(Asset).where(Asset.group_key == key))
+        if asset is None and member_ids:
+            # Keys are built from paths. Files that were moved or renamed (relinked by
+            # fingerprint, ADR 0023) keep the asset they belonged to, and with it its
+            # analysis, ratings, decisions and edit references (invariant 10).
+            prior = set(
+                s.scalars(
+                    select(MediaFile.asset_id).where(
+                        MediaFile.id.in_(member_ids), MediaFile.asset_id.is_not(None)
+                    )
+                )
+            )
+            if len(prior) == 1:
+                old = s.get(Asset, prior.pop())
+                # Same kind only: a fixed file replacing an unsupported one at a path is new
+                # media, not the old asset moved.
+                if old is not None and old.group_key not in self.produced and old.kind == kind:
+                    old.group_key = key
+                    asset = old
         if asset is None:
             asset = Asset(group_key=key, created_at=self.now, provenance_id=self.prov)
             s.add(asset)
@@ -414,7 +551,7 @@ class _Grouper:
         return asset
 
     def _apply(self, s: Session, g: AssetGroup) -> Asset:
-        asset = self._asset(s, g.key)
+        asset = self._asset(s, g.key, [f.id for f in g.files], g.kind)
         profile = profile_by_id(g.profile)
         first = g.files[0] if g.kind != "live_photo" else g.files[-1]
         probe = first.probe

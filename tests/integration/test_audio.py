@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from fractions import Fraction
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -136,16 +137,15 @@ def test_loudness_matches_ffmpeg_ebur128(analyzed: Project, ffmpeg_bin: FFmpegBi
         assert per_second[-1].end_ticks <= asset.duration_ticks
 
 
-def test_reanalysis_skips_audio(analyzed: Project) -> None:
+def test_reanalysis_skips_audio(analyzed_session: Any) -> None:
     """Invariant 9: identical inputs, config and model mean no recompute."""
     from mosaic.jobs.executor import LocalExecutor
     from mosaic.jobs.store import JobStore
     from mosaic.media.pipeline import submit_analysis
-    from mosaic.storage.control import ControlDB
     from mosaic.storage.projects import open_project
     from tests.support.runner import run_job
 
-    control = ControlDB()
+    analyzed, control = analyzed_session  # the installation that holds the project's lease
     project = open_project(control, control.local_principal, analyzed.root)
     store = JobStore(control.db)
     job = submit_analysis(LocalExecutor(store), control.local_principal, project)

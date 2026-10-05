@@ -78,6 +78,7 @@ class ArtifactStore:
         self.root = root
         self.db = db
         self.gate = gate or WriteGate()
+        self.read_only = False  # set for a project opened read-only
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _relpath(self, kind: str, key: str, ext: str) -> str:
@@ -111,6 +112,8 @@ class ArtifactStore:
     def writer(self, kind: str, key: str, ext: str, *, provenance_id: int) -> Iterator[Path]:
         """Yield a temp path to write; on success it is moved into place and recorded."""
         _check_name(kind, key)
+        if self.read_only:
+            raise PermissionError(f"artifact {kind}/{key}: the project is open read-only")
         if self.gate.active:
             raise NestedWriteError(f"artifact {kind}/{key} written inside a write session")
         rel = self._relpath(kind, key, ext)

@@ -29,7 +29,12 @@ from mosaic.editing.service import (
     submit_generate,
 )
 from mosaic.storage.models_project import Edit, EditVersion
-from mosaic.storage.projects import NotAProjectError, Project, open_project
+from mosaic.storage.projects import (
+    NotAProjectError,
+    Project,
+    ReadOnlyProjectError,
+    open_project,
+)
 
 router = APIRouter(prefix="/api")
 Svc = Depends(services)
@@ -37,12 +42,21 @@ Me = Depends(principal)
 
 
 @contextmanager
-def _project(svc: Services, me: Principal, pid: str) -> Iterator[Project]:
+def _project(svc: Services, me: Principal, pid: str, *, write: bool = False) -> Iterator[Project]:
+    """A request-scoped project handle (ADR 0023). ``write`` routes (writes, job
+    submissions) need edit access: refused (409) when the app opened the project read-only
+    or lost its lease; otherwise they take or renew the lease. Read routes open read-only
+    unless the app holds the lease, so a read never takes it."""
     root = svc.control.project_root(pid)
     if root is None:
         raise HTTPException(404, "unknown project")
+    if write and pid in svc.leases.read_only:
+        raise ReadOnlyProjectError(
+            "this project is open read-only (it is being edited on another computer)"
+        )
+    read_only = not write and pid not in svc.leases.held
     try:
-        project = open_project(svc.control, me, root)
+        project = open_project(svc.control, me, root, read_only=read_only)
     except NotAProjectError as exc:
         raise HTTPException(404, str(exc)) from None
     try:
@@ -53,11 +67,13 @@ def _project(svc: Services, me: Principal, pid: str) -> Iterator[Project]:
 
 
 @contextmanager
-def _edit(svc: Services, me: Principal, eid: str) -> Iterator[tuple[Project, int]]:
+def _edit(
+    svc: Services, me: Principal, eid: str, *, write: bool = False
+) -> Iterator[tuple[Project, int]]:
     pid = svc.control.project_for_edit(eid.upper())
     if pid is None:
         raise HTTPException(404, "unknown edit")
-    with _project(svc, me, pid) as project:
+    with _project(svc, me, pid, write=write) as project:
         try:
             yield project, resolve_edit(project, eid)
         except EditNotFoundError as exc:
@@ -102,7 +118,7 @@ def create_and_generate(
         raise HTTPException(
             422, [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()]
         ) from None
-    with _project(svc, me, pid) as project:
+    with _project(svc, me, pid, write=True) as project:
         edit_id = create_edit(project, request, svc.control, me, body.get("name"))
         job_id = submit_generate(svc.executor, me, project, edit_id)
         with project.db.session() as s:
@@ -115,7 +131,7 @@ def create_and_generate(
 @router.post("/edits/{eid}/generate", status_code=202)
 def generate(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     check(me, "edits.write", eid)
-    with _edit(svc, me, eid) as (project, edit_id):
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
         return {"job_id": submit_generate(svc.executor, me, project, edit_id)}
 
 
@@ -193,7 +209,7 @@ def _start_render(
 ) -> dict[str, Any]:
     from mosaic.render.service import create_render, latest_version, submit_render
 
-    with _edit(svc, me, eid) as (project, edit_id):
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
         v = version or latest_version(project, edit_id)
         if v is None:
             raise HTTPException(404, "this edit has no versions yet")

@@ -33,6 +33,14 @@ class ControlDB:
             return Principal(user_id=user.id)
 
     @property
+    def installation_id(self) -> str:
+        """This installation's id: the holder of the project leases it takes."""
+        with self.db.session() as s:
+            row = s.scalar(select(Installation).limit(1))
+            assert row is not None
+            return row.installation_id
+
+    @property
     def local_principal(self) -> Principal:
         """v1 is single-user; desktop and CLI act as the owner."""
         return self._principal

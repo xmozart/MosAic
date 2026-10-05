@@ -117,7 +117,7 @@ def get_estimate(
 def post_run(pid: str, body: RunBody, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     check(me, "analysis.run", pid)
     config = _mode(body.mode, body.overrides, body.scope)
-    with _project(svc, me, pid) as project:
+    with _project(svc, me, pid, write=True) as project:
         if body.scope is None:
             job = submit_analysis(svc.executor, me, project, config, body.cost_limit)
             return {"job_id": job, "mode": config.model_dump(mode="json")}

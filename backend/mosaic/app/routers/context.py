@@ -51,7 +51,7 @@ def put_context(
         raise HTTPException(
             422, [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()]
         ) from None
-    with _project(svc, me, pid) as project:
+    with _project(svc, me, pid, write=True) as project:
         with project.write() as s:
             rev = save(s, ctx, "user")
         # A context change re-runs summaries only (PRODUCT.md §3, S7).
@@ -64,7 +64,7 @@ def parse_context(
     pid: str, body: ParseBody, svc: Services = Svc, me: Principal = Me
 ) -> dict[str, Any]:
     check(me, "context.write", pid)
-    with _project(svc, me, pid) as project:
+    with _project(svc, me, pid, write=True) as project:
         job_id = svc.executor.submit(
             me,
             JobSpec(

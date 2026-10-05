@@ -9,6 +9,7 @@ import click
 
 from mosaic.cli.config_cmd import config as config_group
 from mosaic.storage.control import ControlDB
+from mosaic.storage.lease import LeaseHeldError
 from mosaic.storage.placement import PlacementRefusedError
 from mosaic.storage.projects import Project, ProjectBusyError, SnapshotConflictError
 
@@ -53,7 +54,12 @@ def init(folder: Path, name: str | None, placement: str | None) -> None:
         click.echo(f"  edits, renders and snapshots: {project.outputs_dir}")
         click.echo("Original footage stays where it is and will not be modified.")
         project.close()
-    except (PlacementRefusedError, ProjectBusyError, SnapshotConflictError) as exc:
+    except (
+        PlacementRefusedError,
+        ProjectBusyError,
+        SnapshotConflictError,
+        LeaseHeldError,
+    ) as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
         control.db.dispose()
@@ -77,11 +83,17 @@ def worker(exit_when_idle: float | None) -> None:
     main(["--exit-when-idle", str(exit_when_idle)] if exit_when_idle is not None else [])
 
 
-def _open(control: ControlDB, folder: Path) -> Project:
+def _open(control: ControlDB, folder: Path, *, read_only: bool = False) -> Project:
+    """Open a project: for editing (takes the lease; ADR 0023) or ``read_only``."""
     from mosaic.storage.projects import NotAProjectError, open_project
 
     try:
-        return open_project(control, control.local_principal, folder)
+        return open_project(control, control.local_principal, folder, read_only=read_only)
+    except LeaseHeldError as exc:
+        raise click.ClickException(
+            f"{exc}\nRead-only commands still work; `mosaic lock {folder} --take-over` takes "
+            "it over."
+        ) from exc
     except (
         NotAProjectError,
         PlacementRefusedError,
@@ -186,7 +198,7 @@ def analyze(folder: Path, mode: str, overrides: tuple[str, ...], estimate: bool)
     except (UnknownModeError, ValidationError) as exc:
         raise click.ClickException(str(exc)) from exc
     control = _control()
-    project = _open(control, folder)
+    project = _open(control, folder, read_only=estimate)
     try:
         if estimate:
             _show_estimate(control, project, config)
@@ -296,7 +308,7 @@ def report_cmd(folder: Path, edit_id: str, version: int | None, as_json: bool) -
     from mosaic.editing.service import EditNotFoundError, report, report_text, resolve_edit
 
     control = _control()
-    project = _open(control, folder)
+    project = _open(control, folder, read_only=True)
     try:
         r = report(project, resolve_edit(project, edit_id), version)
     except EditNotFoundError as exc:
@@ -505,7 +517,7 @@ def context_show(folder: Path) -> None:
     from mosaic.library.context import load
 
     control = _control()
-    project = _open(control, folder)
+    project = _open(control, folder, read_only=True)
     try:
         with project.db.session() as s:
             click.echo(json.dumps(load(s).model_dump(mode="json"), indent=2, ensure_ascii=False))
@@ -594,6 +606,46 @@ def context_clear(folder: Path) -> None:
 
 @cli.command()
 @click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--take-over", is_flag=True, help="Take the project over from another computer.")
+@click.option("--release", is_flag=True, help="Release this computer's lease.")
+def lock(folder: Path, take_over: bool, release: bool) -> None:
+    """Show who holds FOLDER's project for editing; take it over or release it."""
+    from mosaic.storage import lease
+    from mosaic.storage.projects import open_project
+
+    control = _control()
+    try:
+        project = _open(control, folder, read_only=True)
+        out = project.outputs_dir
+        project.close(checkpoint=False)
+        held = lease.read(out)
+        mine = held is not None and held.holder == control.installation_id
+        if release:
+            lease.release(out, control.installation_id)
+            click.echo("Released." if mine else "This computer did not hold the project.")
+            return
+        if take_over:
+            if held and not mine and not held.expired():
+                click.confirm(
+                    f"{held.host} is editing this project (lease until {held.expires_at}). "
+                    "Take it over? It loses edit access.",
+                    abort=True,
+                )
+            p = open_project(control, control.local_principal, folder, take_over=True)
+            p.close(checkpoint=False)
+            click.echo("This computer now holds the project.")
+            return
+        if held is None or held.expired():
+            click.echo("Nobody is editing this project.")
+        else:
+            who = "this computer" if mine else held.host
+            click.echo(f"Held by {who} since {held.acquired_at} (until {held.expires_at}).")
+    finally:
+        control.db.dispose()
+
+
+@cli.command()
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option(
     "--level",
     type=click.Choice(["trip", "day", "scene", "shot"]),
@@ -609,7 +661,7 @@ def summary(folder: Path, level: str) -> None:
 
     levels = ["trip", "day"] if level == "day" else [level]
     control = _control()
-    project = _open(control, folder)
+    project = _open(control, folder, read_only=True)
     printed = 0
     try:
         with project.db.session() as s:

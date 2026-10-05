@@ -34,8 +34,8 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/projects` (recents with cover sample ids, status, placement, missing flag) | S3 |
 | POST | `/projects/preview` `{path}` → quick scan counts and placement class (no writes) | S4 |
 | POST | `/projects` `{path, name}` → project, plus a scan job | S4 |
-| POST | `/projects/{pid}/open` (acquires the lease; `409` with holder info if open elsewhere) · `/close` | S0, S3 |
-| POST | `/projects/{pid}/relink` `{choose_folder?}` | S0 |
+| POST | `/projects/{pid}/open` `{read_only?, take_over?}` (acquires the lease; `409` `{detail, holder: {host, since, until}}` if open elsewhere; ADR 0023) · `/close` (releases it) | S0, S3 |
+| POST | `/projects/{pid}/relink` `{choose_folder?}` → `{job_id, root, mode}` (re-scan with the last analysis mode; `409` if the folder is gone and none is chosen; `422` if the chosen folder is not this project's) | S0 |
 | GET | `/projects/{pid}/inventory` (cameras, day histogram, needs-attention, grouping notes) | S5 |
 | POST | `/projects/{pid}/cloud-files/download` (job) | S5 |
 | GET/PUT | `/projects/{pid}/devices` (clock offsets, LUT path) · GET `/devices/suggestions` (evidence pairs) | S6, S21 |

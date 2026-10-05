@@ -150,10 +150,12 @@ async def events(
     svc: Services = Svc,
     _me: Principal = Me,
 ) -> StreamingResponse:
-    """Server-sent events: ``job.progress``, ``job.stage`` and ``job.state``."""
+    """Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and
+    ``lock.lost``."""
 
     async def stream() -> AsyncIterator[str]:
         seen: dict[int, dict[str, Any]] = {}
+        lost_sent = False
         yield ": connected\n\n"
         first = True
         while not await request.is_disconnected():
@@ -188,6 +190,9 @@ async def events(
                     )
                 seen[job.id] = cur
                 active += job.status not in {s.value for s in JOB_TERMINAL}
+            if project in svc.leases.lost and not lost_sent:
+                lost_sent = True  # another computer took the project over (ADR 0023)
+                yield _sse("lock.lost", {"project_id": project})
             if until_idle and not active:
                 return
             await asyncio.sleep(0.5)

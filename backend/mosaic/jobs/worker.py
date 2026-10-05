@@ -27,6 +27,7 @@ from mosaic.jobs.context import TaskCancelledError, TaskContext
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.model import JOB_TERMINAL, LeasedTask, ResourceClass
 from mosaic.jobs.store import LEASE_MS, JobStore, now_ms
+from mosaic.storage import lease
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_control import Job, TaskEvent, WorkerRecord
 from mosaic.storage.projects import Project, open_project
@@ -73,10 +74,23 @@ class Worker:
                 root = self.control.project_root(project_id)
                 if root is None:
                     raise registry.PermanentError(f"unknown project {project_id}")
-                self._projects[project_id] = open_project(
-                    self.control, self.control.local_principal, Path(root)
-                )
-            return self._projects[project_id]
+                try:
+                    self._projects[project_id] = open_project(
+                        self.control, self.control.local_principal, Path(root)
+                    )
+                except lease.LeaseHeldError as exc:
+                    raise registry.PermanentError(str(exc)) from None
+            project = self._projects[project_id]
+        # Renew the project's lease while working on it (a cheap no-op when recent). If
+        # another computer took it over, stop writing to the project.
+        try:
+            lease.acquire(project.outputs_dir, self.control.installation_id)
+        except lease.LeaseHeldError as exc:
+            with self._projects_lock:
+                self._projects.pop(project_id, None)
+            project.close(checkpoint=False)
+            raise registry.PermanentError(str(exc)) from None
+        return project
 
     def _checkpoint(self, project: Project) -> None:
         try:
@@ -90,10 +104,28 @@ class Worker:
         self, task: LeasedTask, cancelled: threading.Event, done: threading.Event
     ) -> None:
         interval = max(self.lease_ms / 4000, 0.05)
+        renewed = time.monotonic()
         while not done.wait(interval):
             if not self.executor.heartbeat(task.id, self.worker_id):
                 cancelled.set()
                 return
+            if time.monotonic() - renewed >= lease.RENEW_AFTER_S:
+                # Long tasks keep the project lease alive; a takeover stops the task, so
+                # it does not keep writing to a project another computer now edits.
+                renewed = time.monotonic()
+                project = self._projects.get(task.project_id)
+                if project is None:
+                    continue
+                try:
+                    lease.acquire(project.outputs_dir, self.control.installation_id)
+                except lease.LeaseHeldError:
+                    log.warning(
+                        "project %s was taken over; cancelling task %s", task.project_id, task.id
+                    )
+                    cancelled.set()
+                    return
+                except OSError:
+                    pass  # an offline share: try again next round
 
     def _log_event(self, task_id: int, event: str) -> None:
         with self.control.db.session() as s:
