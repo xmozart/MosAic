@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, ValidationError
 from sqlalchemy import select
 
 from mosaic.app.deps import principal, services
@@ -182,3 +182,77 @@ def get_report(
             return report(project, edit_id, version, max(0, rejected_offset))
         except EditNotFoundError as exc:
             raise HTTPException(404, str(exc)) from None
+
+
+# ----------------------------------------------------------------------- renders
+
+
+def _start_render(
+    svc: Services, me: Principal, eid: str, version: int | None, kind: str
+) -> dict[str, Any]:
+    from mosaic.render.service import create_render, latest_version, submit_render
+
+    with _edit(svc, me, eid) as (project, edit_id):
+        v = version or latest_version(project, edit_id)
+        if v is None:
+            raise HTTPException(404, "this edit has no versions yet")
+        try:
+            rid = create_render(project, edit_id, v, kind)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        job_id = submit_render(svc.executor, me, project, rid)
+        return {"project_id": project.id, "render_id": rid, "version": v, "job_id": job_id}
+
+
+@router.post("/edits/{eid}/preview", status_code=202)
+def preview(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    check(me, "renders.write", eid)
+    return _start_render(svc, me, eid, None, "preview")
+
+
+class RenderBody(BaseModel):
+    """M0 subset of ``POST /renders``. ``final`` stands in for S19's preset/resolution
+    (1080p SDR final from originals, or a 720p preview from proxies)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    edit_id: str
+    version: StrictInt | None = None
+    final: StrictBool = False
+
+
+@router.post("/renders", status_code=202)
+def start_render(body: RenderBody, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    check(me, "renders.write", body.edit_id)
+    return _start_render(svc, me, body.edit_id, body.version, "final" if body.final else "preview")
+
+
+@router.get("/projects/{pid}/renders")
+def list_renders(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    from mosaic.render.tasks import output_path
+    from mosaic.storage.models_project import Render
+
+    check(me, "renders.read", pid)
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        items = []
+        for r in s.scalars(select(Render).order_by(Render.id.desc())):
+            e = s.get(Edit, r.edit_id)
+            status = r.status
+            if status == "pending" and r.job_id is not None:
+                job = svc.store.job(r.job_id)
+                if job is not None and job.status in ("failed", "cancelled"):
+                    status = job.status  # the job ended without a result
+            items.append(
+                {
+                    "render_id": r.id,
+                    "edit_id": e.uid if e else None,
+                    "version": r.version,
+                    "kind": r.profile.get("kind"),
+                    "status": status,
+                    "job_id": r.job_id,
+                    "path": str(output_path(project.workspace, r)) if r.path else None,
+                    "metrics": r.metrics,
+                    "created_at": r.created_at,
+                }
+            )
+    return {"items": items, "next_cursor": None}

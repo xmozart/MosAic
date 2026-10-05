@@ -420,3 +420,20 @@ class EditVersion(ProjectBase):
     created_at: Mapped[str] = mapped_column(String(40))
 
     __table_args__ = (Index("ux_edit_version", "edit_id", "version", unique=True),)
+
+
+class Render(ProjectBase):
+    """A preview or final render of one edit version (ARCHITECTURE.md §10). The output file
+    lives under the workspace's ``renders/``; chunks are cached artifacts."""
+
+    __tablename__ = "render"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    edit_id: Mapped[int] = mapped_column(ForeignKey("edit.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    profile: Mapped[dict[str, Any]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(12))  # pending|done|failed
+    job_id: Mapped[int | None] = mapped_column(Integer)
+    path: Mapped[str | None] = mapped_column(Text)  # relative to the workspace
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[str] = mapped_column(String(40))
+    finished_at: Mapped[str | None] = mapped_column(String(40))

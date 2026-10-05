@@ -220,4 +220,61 @@ def report_cmd(folder: Path, edit_id: str, version: int | None, as_json: bool) -
     click.echo(json.dumps(r, indent=2, ensure_ascii=False) if as_json else report_text(r))
 
 
+@cli.command(name="render")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("edit_id", required=False)
+@click.option("--version", "version", type=int, default=None, help="Default: latest.")
+@click.option("--final", is_flag=True, help="1080p from the original files (default: preview).")
+@click.option("--lossless", is_flag=True, hidden=True, help="FFV1/PCM Matroska (tests).")
+def render_cmd(
+    folder: Path, edit_id: str | None, version: int | None, final: bool, lossless: bool
+) -> None:
+    """Render an edit (default: the most recent edit, latest version, preview)."""
+    from sqlalchemy import select
+
+    from mosaic.editing.service import EditNotFoundError, edit_ref, resolve_edit
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from mosaic.render.service import create_render, get_render, latest_version, submit_render
+    from mosaic.render.tasks import output_path
+    from mosaic.storage.models_project import Edit
+
+    control = _control()
+    project = _open(control, folder)
+    try:
+        if edit_id:
+            eid = resolve_edit(project, edit_id)
+        else:
+            with project.db.session() as s:
+                found = s.scalar(select(Edit.id).order_by(Edit.id.desc()).limit(1))
+            if found is None:
+                raise EditNotFoundError("no edits yet; run `mosaic edit` first")
+            eid = found
+        v = version or latest_version(project, eid)
+        if v is None:
+            raise EditNotFoundError(f"{edit_ref(eid)} has no versions yet")
+        kind = "final" if final else "preview"
+        rid = create_render(project, eid, v, kind, lossless)
+        job_id = submit_render(
+            LocalExecutor(JobStore(control.db)), control.local_principal, project, rid
+        )
+        click.echo(f"Render {edit_ref(eid)} v{v} ({kind}) — job {job_id}")
+        status = _follow(control, job_id)
+        r = get_render(project, rid)
+        if status != "done" or r is None or r.status != "done":
+            failed = [t.error for t in JobStore(control.db).tasks(job_id) if t.status == "failed"]
+            detail = f": {failed[0].splitlines()[0]}" if failed and failed[0] else ""
+            raise click.ClickException(f"render {status}{detail}")
+        m = r.metrics
+        click.echo(
+            f"Saved {output_path(project.workspace, r)} — {m['frames']} frames at {m['rate']}, "
+            f"{m['loudness_lufs']} LUFS, true peak {m['true_peak_dbtp']} dBTP"
+        )
+    except (EditNotFoundError, LookupError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        project.close()
+        control.db.dispose()
+
+
 cli.add_command(config_group)

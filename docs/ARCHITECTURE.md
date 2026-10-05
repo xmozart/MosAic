@@ -308,6 +308,7 @@ The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata 
   - HDR output is a later milestone.
 - **Encoders** are chosen from the capability probe (VideoToolbox, NVENC, QSV, AMF). Software encoding is used only if the user has installed an FFmpeg that provides it.
 - All FFmpeg commands come from typed builders. Command, stderr and duration are logged to the diagnostics store.
+- M0 details (cutting, audio alignment, mezzanine, loudness passes, profiles) are in ADR 0016.
 
 ## 11. AI provider layer
 

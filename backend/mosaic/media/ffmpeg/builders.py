@@ -56,6 +56,22 @@ def ffprobe_packets(path: Path, stream_index: int) -> ProbeCommand:
     )
 
 
+def ffprobe_stream_counts(path: Path) -> ProbeCommand:
+    """Per stream: packet count (frames, for intra/no-B-frame video) and duration in its
+    time base (samples, for 48 kHz audio in MOV). Used to verify rendered output."""
+    return ProbeCommand(
+        args=[
+            "-print_format",
+            "json",
+            "-count_packets",
+            "-show_entries",
+            "stream=index,codec_type,nb_read_packets,duration_ts,time_base,avg_frame_rate",
+            media_path(path),
+        ],
+        description=f"stream counts {path.name}",
+    )
+
+
 def ffprobe_frames(path: Path, stream_spec: str = "v:0") -> ProbeCommand:
     return ProbeCommand(
         args=[
