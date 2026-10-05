@@ -8,7 +8,7 @@ from mosaic.core.clock import now_iso
 from mosaic.core.principal import Principal
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
-from mosaic.media.tools import media_tools
+from mosaic.media.tools import working_h264_encoders
 from mosaic.render.plan import profile
 from mosaic.storage.models_project import EditVersion, Render
 from mosaic.storage.projects import Project
@@ -17,8 +17,7 @@ from mosaic.storage.projects import Project
 def create_render(
     project: Project, edit_id: int, version: int, kind: str, lossless: bool = False
 ) -> int:
-    _, caps = media_tools()
-    prof = profile(kind, caps.h264_encoders(), lossless)
+    prof = profile(kind, list(working_h264_encoders()), lossless)
     with project.write() as s:
         v = s.scalar(
             select(EditVersion).where(

@@ -33,7 +33,7 @@ from mosaic.media import probe as probing
 from mosaic.media.ffmpeg import builders
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.run import FFmpegError, run
-from mosaic.media.tools import media_tools
+from mosaic.media.tools import media_tools, working_h264_encoders
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream
 from mosaic.storage.projects import Project
@@ -263,10 +263,11 @@ def proxy_frame_to_source_ticks(tmap: dict[str, Any], frame: int) -> int:
 
 
 def _encoder() -> str:
-    _, caps = media_tools()
-    encoders = caps.h264_encoders()
+    encoders = working_h264_encoders()
     if not encoders:
-        raise PermanentError("no H.264 encoder available in this FFmpeg build")
+        raise PermanentError(
+            "no working H.264 encoder: this FFmpeg build has none that runs on this machine"
+        )
     return encoders[0]
 
 

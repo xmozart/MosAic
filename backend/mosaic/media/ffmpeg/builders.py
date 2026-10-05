@@ -472,6 +472,21 @@ def raw_frames(src: Path, width: int, height: int, pix_fmt: str = "rgb24") -> FF
     )
 
 
+def encoder_trial(encoder: str) -> FFmpegCommand:
+    """Encode a few black frames with ``encoder`` and discard them. A build may list an
+    encoder it cannot use here (NVENC without an NVIDIA GPU, as on CI runners)."""
+    return FFmpegCommand(
+        inputs=[InputSpec("color=c=black:s=256x144:r=30:d=0.2", [("-f", "lavfi")])],
+        outputs=[
+            OutputSpec(
+                "-",
+                [("-frames:v", 3), ("-c:v", encoder), ("-pix_fmt", "yuv420p"), ("-f", "null")],
+            )
+        ],
+        description=f"encoder trial {encoder}",
+    )
+
+
 MAX_SELECT_FRAMES = 64
 
 

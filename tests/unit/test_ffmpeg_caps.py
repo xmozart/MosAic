@@ -129,3 +129,20 @@ def test_audio_sample_count_command() -> None:
     assert "astats=measure_perchannel=none:measure_overall=Number_of_samples" in joined
     assert argv[-3:] == ["-f", "null", "-"]
     assert argv[argv.index("-loglevel") + 1] == "info"
+
+
+def test_only_encoders_that_work_are_used() -> None:
+    """CI runners list NVENC but have no NVIDIA GPU: selection is by trial encode."""
+    from pathlib import Path
+
+    from mosaic.media.ffmpeg.builders import encoder_trial
+    from mosaic.media.tools import media_tools, working_h264_encoders
+
+    argv = encoder_trial("h264_nvenc").argv(Path("/bin/ffmpeg"))
+    assert argv[argv.index("-c:v") + 1] == "h264_nvenc"
+    assert argv[-3:] == ["-f", "null", "-"]
+    _, caps = media_tools()
+    working = working_h264_encoders()
+    assert set(working) <= set(caps.h264_encoders())
+    assert list(working) == [e for e in caps.h264_encoders() if e in working]  # order kept
+    assert working, "no H.264 encoder works here"
