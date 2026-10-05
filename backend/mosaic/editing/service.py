@@ -83,7 +83,11 @@ def create_edit(
 
 
 def submit_generate(
-    executor: Executor, principal: Principal, project: Project, edit_id: int
+    executor: Executor,
+    principal: Principal,
+    project: Project,
+    edit_id: int,
+    cost_limit_usd: float | None = None,
 ) -> int:
     return executor.submit(
         principal,
@@ -91,7 +95,9 @@ def submit_generate(
             project_id=project.id,
             kind="edit",
             params={"edit_id": edit_id},
-            cost_limit_usd=job_cost_limit(principal),
+            cost_limit_usd=(
+                job_cost_limit(principal) if cost_limit_usd is None else cost_limit_usd
+            ),
             tasks=[
                 TaskSpec(
                     kind="edit.generate",

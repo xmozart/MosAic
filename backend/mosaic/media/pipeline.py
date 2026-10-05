@@ -27,7 +27,11 @@ def job_cost_limit(principal: Principal) -> float:
 
 
 def submit_analysis(
-    executor: Executor, principal: Principal, project: Project, mode: str = "balanced"
+    executor: Executor,
+    principal: Principal,
+    project: Project,
+    mode: str = "balanced",
+    cost_limit_usd: float | None = None,
 ) -> int:
     """Start an analysis run. M0 accepts only ``balanced`` (ADR 0002 M)."""
     if mode not in SUPPORTED_MODES:
@@ -40,7 +44,9 @@ def submit_analysis(
             project_id=project.id,
             kind="analysis",
             params={"mode": mode},
-            cost_limit_usd=job_cost_limit(principal),
+            cost_limit_usd=(
+                job_cost_limit(principal) if cost_limit_usd is None else cost_limit_usd
+            ),
             tasks=[
                 TaskSpec(
                     kind="analysis.scan",

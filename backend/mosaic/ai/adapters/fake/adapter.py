@@ -20,6 +20,7 @@ from mosaic.core.keys import digest
 
 PROVIDER = "fake"
 ENV_REPLAY = "MOSAIC_AI_REPLAY_DIR"
+ENV_COST = "MOSAIC_FAKE_COST_USD"  # tests only
 
 Responder = Callable[[StructuredRequest], dict[str, Any]]
 RESPONDERS: dict[str, Responder] = {}
@@ -65,7 +66,12 @@ class FakeAdapter:
         return limits(model)
 
     def cost_usd(self, model: str, tokens_in: int, tokens_out: int) -> float:
-        return 0.0
+        # Free, unless a test sets a per-call price to exercise budgets (worker
+        # subprocesses inherit the environment, not monkeypatches).
+        try:
+            return float(os.environ.get(ENV_COST, "0") or 0)
+        except ValueError:
+            return 0.0
 
     def estimate_tokens(self, request: StructuredRequest) -> tuple[int, int]:
         return estimate_text_tokens(request.system, request.user_text), request.max_tokens
@@ -158,34 +164,50 @@ def _planner(request: StructuredRequest) -> dict[str, Any]:
     return {"title": "Trip film", "beats": beats}
 
 
+def _round_robin(pool: list[str], assets: dict[str, int]) -> list[str]:
+    """One clip per recording first, then the next of each: variety, as a selector would."""
+    by_asset: dict[int, list[str]] = {}
+    for ref in pool:
+        by_asset.setdefault(assets.get(ref, 0), []).append(ref)
+    out: list[str] = []
+    while any(by_asset.values()):
+        for queue in by_asset.values():
+            if queue:
+                out.append(queue.pop(0))
+    return out
+
+
 @responder("selector")
 def _selector(request: StructuredRequest) -> dict[str, Any]:
-    """The pool in order, a few more shots than suggested, no clip used twice."""
+    """Round-robin over recordings: the first clip of each recording is essential (priority
+    5), extra clips are optional; a few more than suggested; no clip used twice."""
     speech = set(request.context.get("speech_refs", []))
+    assets: dict[str, int] = request.context.get("candidate_assets", {})
     used: set[str] = set()
     beats = []
     for pool in request.context["beat_pools"]:
-        free = [r for r in pool["pool"] if r not in used]
-        picked = free[: pool["shots"] + 2] or free[:1]
+        free = _round_robin([r for r in pool["pool"] if r not in used], assets)
+        distinct = len({assets.get(r, 0) for r in free})
+        picked = free[: max(pool["shots"] + 2, distinct)] or free[:1]
         used.update(picked)
         spare = [r for r in free if r not in picked]
-        beats.append(
-            {
-                "beat_id": pool["beat_id"],
-                "selections": [
-                    {
-                        "segment_id": r,
-                        "role": "establishing" if n == 0 else "b_roll",
-                        "priority": max(1, 5 - n),
-                        "length": "medium",
-                        "audio_intent": "dialogue" if r in speech else "natural_sound",
-                        "reason": f"Shot {n + 1} of {pool['beat_id']}.",
-                        "alternatives": [
-                            {"segment_id": a, "why_not": "Kept as a spare."} for a in spare[:1]
-                        ],
-                    }
-                    for n, r in enumerate(picked)
-                ],
-            }
-        )
+        seen_assets: set[int] = set()
+        selections = []
+        for n, r in enumerate(picked):
+            first = assets.get(r, 0) not in seen_assets
+            seen_assets.add(assets.get(r, 0))
+            selections.append(
+                {
+                    "segment_id": r,
+                    "role": "establishing" if n == 0 else "b_roll",
+                    "priority": 5 if first else max(1, 4 - n // 4),
+                    "length": "medium",
+                    "audio_intent": "dialogue" if r in speech else "natural_sound",
+                    "reason": f"Shot {n + 1} of {pool['beat_id']}.",
+                    "alternatives": [
+                        {"segment_id": a, "why_not": "Kept as a spare."} for a in spare[:1]
+                    ],
+                }
+            )
+        beats.append({"beat_id": pool["beat_id"], "selections": selections})
     return {"beats": beats}

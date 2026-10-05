@@ -11,6 +11,21 @@ from mosaic.media.ffmpeg.capabilities import FFmpegBinaries, FFmpegNotFoundError
 SHARED_MODELS = Path(platformdirs.user_data_dir("MosAic", appauthor=False)) / "models"
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Process-wide guard, before any fixture of any scope: tests never see the owner's
+    real MosAic app data, OS keychain or AI providers. Function-scoped ``_isolated_home``
+    then gives each test its own home on top of this."""
+    import tempfile
+
+    os.environ["MOSAIC_HOME"] = tempfile.mkdtemp(prefix="mosaic-test-home-")
+    os.environ.setdefault("MOSAIC_MODELS_DIR", str(SHARED_MODELS))
+    os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
+    os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:9"
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    os.environ.setdefault("MOSAIC_STT_MODEL", "small")
+    os.environ.setdefault("MOSAIC_EMBED_VARIANT", "quantized")
+
+
 @pytest.fixture(autouse=True)
 def _isolated_home(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch

@@ -77,6 +77,7 @@ def planner_context(req: EditRequest, cands: list[Candidate]) -> dict[str, Any]:
         # structured copies for validation and the offline fake adapter
         "candidate_refs": [c.ref for c in cands],
         "speech_refs": [c.ref for c in cands if c.has_speech],
+        "candidate_assets": {c.ref: c.asset_id for c in cands},
         "duration_s": req.duration_s,
     }
 
@@ -119,6 +120,7 @@ def selector_context(
         "beats": "\n\n".join(blocks),
         "beat_pools": pools,
         "speech_refs": [r for r, c in by_ref.items() if c.has_speech],
+        "candidate_assets": {r: c.asset_id for r, c in by_ref.items()},
     }
 
 

@@ -79,6 +79,13 @@ def _follow(control: ControlDB, job_id: int) -> str:
     def show(p: JobProgress) -> None:
         item = f" — {p.current_item}" if p.current_item else ""
         click.echo(f"  [{p.pct:3d}%] {p.stage or p.status} {p.done}/{p.total}{item}")
+        if p.status == "paused_cost_limit":  # not terminal: stop following, explain
+            raise click.ClickException(
+                f"job {p.job_id} paused at its AI cost limit (${p.cost_usd:.2f}). To continue, "
+                "raise `mosaic config set ai.budget.per_job_usd <usd>` and run the command "
+                "again: finished work and AI answers are reused. The paused job stays queued "
+                "until then."
+            )
 
     proc = ensure_worker(control)
     prog = wait_for_job(JobStore(control.db), job_id, show, control=control, worker=proc)

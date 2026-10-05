@@ -40,7 +40,7 @@ acceptance:
 
 ci: sync check integration acceptance
 
-eval:  # implemented in M0 step 12
+eval:  # real corpus, real AI; exits 3 at a human gate (G1/G2) with the fix
 	$(UV) run python -m mosaic.evaluation.run
 
 ffmpeg:

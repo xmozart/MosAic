@@ -4,12 +4,22 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-_(empty — the agent is working)_
+**Gate G1 (M0 step 12, `make eval`).** Everything that runs offline is done and passes `make ci`. The real-corpus evaluation needs two settings that only the owner can give:
+
+1. The corpus folder, a folder of trip folders. For the current corpus:
+   `mosaic config set eval.corpus_dir /Users/michaeldemb/Script/MosAic/Samples`
+   (Airshow and Dubai; only `.mosaic-project.json` and `MosAic/` are added inside each trip, and originals are never touched).
+2. A real AI provider, choosing one of:
+   - `mosaic config ai use claude-cli`: the installed Claude Code app and your sign-in, no API key (ADR 0014). Billed to your Claude plan.
+   - `mosaic config ai use codex-cli`: the installed Codex app and your sign-in, no API key. Billed to your ChatGPT plan.
+   - `mosaic config ai use anthropic`, then `mosaic config ai set-key --provider anthropic` (hidden prompt). Billed per token, within $5 per run and $25 per milestone.
+
+Then: `mosaic config ai test` → `make eval`. The agent resumes with the eval, the draft expectations, `docs/reports/M0.md`, ADR 0001 (findings) and gate G6.
 
 ## Current
 
 - **Milestone:** M0
-- **Step:** 12 (acceptance, eval, reports); steps 10 and 11 done; step 9 done (9a config, 9b AI layer, 9c mosaics/vision/dispositions, 9d Claude Code / Codex CLI providers at the owner's request, ADR 0014). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
+- **Step:** 12: waiting at G1 for the eval settings (acceptance suite, `make eval` runner and templates done); steps 10 and 11 done; step 9 done (9a config, 9b AI layer, 9c mosaics/vision/dispositions, 9d Claude Code / Codex CLI providers at the owner's request, ADR 0014). The owner approved the M0 plan; ADR 0002 records the decisions. ADR 0003: AI provider, key and corpus path are app settings the owner enters later via `mosaic config`; don't gate on them before step 12 needs them.
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -70,3 +80,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-04 · M0.9d · Owner request: `claude-cli` and `codex-cli` providers drive the installed Claude Code / Codex apps with the owner's sign-in (no API key) for all AI capabilities; `mosaic config ai use <provider>` presets; app-presence readiness check; real `ai test` and a real vision pass verified on the dev Mac (ADR 0014)
 - 2026-10-05 · M0.10 · Editing: request/pace/timeline rate, capped retrieval with similar-clip fallback, planner v1 + selector v1 (validated refs), deterministic solver, cut refiner (words, sentences, settle, frame grid), jump-cut fixer + backfill, critic metrics, immutable versions with JSON export, `mosaic edit`/`report`, edit API (ADR 0015)
 - 2026-10-05 · M0.11 · Render: per-event chunks (copyts trims across chapters, nearest-frame conform, tone mapping, pillarbox, gain/fades, silence fill, exact frame and sample counts), stream-copy assembly with two-pass loudnorm, preview/final/lossless profiles, chunk reuse, `mosaic render`, render API, barcode frame-accuracy checker (ADR 0016)
+- 2026-10-05 · M0.12a · Acceptance suite (every synthetic case analyze → edit → lossless render, barcode-exact; no float times; zero repeat AI calls), `make eval` runner (G1/G2 gates, budgets via job cost limits and a ledger, drafted expectations, results, rubric), paused-job handling in the CLI (ADR 0017). Stopped at G1.

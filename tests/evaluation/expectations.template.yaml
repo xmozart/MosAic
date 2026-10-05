@@ -1,0 +1,25 @@
+# Expectations for one corpus trip (EVALUATION.md §1). Copy to
+# tests/evaluation/corpus/<trip>/expectations.yaml, or let `make eval` draft one.
+trip: Example
+draft: true            # false once the owner has confirmed it (gate G6); then it blocks
+note: ""
+edit:                  # optional overrides of the trip's edit request
+  duration_s: 180
+  story: cinematic_journey
+  chronology: mostly
+must_include:          # moments the edit should contain (recall is tracked)
+  - file: GX010042.MP4
+    asset: ast_0003
+    range:
+      start: {ticks: 4026240, tb: "1/90000"}
+      end: {ticks: 4512000, tb: "1/90000"}
+    display: "00:44.7–00:50.1"
+    note: the jet flyover
+must_exclude:          # material that must never appear (zero target once confirmed)
+  - file: GX010043.MP4
+    asset: ast_0004
+    range:
+      start: {ticks: 0, tb: "1/90000"}
+      end: {ticks: 180000, tb: "1/90000"}
+    display: "00:00.0–00:02.0"
+    note: camera in pocket

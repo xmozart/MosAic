@@ -340,3 +340,17 @@ def test_normalize_percentiles_set_based_with_ties(tmp_path: Path) -> None:
     assert got["noise"] == [(3.0, 0.5)]
     assert got["freeze"] == [(1.0, None), (1.0, None)]
     p.close()
+
+
+def test_tests_never_use_the_real_app_data() -> None:
+    """pytest_configure points MOSAIC_HOME away from the owner's app data (any scope)."""
+    import os
+
+    import platformdirs
+
+    from mosaic.core.paths import app_data_dir
+
+    real = Path(platformdirs.user_data_dir("MosAic", appauthor=False)).resolve()
+    assert Path(os.environ["MOSAIC_HOME"]).resolve() != real
+    assert app_data_dir().resolve() != real
+    assert os.environ["PYTHON_KEYRING_BACKEND"] == "keyring.backends.fail.Keyring"
