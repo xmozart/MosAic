@@ -472,15 +472,22 @@ def raw_frames(src: Path, width: int, height: int, pix_fmt: str = "rgb24") -> FF
     )
 
 
+MAX_SELECT_FRAMES = 64
+
+
 def select_frames(
     src: Path, frames: Sequence[int], rate: Fraction, pix_fmt: str = "rgb24"
 ) -> FFmpegCommand:
     """Selected frame indices of a CFR proxy at full size, in order, as raw video.
 
     Seeks to the first wanted frame, then selects by output frame number relative to it.
+    FFmpeg's expression parser fails above about 100 ``eq`` terms (seen on real footage
+    as "Cannot allocate memory"), so a call takes at most ``MAX_SELECT_FRAMES``.
     """
     if not frames:
         raise ValueError("no frames selected")
+    if len(frames) > MAX_SELECT_FRAMES:
+        raise ValueError(f"select at most {MAX_SELECT_FRAMES} frames per call, got {len(frames)}")
     first = frames[0]
     rel = [f - first for f in frames]
     expr = "+".join(f"eq(n\\,{r})" for r in rel)

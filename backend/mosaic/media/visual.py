@@ -40,7 +40,7 @@ MIN_SHOT = Fraction(1, 2)
 FORCED_MAX_SHOT = Fraction(60)
 DUP_HAMMING = 6
 THUMB_WIDTH = 640
-BATCH = 120
+BATCH = 48  # sample frames per FFmpeg select call (≤ builders.MAX_SELECT_FRAMES)
 NOT_NORMALIZED = ("freeze",)  # flags, not measurements
 VISUAL_METRICS = (
     "sharpness",

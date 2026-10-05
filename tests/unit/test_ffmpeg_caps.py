@@ -98,3 +98,20 @@ def test_audio_pcm_and_loglevel_argv() -> None:
     assert argv[argv.index("-loglevel") + 1] == "error"
     measure = builders.ebur128_measure(Path("/x/p.mp4")).argv(Path("ff"))
     assert measure[measure.index("-loglevel") + 1] == "info"
+
+
+def test_select_frames_stays_under_the_expression_limit() -> None:
+    """Real footage hit FFmpeg's expression limit with 120 terms (M0 step 12)."""
+    from fractions import Fraction
+    from pathlib import Path
+
+    import pytest
+
+    from mosaic.media import visual
+    from mosaic.media.ffmpeg.builders import MAX_SELECT_FRAMES, select_frames
+
+    assert visual.BATCH <= MAX_SELECT_FRAMES
+    cmd = select_frames(Path("/x.mp4"), list(range(0, 64 * 90, 90)), Fraction(30))
+    assert cmd.description.startswith("select 64 frames")
+    with pytest.raises(ValueError, match="at most 64"):
+        select_frames(Path("/x.mp4"), list(range(0, 65 * 90, 90)), Fraction(30))
