@@ -17,13 +17,14 @@ CAPABILITIES = (
     "selector",
     "critic",
     "reviewer",  # L3 Thorough deep review (ANALYSIS_MODES.md)
+    "summarizer",  # day and trip summaries (ARCHITECTURE.md §8 stage 14)
     "transcriber",
     "embedder",
 )
-CLOUD_CAPABILITIES = ("vision", "planner", "selector", "critic", "reviewer")
+CLOUD_CAPABILITIES = ("vision", "planner", "selector", "critic", "reviewer", "summarizer")
 # Cloud capabilities added after M0: the only ones that may inherit an owner's single
 # provider choice made before they existed (ADR 0019). Extend when adding one.
-LATER_CAPABILITIES = ("reviewer",)
+LATER_CAPABILITIES = ("reviewer", "summarizer")
 
 # Which capabilities each provider's adapter can serve. A provider serves VisionAnalyzer
 # only if it supports image input and structured output (ADR 0003).

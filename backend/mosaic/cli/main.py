@@ -456,11 +456,22 @@ def _save_context(folder: Path, data: object, source: Literal["user", "ai_parsed
     except ValidationError as exc:
         msgs = "; ".join(f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())
         raise click.ClickException(f"invalid trip context: {msgs}") from None
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from mosaic.library.summaries import submit_summaries
+
     control = _control()
     project = _open(control, folder)
     try:
         with project.write() as s:
-            return save(s, ctx, source)
+            rev = save(s, ctx, source)
+        # A context change re-runs summaries only (PRODUCT.md §3).
+        job = submit_summaries(
+            LocalExecutor(JobStore(control.db)), control.local_principal, project
+        )
+        click.echo(f"Refreshing summaries with the new context (job {job})")
+        _follow(control, job)
+        return rev
     finally:
         project.close()
         control.db.dispose()
@@ -560,6 +571,56 @@ def context_clear(folder: Path) -> None:
     """Remove the trip context (edits then work without it)."""
     rev = _save_context(folder, {}, "user")
     click.echo(f"Trip context cleared (revision {rev}).")
+
+
+@cli.command()
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--level",
+    type=click.Choice(["trip", "day", "scene", "shot"]),
+    default="day",
+    show_default=True,
+    help="day prints the trip summary, then each day.",
+)
+def summary(folder: Path, level: str) -> None:
+    """Print the trip's summaries (written during analysis)."""
+    from sqlalchemy import select
+
+    from mosaic.storage.models_project import Summary
+
+    levels = ["trip", "day"] if level == "day" else [level]
+    control = _control()
+    project = _open(control, folder)
+    printed = 0
+    try:
+        with project.db.session() as s:
+            q = (
+                select(Summary)
+                .where(Summary.level.in_(levels))
+                .order_by(Summary.level.desc(), Summary.ref)
+                .execution_options(yield_per=500)  # shots can number tens of thousands
+            )
+            for r in s.scalars(q):
+                printed += 1
+                _print_summary(r)
+    finally:
+        project.close()
+        control.db.dispose()
+    if not printed:
+        click.echo("No summaries yet: run an analysis first.")
+
+
+def _print_summary(r: Any) -> None:
+    if r.level == "trip":
+        name = "Trip"
+    elif r.level == "day":
+        name = f"Day {r.ref}" if r.ref else "Undated"
+    else:
+        name = f"{r.level} {r.ref}"
+    themes = ", ".join(r.data.get("themes", []))
+    click.echo(f"{name}: {r.text}" + (f"\n  themes: {themes}" if themes else ""))
+    if r.data.get("highlights"):
+        click.echo(f"  highlights: {', '.join(r.data['highlights'])}")
 
 
 cli.add_command(config_group)

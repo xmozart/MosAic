@@ -40,6 +40,11 @@ provider = "anthropic"
 model = "claude-sonnet-5-5"
 mode = "cloud"
 
+[providers.summarizer]  # day and trip summaries: short text, an economical model
+provider = "anthropic"
+model = "claude-haiku-4-5"
+mode = "cloud"
+
 [providers.transcriber]
 provider = "faster-whisper"
 model = "medium"
@@ -53,6 +58,7 @@ mode = "local"
 # `mosaic config ai use <preset>`: provider and model per AI capability in one step.
 [presets.anthropic]
 reviewer = "claude-sonnet-5-5"
+summarizer = "claude-haiku-4-5"
 vision = "claude-haiku-4-5"
 planner = "claude-sonnet-5-5"
 selector = "claude-sonnet-5-5"
@@ -60,6 +66,7 @@ critic = "claude-sonnet-5-5"
 
 [presets.claude-cli]
 reviewer = "claude-sonnet-5-5"
+summarizer = "claude-haiku-4-5"
 vision = "claude-haiku-4-5"
 planner = "claude-sonnet-5-5"
 selector = "claude-sonnet-5-5"
@@ -67,6 +74,7 @@ critic = "claude-sonnet-5-5"
 
 [presets.codex-cli]
 reviewer = "gpt-5.5"
+summarizer = "gpt-5.5"
 vision = "gpt-5.5"
 planner = "gpt-5.5"
 selector = "gpt-5.5"

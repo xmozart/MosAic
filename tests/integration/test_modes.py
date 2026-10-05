@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from mosaic.ai.adapters.fake import adapter as fake
 from mosaic.core.modes import PRESETS
@@ -37,6 +37,7 @@ from mosaic.storage.models_project import (
     Mosaic,
     SampleFrame,
     Shot,
+    Summary,
 )
 from tests.support.media import decode_barcodes, nearest_index, source_frame_times
 from tests.support.runner import run_job
@@ -195,9 +196,13 @@ def test_quick_to_thorough_on_one_day_reuses_l0_l1(quick: tuple[Any, Any, int]) 
     assert run.l2_assets == []
     assert run.candidates == candidates
     assert run_job(control, run.job, timeout=900) == "done"
-    assert fake.CALLS[calls:] == ["review"] * candidates, "only L3 calls, one per candidate"
+    new = fake.CALLS[calls:]
+    analysis = [c for c in new if c != "summary"]
+    assert analysis == ["review"] * candidates, "only L3 calls, one per candidate"
+    # The summaries refresh after the reviews: here two newly dated days and the trip.
+    assert new.count("summary") == 3
     kinds = {t.kind for t in JobStore(control.db).tasks(run.job)}
-    assert kinds == {"library.review", "library.dispositions"}
+    assert kinds == {"library.review", "library.dispositions", "library.summaries"}
     with project.db.session() as s:
         after = set(
             s.execute(select(Artifact.kind, Artifact.key).where(Artifact.kind.in_(L01_KINDS)))
@@ -205,6 +210,9 @@ def test_quick_to_thorough_on_one_day_reuses_l0_l1(quick: tuple[Any, Any, int]) 
         reviewed = set(s.scalars(select(DeepReview.segment_id)))
     assert after == before, "no L0/L1 artifact was added or replaced"
     assert reviewed == {i for ids in plan.values() for i in ids}, "day 1 was not reviewed"
+    with project.db.session() as s:
+        day_refs = set(s.scalars(select(Summary.ref).where(Summary.level == "day")))
+    assert day_refs == {1, 2}, "summaries number days as the editor does"
 
 
 def test_silent_camera_proxy_is_not_used(quick: tuple[Any, Any, int]) -> None:
@@ -235,10 +243,14 @@ def test_thorough_run_adds_the_l3_stage(
     """A whole-project Thorough run re-analyzes at its density, then reviews candidates."""
     project, control, _ = quick
     monkeypatch.setenv("MOSAIC_STT_MODEL", "small")  # CI never downloads large-v3
+    calls = len(fake.CALLS)
     job = submit_analysis(
         LocalExecutor(JobStore(control.db)), control.local_principal, project, "thorough"
     )
     assert run_job(control, job, timeout=1800) == "done"
+    with project.db.session() as s:
+        days = s.scalar(select(func.count(Summary.id)).where(Summary.level == "day")) or 0
+    assert fake.CALLS[calls:].count("summary") == days + 1, "each day and the trip, once"
     tasks = JobStore(control.db).tasks(job)
     deepen = [t for t in tasks if t.kind == "analysis.deepen"]
     assert len(deepen) == 1
@@ -247,6 +259,8 @@ def test_thorough_run_adds_the_l3_stage(
     assert reviews
     dispositions = [t for t in tasks if t.kind == "library.dispositions"]
     assert len(dispositions) == 2, "before L3 (candidates) and after it (merge)"
+    summaries = {t.status for t in tasks if t.kind == "library.summaries"}
+    assert summaries == {"skipped", "done"}, "the project stage defers to the review chain"
     with project.db.session() as s:
         sheets = list(s.scalars(select(Mosaic)))
     assert {(m.cols, m.rows) for m in sheets} == {(4, 3)}

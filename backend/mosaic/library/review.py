@@ -40,6 +40,7 @@ from mosaic.jobs.model import ResourceClass, TaskSpec
 from mosaic.jobs.registry import SkipTask, task
 from mosaic.library.context import load as load_context
 from mosaic.library.dispositions import effective
+from mosaic.library.summaries import SUMMARIES_STAGE, summaries_spec
 from mosaic.media import inventory
 from mosaic.media.ffmpeg.builders import still_frame
 from mosaic.media.ffmpeg.render import SEEK_MARGIN
@@ -400,6 +401,8 @@ def review_tasks(plan: dict[int, list[int]]) -> list[TaskSpec]:
         for aid, ids in plan.items()
     ]
     tasks.append(_dispositions(deps=[*range(len(tasks))]))
+    # Reviews change descriptions and interest: refresh the summaries that use them.
+    tasks.append(summaries_spec(deps=[len(tasks) - 1]))
     return tasks
 
 
@@ -479,6 +482,8 @@ def submit_deepen(
     tasks: list[TaskSpec] = []
     if missing:
         tasks = l2_tasks(missing)
+        if target == "balanced":
+            tasks.append(summaries_spec(deps=[len(tasks) - 1]))
         if target == "thorough":
             tasks.append(
                 TaskSpec(
@@ -519,7 +524,8 @@ def deepen_stage(ctx: TaskContext) -> dict[str, Any]:
     with ctx.project.db.session() as s:
         plan, _ = plan_deepen(s, DeepenScope.from_params(ctx.params))
     if not plan:
-        raise SkipTask("no candidates")
+        ctx.spawn([summaries_spec()])  # nothing to review: summaries still end the chain
+        return {"candidates": 0, "assets": 0}
     ctx.spawn(review_tasks(plan))
     return {"candidates": sum(len(v) for v in plan.values()), "assets": len(plan)}
 
@@ -529,3 +535,4 @@ inventory.PROJECT_STAGES.append(
         "deep review", "analysis.deepen", ResourceClass.CPU, after=("dispositions",), level=3
     )
 )
+inventory.PROJECT_STAGES.append(SUMMARIES_STAGE)

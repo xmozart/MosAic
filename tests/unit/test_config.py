@@ -75,6 +75,7 @@ def test_provider_profiles() -> None:
         "selector",
         "critic",
         "reviewer",  # M1: L3 review is a cloud capability too
+        "summarizer",  # M1: day and trip summaries
     }
     assert provs["transcriber"].choice.provider == "faster-whisper"
     assert (

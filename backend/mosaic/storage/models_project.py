@@ -19,6 +19,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -473,3 +474,21 @@ class AssetStage(ProjectBase):
     asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), primary_key=True)
     stage: Mapped[str] = mapped_column(String(16), primary_key=True)
     key: Mapped[str] = mapped_column(String(128))
+
+
+class Summary(ProjectBase):
+    """Hierarchical summaries (ARCHITECTURE.md §8 stage 14): ``shot`` (ref = shot id),
+    ``scene`` (one recording; ref = asset id), ``day`` (ref = trip day, 0 = undated) and
+    ``trip`` (ref = 0). Shot and scene summaries are composed from the observations; day
+    and trip summaries are written by the summarizer model with the trip context."""
+
+    __tablename__ = "summary"
+    __table_args__ = (UniqueConstraint("level", "ref"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    level: Mapped[str] = mapped_column(String(8))
+    ref: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)  # themes, highlights, span
+    key: Mapped[str] = mapped_column(String(128))  # everything the summary depends on
+    context_digest: Mapped[str] = mapped_column(String(16))
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))

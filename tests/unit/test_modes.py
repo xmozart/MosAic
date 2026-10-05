@@ -125,13 +125,15 @@ def test_stage_selection_by_level() -> None:
     assert balanced == stages(None)
     assert "deep review" not in balanced
     assert {"mosaics", "vision", "dispositions"} <= set(balanced)
+    assert balanced[-2:] == ["dispositions", "summaries"]
     thorough = stages(PRESETS["thorough"])
-    assert thorough[-1] == "deep review"
-    assert thorough.index("dispositions") < thorough.index("deep review")
+    # Summaries come last: a summarizer failure never cancels an analysis stage.
+    assert thorough[-3:] == ["dispositions", "deep review", "summaries"]
     no_l2 = stages(resolve("custom", {"l2": False}))
     assert "mosaics" not in no_l2
     assert "vision" not in no_l2
     assert "dispositions" in no_l2  # rule dispositions are L1
+    assert "summaries" not in no_l2
 
 
 def test_threshold_detector_labels_its_shots() -> None:

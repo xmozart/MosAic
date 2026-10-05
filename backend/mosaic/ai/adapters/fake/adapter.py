@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -140,6 +141,17 @@ def _vision(request: StructuredRequest) -> dict[str, Any]:
             }
             for seg in request.context["segments"]
         ]
+    }
+
+
+@responder("summary")
+def _summary(request: StructuredRequest) -> dict[str, Any]:
+    """Echo the level; the first references in the notes as highlights."""
+    refs = list(dict.fromkeys(re.findall(r"seg_\d{6}", request.context["items"])))
+    return {
+        "summary": f"Summary of {request.context['level']}.",
+        "themes": ["travel"],
+        "highlights": refs[:3],
     }
 
 

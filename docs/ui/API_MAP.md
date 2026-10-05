@@ -39,7 +39,8 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/projects/{pid}/inventory` (cameras, day histogram, needs-attention, grouping notes) | S5 |
 | POST | `/projects/{pid}/cloud-files/download` (job) | S5 |
 | GET/PUT | `/projects/{pid}/devices` (clock offsets, LUT path) · GET `/devices/suggestions` (evidence pairs) | S6, S21 |
-| GET/PUT | `/projects/{pid}/trip-context` · POST `/trip-context/parse` `{text}` → proposed structure | S7 |
+| GET/PUT | `/projects/{pid}/trip-context` (PUT returns `summaries_job`: a context change re-runs summaries only) · POST `/trip-context/parse` `{text}` → proposed structure | S7 |
+| GET | `/projects/{pid}/summaries?level=day\|trip\|scene\|shot&after_ref=&limit=` (`day`: the trip plus each day; scene and shot are paged by ref, limit ≤ 1000) → `{items: [{level, ref, text, themes?, highlights, subjects?, span?}], next_after_ref}` (ADR 0021) | S10, S16 |
 | GET/PATCH | `/projects/{pid}/settings` (effective values with source) | S21 |
 | GET | `/projects/{pid}/storage` · POST `/storage/clear-cache` | S21 |
 | DELETE | `/projects/{pid}/workspace` (removes MosAic data; originals untouched) | S21 |
