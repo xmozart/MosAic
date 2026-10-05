@@ -54,8 +54,9 @@ def corpus_dir(tmp_path_factory: pytest.TempPathFactory, ffmpeg_bin: FFmpegBinar
 
 
 @pytest.fixture(scope="session")
-def analyzed_corpus(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):  # type: ignore[no-untyped-def]
-    """A copy of the synthetic corpus, analyzed once per session (read-only for tests)."""
+def analyzed_session(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):  # type: ignore[no-untyped-def]
+    """A copy of the synthetic corpus analyzed once per session, with its control DB.
+    Analysis rows are read-only for tests; edit tests add edits."""
     import shutil
 
     from mosaic.jobs.executor import LocalExecutor
@@ -75,10 +76,15 @@ def analyzed_corpus(corpus_dir: Path, tmp_path_factory: pytest.TempPathFactory):
         root = tmp_path_factory.mktemp("analyzed") / "trip"
         shutil.copytree(corpus_dir, root)
         control = ControlDB()
-        # Vision runs through the offline fake adapter (ADR 0002 H); never a real provider.
-        ConfigService(control).set_provider(control.local_principal, "vision", "fake", "fake")
+        # All AI runs through the offline fake adapter (ADR 0002 H); never a real provider.
+        ConfigService(control).set_provider(control.local_principal, "all", "fake", "fake")
         project = init_project(control, control.local_principal, root)
         job = submit_analysis(LocalExecutor(JobStore(control.db)), control.local_principal, project)
         assert run_job(control, job, timeout=1800) == "done"
-        yield project
+        yield project, control
         project.close()
+
+
+@pytest.fixture(scope="session")
+def analyzed_corpus(analyzed_session):  # type: ignore[no-untyped-def]
+    return analyzed_session[0]

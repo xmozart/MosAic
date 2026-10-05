@@ -193,7 +193,7 @@ def effective(session: Session, segment_ids: list[int]) -> dict[int, Disposition
 # ------------------------------------------------------------------------ task
 
 
-def _facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
+def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
     assert asset.tb is not None
     tb = parse_rational(asset.tb)
     asset_seconds = Fraction(asset.duration_ticks or 0) * tb
@@ -296,7 +296,7 @@ def dispositions_task(ctx: TaskContext) -> dict[str, Any]:
         with ctx.project.db.session() as s:
             asset = s.get(Asset, asset_id)
             assert asset is not None
-            facts = _facts(s, asset)
+            facts = segment_facts(s, asset)
             segments = {
                 g.id: (g.start_ticks, g.end_ticks)
                 for g in s.scalars(select(Segment).where(Segment.asset_id == asset_id))

@@ -382,3 +382,41 @@ class Disposition(ProjectBase):
     updated_at: Mapped[str] = mapped_column(String(40))
 
     __table_args__ = (Index("ux_disposition_segment_source", "segment_id", "source", unique=True),)
+
+
+# ------------------------------------------------------------------------ editing
+
+
+class Edit(ProjectBase):
+    """A named edit: a request and its immutable versions (ARCHITECTURE.md §13)."""
+
+    __tablename__ = "edit"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(26), unique=True)  # ULID: the API's edit id
+    name: Mapped[str] = mapped_column(String(120))
+    request: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[str] = mapped_column(String(40))
+
+
+class EditVersion(ProjectBase):
+    """An immutable edit snapshot. ``timeline`` holds integer-frame events with integer
+    source ticks (invariant 3); the JSON export is derived from this row (invariant 7)."""
+
+    __tablename__ = "edit_version"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    edit_id: Mapped[int] = mapped_column(ForeignKey("edit.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    parent_version: Mapped[int | None] = mapped_column(Integer)
+    creator: Mapped[str] = mapped_column(String(8))  # user|ai|system (ARCHITECTURE.md §13)
+    reason: Mapped[str] = mapped_column(String(200))
+    key: Mapped[str] = mapped_column(String(128), index=True)  # inputs + config + versions
+    request: Mapped[dict[str, Any]] = mapped_column(JSON)
+    rate: Mapped[str] = mapped_column(String(32))
+    beats: Mapped[list[Any]] = mapped_column(JSON)
+    timeline: Mapped[dict[str, Any]] = mapped_column(JSON)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON)
+    findings: Mapped[list[Any]] = mapped_column(JSON)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+    created_at: Mapped[str] = mapped_column(String(40))
+
+    __table_args__ = (Index("ux_edit_version", "edit_id", "version", unique=True),)

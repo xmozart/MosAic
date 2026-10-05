@@ -117,4 +117,107 @@ def analyze(folder: Path, mode: str) -> None:
     click.echo("Analysis complete.")
 
 
+@cli.command()
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--duration", type=int, required=True, help="Target length in seconds.")
+@click.option("--story", default="cinematic_journey", show_default=True)
+@click.option(
+    "--chronology",
+    type=click.Choice(["strict", "mostly", "thematic", "story"]),
+    default="mostly",
+    show_default=True,
+)
+@click.option(
+    "--pace",
+    type=click.Choice(["very_slow", "slow", "balanced", "energetic", "fast", "very_fast"]),
+    default="balanced",
+    show_default=True,
+)
+@click.option("--instructions", default="", help="Free-text instructions for the editor.")
+@click.option("--fps", default=None, help="Timeline rate, e.g. 29.97 (default: dominant source).")
+@click.option("--variant", type=int, default=0, help="A different take of the same request.")
+def edit(
+    folder: Path,
+    duration: int,
+    story: str,
+    chronology: str,
+    pace: str,
+    instructions: str,
+    fps: str | None,
+    variant: int,
+) -> None:
+    """Generate an edit of FOLDER's analyzed footage."""
+    from pydantic import ValidationError
+
+    from mosaic.editing.request import EditRequest
+    from mosaic.editing.service import (
+        create_edit,
+        edit_ref,
+        get_version,
+        report,
+        report_text,
+        submit_generate,
+    )
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+
+    try:
+        request = EditRequest(
+            duration_s=duration,
+            story=story,
+            chronology=chronology,
+            pace=pace,
+            instructions=instructions,
+            fps=fps,
+            variant=variant,
+        )
+    except ValidationError as exc:
+        msgs = "; ".join(e["msg"] for e in exc.errors())
+        raise click.ClickException(msgs) from None
+    control = _control()
+    project = _open(control, folder)
+    try:
+        edit_id = create_edit(project, request, control, control.local_principal)
+        store = JobStore(control.db)
+        job_id = submit_generate(LocalExecutor(store), control.local_principal, project, edit_id)
+        click.echo(f"Edit {edit_ref(edit_id)} — job {job_id}")
+        status = _follow(control, job_id)
+        if status != "done":
+            failed = [t.error for t in store.tasks(job_id) if t.status == "failed"]
+            detail = f": {failed[0].splitlines()[0]}" if failed and failed[0] else ""
+            raise click.ClickException(f"edit {status}{detail}")
+        v = get_version(project, edit_id)
+        click.echo(report_text(report(project, edit_id, v.version)).split("\n\n", 1)[0])
+        click.echo(
+            f"Saved {edit_ref(edit_id)} v{v.version}. "
+            f"Details: mosaic report {folder} {edit_ref(edit_id)}"
+        )
+    finally:
+        project.close()
+        control.db.dispose()
+
+
+@cli.command(name="report")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("edit_id")
+@click.option("--version", "version", type=int, default=None)
+@click.option("--json", "as_json", is_flag=True, help="Print the full JSON report.")
+def report_cmd(folder: Path, edit_id: str, version: int | None, as_json: bool) -> None:
+    """Selection and rejection report with metrics for EDIT_ID (edt_0001 or its id)."""
+    import json
+
+    from mosaic.editing.service import EditNotFoundError, report, report_text, resolve_edit
+
+    control = _control()
+    project = _open(control, folder)
+    try:
+        r = report(project, resolve_edit(project, edit_id), version)
+    except EditNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        project.close()
+        control.db.dispose()
+    click.echo(json.dumps(r, indent=2, ensure_ascii=False) if as_json else report_text(r))
+
+
 cli.add_command(config_group)

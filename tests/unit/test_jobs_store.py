@@ -242,3 +242,28 @@ def test_stage_counts(env: tuple[ControlDB, JobStore]) -> None:
         "probe": {"total": 2, "done": 1, "failed": 0},
         "proxy": {"total": 1, "done": 0, "failed": 0},
     }
+
+
+def test_leasing_a_task_sets_the_job_stage() -> None:
+    """A task's sub-stage label (set_stage) never outlives it: the next lease resets it."""
+    control = ControlDB()
+    store = JobStore(control.db)
+    job = store.create_job(
+        control.local_principal,
+        JobSpec(
+            "p",
+            "analysis",
+            tasks=[
+                TaskSpec("a", "visual", resource_class=ResourceClass.CPU),
+                TaskSpec("b", "vision", resource_class=ResourceClass.CPU),
+            ],
+        ),
+    )
+    first = store.lease("w", "cpu")
+    assert first is not None
+    store.set_stage(job, "motion")
+    second = store.lease("w", "cpu")
+    assert second is not None
+    j = store.job(job)
+    assert j is not None
+    assert j.stage == second.stage

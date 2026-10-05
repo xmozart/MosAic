@@ -188,6 +188,8 @@ class JobStore:
                 .where(Job.id == row.job_id, Job.status == JobStatus.PENDING.value)
                 .values(status=JobStatus.RUNNING.value, updated_at=now_iso())
             )
+            # The stage shown is the latest started task's; it may refine it (set_stage).
+            s.execute(update(Job).where(Job.id == row.job_id).values(stage=row.stage))
             return LeasedTask(
                 row.id,
                 row.job_id,

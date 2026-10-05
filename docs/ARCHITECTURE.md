@@ -248,6 +248,8 @@ AI critic (optional)  → story coherence, opening/ending strength; outputs stru
 Edit version (immutable) + proxy preview render
 ```
 
+Concrete M0 choices (pace table, retrieval cap, solver, refiner, jump-cut handling and metric definitions) are in ADR 0015.
+
 The AI never emits `timeline_in` or `timeline_out`. Selector output example:
 
 ```json

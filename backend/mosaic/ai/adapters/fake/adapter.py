@@ -135,3 +135,57 @@ def _vision(request: StructuredRequest) -> dict[str, Any]:
             for seg in request.context["segments"]
         ]
     }
+
+
+@responder("planner")
+def _planner(request: StructuredRequest) -> dict[str, Any]:
+    """Chronological beats over consecutive slices of the candidates, equal shares."""
+    refs: list[str] = list(request.context["candidate_refs"])
+    k = max(1, min(2 if request.context["duration_s"] <= 60 else 3, len(refs)))
+    size = -(-len(refs) // k)
+    shares = [100 // k] * k
+    shares[-1] += 100 - sum(shares)
+    beats = [
+        {
+            "beat_id": f"b{i + 1}",
+            "title": f"Part {i + 1}",
+            "intent": f"Part {i + 1} of the trip, in order.",
+            "share_percent": shares[i],
+            "candidates": refs[i * size : (i + 1) * size] or refs[-1:],
+        }
+        for i in range(k)
+    ]
+    return {"title": "Trip film", "beats": beats}
+
+
+@responder("selector")
+def _selector(request: StructuredRequest) -> dict[str, Any]:
+    """The pool in order, a few more shots than suggested, no clip used twice."""
+    speech = set(request.context.get("speech_refs", []))
+    used: set[str] = set()
+    beats = []
+    for pool in request.context["beat_pools"]:
+        free = [r for r in pool["pool"] if r not in used]
+        picked = free[: pool["shots"] + 2] or free[:1]
+        used.update(picked)
+        spare = [r for r in free if r not in picked]
+        beats.append(
+            {
+                "beat_id": pool["beat_id"],
+                "selections": [
+                    {
+                        "segment_id": r,
+                        "role": "establishing" if n == 0 else "b_roll",
+                        "priority": max(1, 5 - n),
+                        "length": "medium",
+                        "audio_intent": "dialogue" if r in speech else "natural_sound",
+                        "reason": f"Shot {n + 1} of {pool['beat_id']}.",
+                        "alternatives": [
+                            {"segment_id": a, "why_not": "Kept as a spare."} for a in spare[:1]
+                        ],
+                    }
+                    for n, r in enumerate(picked)
+                ],
+            }
+        )
+    return {"beats": beats}
