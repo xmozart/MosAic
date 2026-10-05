@@ -192,3 +192,21 @@ def score(
         "must_exclude_violations": len(bad),
         "violations": [f"{m.file} {m.note}" for m in bad],
     }
+
+
+def subject_shares(
+    expect: dict[str, Any], events: list[dict[str, Any]], descriptions: dict[str, str]
+) -> dict[str, float]:
+    """Share of edit frames whose clip description mentions each configured subject
+    (``subjects: {name: [keywords]}``); a clip can count for several subjects."""
+    subjects: dict[str, list[str]] = expect.get("subjects") or {}
+    total = sum(e["timeline_out"]["frames"] - e["timeline_in"]["frames"] for e in events) or 1
+    out: dict[str, float] = {}
+    for name, words in subjects.items():
+        hit = 0
+        for e in events:
+            text = descriptions.get(e["segment_id"], "").lower()
+            if any(w.lower() in text for w in words):
+                hit += e["timeline_out"]["frames"] - e["timeline_in"]["frames"]
+        out[name] = round(hit / total, 3)
+    return out

@@ -211,3 +211,17 @@ def _selector(request: StructuredRequest) -> dict[str, Any]:
             )
         beats.append({"beat_id": pool["beat_id"], "selections": selections})
     return {"beats": beats}
+
+
+@responder("context_parse")
+def _context_parse(request: StructuredRequest) -> dict[str, Any]:
+    """Keeps the notes as free notes; never invents names, dates or places."""
+    return {
+        "trip_name": "",
+        "home_timezone": None,
+        "days": [],
+        "people": [],
+        "must_include": [],
+        "avoid": [],
+        "free_notes": str(request.context.get("text", ""))[:300],
+    }

@@ -1,0 +1,6 @@
+{
+  "trip_name": "Airshow",
+  "free_notes": "An airshow. The aircraft are the main subject of the film and the F-35 demonstration is the highlight. Crowd and spectator shots are only brief context.",
+  "must_include": ["the F-35 demonstration"],
+  "avoid": ["long or repeated crowd and spectator shots"]
+}

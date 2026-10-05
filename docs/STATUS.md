@@ -27,6 +27,25 @@ _(empty — the agent is working on M1)_
 - [x] 11. Render: chunks, conform, tone mapping, pillarbox, silence, loudnorm, encoder selection
 - [ ] 12. Acceptance in `make ci`, `make eval` on the corpus, draft expectations, reports, findings → gate G6
 
+## M1 plan
+
+Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over crowds), then the rest of the milestone.
+
+- [ ] 1. Trip context: `trip_context` table; `mosaic context` CLI (import JSON or free text, AI-parsed and shown for confirmation); context in planner/selector v2 and in summaries; names allowed only from context (invariant 16)
+- [ ] 2. Thorough L3 review: full-resolution single frames of candidate segments (sky/aircraft, MAYBE "not usable", top candidates), context-aware, with the `reviewer` capability (Sonnet 5.5); deepening scoped to project, day or selection; cost ceiling with pause → raise → resume (acceptance 5, 7)
+- [ ] 3. Airshow re-eval with context + Thorough → compare against M0 (aircraft share, crowd share, F-35 coverage)
+- [ ] 4. Analysis modes Quick/Balanced/Thorough/Custom (ANALYSIS_MODES.md): per-mode detectors, tile density, LRF proxies in Quick, estimates
+- [ ] 5. Hierarchical summaries shot → day → trip (context changes re-run summaries only)
+- [ ] 6. Storage placement split/external (macOS and Linux detection), artifact store relocation, DB snapshots via the backup API, cloud placeholders, read-only folders (acceptance 1, 2)
+- [ ] 7. Project lifecycle: reopen, relink by fingerprint, new/missing/changed files, lease locks with read-only open (acceptance 3)
+- [ ] 8. Camera profiles insta360, nikon, dji and the unsupported-reason catalog (acceptance 4)
+- [ ] 9. Photos: HEIC/JPEG/NEF/DNG ingest, Live Photo pairing, bursts, photo+video moments, photos in mosaics and vision (licence-clean decoders)
+- [ ] 10. Clock correction (per-device offsets, CLI) and colour: per-profile hints, user LUTs for log sources
+- [ ] 11. Hybrid search: SigLIP text→image + FTS5, RRF; API and CLI
+- [ ] 12. Hardware probe and benchmark → estimates; worker pool resource classes and per-provider rate limits
+- [ ] 13. Scale: the 40-hour synthetic project, bounded memory, list API < 300 ms (acceptance 6)
+- [ ] 14. M1 acceptance suite, `make eval`, `docs/reports/M1.md`; then continue to M2
+
 ## Carry-forward notes
 
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.

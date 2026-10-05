@@ -19,8 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from mosaic.ai.client import AIClient
-from mosaic.ai.prompts.planner.schema_v1 import Output as PlanOut
-from mosaic.ai.prompts.selector.schema_v1 import Output as SelectOut
+from mosaic.ai.prompts.planner.schema_v2 import Output as PlanOut
+from mosaic.ai.prompts.selector.schema_v2 import Output as SelectOut
 from mosaic.ai.registry import task_check_ready, task_choice
 from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
@@ -36,6 +36,8 @@ from mosaic.editing.request import (
 from mosaic.editing.retrieval import Candidate, retrieve
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
+from mosaic.library.context import TripContext
+from mosaic.library.context import load as load_context
 from mosaic.storage import provenance
 from mosaic.storage.artifacts import dumps_json
 from mosaic.storage.config import NotConfiguredError
@@ -51,8 +53,8 @@ from mosaic.storage.models_project import (
 )
 
 EDIT_VERSION = "edit/1"  # solver + refiner + critic algorithm version
-PLANNER = ("planner", 1)
-SELECTOR = ("selector", 1)
+PLANNER = ("planner", 2)  # v2: trip context (M1)
+SELECTOR = ("selector", 2)
 POOL_FACTOR = 3
 
 
@@ -66,9 +68,12 @@ def request_summary(req: EditRequest) -> str:
     )
 
 
-def planner_context(req: EditRequest, cands: list[Candidate]) -> dict[str, Any]:
+def planner_context(
+    req: EditRequest, cands: list[Candidate], trip: TripContext | None = None
+) -> dict[str, Any]:
     days = sorted({c.day for c in cands if c.day})
     return {
+        "trip_context": (trip or TripContext()).prompt_text(),
         "request": request_summary(req),
         "instructions": req.instructions or "(none)",
         "days": ", ".join(f"day {d}" for d in days) or "unknown",
@@ -98,7 +103,11 @@ def check_plan(answer: PlanOut, refs: set[str]) -> list[str]:
 
 
 def selector_context(
-    req: EditRequest, plan: PlanOut, by_ref: dict[str, Candidate], pace_pref_s: Fraction
+    req: EditRequest,
+    plan: PlanOut,
+    by_ref: dict[str, Candidate],
+    pace_pref_s: Fraction,
+    trip: TripContext | None = None,
 ) -> dict[str, Any]:
     total = sum(b.share_percent for b in plan.beats) or 1
     blocks = []
@@ -114,6 +123,7 @@ def selector_context(
             f"Target: about {round(seconds)} s, about {shots} shots\nPool:\n{lines}"
         )
     return {
+        "trip_context": (trip or TripContext()).prompt_text(),
         "request": request_summary(req),
         "instructions": req.instructions or "(none)",
         "pace": f"{req.pace} (preferred shot about {float(pace_pref_s):.1f} s)",
@@ -300,6 +310,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s)
         )
         digest = _inputs_digest(s, cands)
+        trip = load_context(s)
         rejected = {
             sid
             for sid in s.scalars(
@@ -328,7 +339,12 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     key = artifact_key(
         "edit",
         project_id=ctx.project.id,
-        inputs={"request": req.model_dump(mode="json"), "candidates": digest, "rate": rate},
+        inputs={
+            "request": req.model_dump(mode="json"),
+            "candidates": digest,
+            "rate": rate,
+            "trip_context": trip.digest(),
+        },
         config={cap: [ch.provider, ch.model] for cap, ch in choices.items()}
         | {"prompts": [list(PLANNER), list(SELECTOR)]},
         version=EDIT_VERSION,
@@ -351,7 +367,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     by_ref = {c.ref: c for c in cands}
     client = AIClient(ctx)
     ctx.set_stage("planning")
-    pctx = planner_context(req, cands)
+    pctx = planner_context(req, cands, trip)
     plan_res = client.structured(
         "planner",
         *PLANNER,
@@ -363,7 +379,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     plan = plan_res.data
     assert isinstance(plan, PlanOut)
     pref_s = Fraction(pace.preferred) / parse_rational(rate)
-    sctx = selector_context(req, plan, by_ref, pref_s)
+    sctx = selector_context(req, plan, by_ref, pref_s, trip)
     ctx.set_stage("selecting shots")
     sel_res = client.structured(
         "selector",

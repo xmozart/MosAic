@@ -35,7 +35,7 @@ from mosaic.storage.control import ControlDB
 REPO = Path(__file__).resolve().parents[3]
 RESULTS = REPO / "tests" / "evaluation" / "results"
 CORPUS_META = REPO / "tests" / "evaluation" / "corpus"
-MILESTONE = "M0"
+MILESTONE = "M1"
 EXIT_GATE = 3  # stopped at a human gate (G1/G2)
 
 # The M0 edits (M0.md acceptance 3). Other trips get a 60 s cinematic journey.
@@ -227,6 +227,7 @@ def run_trip(
             shown = meta.relative_to(REPO) if meta.is_relative_to(REPO) else meta
             print(f"  drafted {shown} (draft: true)", flush=True)
 
+        apply_context(project, CORPUS_META / name.lower() / "context.json")
         spec = DEFAULT_EDIT | TRIP_EDITS.get(name.lower(), {}) | expect.get("edit", {})
         request = EditRequest.model_validate(spec)
         edit_id = create_edit(project, request, control, me)
@@ -244,6 +245,7 @@ def run_trip(
             "metrics": v.metrics,
             "findings": v.findings,
             "expectations": exp.score(expect, events, _files(project)),
+            "subject_shares": exp.subject_shares(expect, events, _descriptions(project, events)),
         }
         if render:
             rid = create_render(project, edit_id, v.version, "final")
@@ -259,6 +261,39 @@ def run_trip(
         project.close()
     result["finished_at"] = now_iso()
     return result
+
+
+def apply_context(project: Any, path: Path) -> None:
+    """The trip's context from the repo (owner-provided facts), if any."""
+    from mosaic.library.context import TripContext, load, save
+
+    # No file means no context: clear any left from an earlier run (reproducible evals).
+    ctx = (
+        TripContext.model_validate(json.loads(path.read_text()))
+        if path.is_file()
+        else TripContext()
+    )
+    with project.write() as s:
+        if load(s).digest() != ctx.digest():
+            save(s, ctx, "user")
+            print(f"  trip context: {path.name if path.is_file() else 'cleared'}", flush=True)
+
+
+def _descriptions(project: Any, events: list[dict[str, Any]]) -> dict[str, str]:
+    from sqlalchemy import select
+
+    from mosaic.storage.models_project import VisualObservation
+
+    ids = [int(e["segment_id"][4:]) for e in events]
+    with project.db.session() as s:
+        return {
+            f"seg_{sid:06d}": str(data.get("description", ""))
+            for sid, data in s.execute(
+                select(VisualObservation.segment_id, VisualObservation.data).where(
+                    VisualObservation.segment_id.in_(ids)
+                )
+            )
+        }
 
 
 def _files(project: Any) -> dict[str, int]:

@@ -437,3 +437,14 @@ class Render(ProjectBase):
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[str] = mapped_column(String(40))
     finished_at: Mapped[str | None] = mapped_column(String(40))
+
+
+class TripContextRow(ProjectBase):
+    """The project's confirmed trip context (one row, id 1; PRODUCT.md §3)."""
+
+    __tablename__ = "trip_context"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    revision: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(12))  # user|ai_parsed
+    updated_at: Mapped[str] = mapped_column(String(40))

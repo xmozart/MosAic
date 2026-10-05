@@ -170,3 +170,55 @@ def test_selection_refs_are_unique_and_match(edited: tuple[Project, ControlDB, i
     assert data["key"] == v.key
     assert data["provenance_id"] == v.provenance_id
     assert export_path(project.workspace, edit_id, v.version).name == f"v{v.version:03d}.json"
+
+
+def test_trip_context_changes_the_edit_but_never_reruns_vision(
+    edited: tuple[Project, ControlDB, int],
+) -> None:
+    from mosaic.library.context import TripContext, save
+
+    project, control, _ = edited
+    request = EditRequest(duration_s=25, story="adventure_highlights")
+    first = _generate(project, control, request)
+    v1 = get_version(project, first)
+    calls = list(fake.CALLS)
+    with project.write() as s:
+        save(s, TripContext(free_notes="An airshow; aircraft are the main subject."), "user")
+    again = _generate(project, control, request)
+    assert again == first
+    v2 = get_version(project, first)
+    assert v2.version == v1.version + 1, "a context change makes a new version"
+    new_calls = fake.CALLS[len(calls) :]
+    assert sorted(new_calls) == ["planner", "selector"], "context never re-runs vision"
+    with project.write() as s:
+        save(s, TripContext(), "user")  # leave the shared project as it was
+
+
+def test_context_parse_job_proposes_without_saving(
+    edited: tuple[Project, ControlDB, int],
+) -> None:
+    from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
+    from mosaic.library.context import load
+
+    project, control, _ = edited
+    store = JobStore(control.db)
+    job = LocalExecutor(store).submit(
+        control.local_principal,
+        JobSpec(
+            project.id,
+            "context",
+            tasks=[
+                TaskSpec(
+                    "context.parse",
+                    "context",
+                    resource_class=ResourceClass.AI_API,
+                    params={"text": "Airshow by the lake, the F-35 was the highlight."},
+                )
+            ],
+        ),
+    )
+    assert run_job(control, job, timeout=120) == "done"
+    proposal = store.tasks(job)[0].result["proposal"]
+    assert "F-35" in proposal["free_notes"]
+    with project.db.session() as s:
+        assert load(s).is_empty(), "nothing is saved until the owner confirms"

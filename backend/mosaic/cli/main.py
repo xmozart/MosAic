@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import click
 
@@ -282,6 +283,127 @@ def render_cmd(
     finally:
         project.close()
         control.db.dispose()
+
+
+@cli.group()
+def context() -> None:
+    """Trip context: what the trip is about (optional; improves stories and titles)."""
+
+
+def _save_context(folder: Path, data: object, source: Literal["user", "ai_parsed"]) -> int:
+    from pydantic import ValidationError
+
+    from mosaic.library.context import TripContext, save
+
+    try:
+        ctx = TripContext.model_validate(data)
+    except ValidationError as exc:
+        msgs = "; ".join(f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors())
+        raise click.ClickException(f"invalid trip context: {msgs}") from None
+    control = _control()
+    project = _open(control, folder)
+    try:
+        with project.write() as s:
+            return save(s, ctx, source)
+    finally:
+        project.close()
+        control.db.dispose()
+
+
+@context.command("show")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def context_show(folder: Path) -> None:
+    """Print the project's trip context as JSON."""
+    import json
+
+    from mosaic.library.context import load
+
+    control = _control()
+    project = _open(control, folder)
+    try:
+        with project.db.session() as s:
+            click.echo(json.dumps(load(s).model_dump(mode="json"), indent=2, ensure_ascii=False))
+    finally:
+        project.close()
+        control.db.dispose()
+
+
+@context.command("set")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--file", "file_", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True
+)
+def context_set(folder: Path, file_: Path) -> None:
+    """Set the trip context from a JSON file (PRODUCT.md §3 structure)."""
+    import json
+
+    try:
+        data = json.loads(file_.read_text())
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(f"{file_}: not valid JSON ({exc.msg})") from None
+    rev = _save_context(folder, data, "user")
+    click.echo(f"Trip context saved (revision {rev}). Edits made from now on use it.")
+
+
+@context.command("parse")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--text", default=None, help="Notes or itinerary (or use --file).")
+@click.option("--file", "file_", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--yes", is_flag=True, help="Save the proposal without asking.")
+def context_parse(folder: Path, text: str | None, file_: Path | None, yes: bool) -> None:
+    """Turn free-text notes into a trip context with AI, show it, and save it if confirmed."""
+    import json
+
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
+    from mosaic.jobs.store import JobStore
+
+    notes = file_.read_text() if file_ else text
+    if not notes or not notes.strip():
+        raise click.ClickException("give the notes with --text or --file")
+    control = _control()
+    project = _open(control, folder)
+    try:
+        store = JobStore(control.db)
+        job = LocalExecutor(store).submit(
+            control.local_principal,
+            JobSpec(
+                project_id=project.id,
+                kind="context",
+                tasks=[
+                    TaskSpec(
+                        kind="context.parse",
+                        stage="context",
+                        resource_class=ResourceClass.AI_API,
+                        params={"text": notes},
+                        label="reading the trip notes",
+                    )
+                ],
+            ),
+        )
+        status = _follow(control, job)
+        tasks = store.tasks(job)
+        if status != "done" or not tasks or not tasks[0].result:
+            detail = (tasks[0].error or "").splitlines()[0] if tasks and tasks[0].error else status
+            raise click.ClickException(f"could not read the notes: {detail}")
+        proposal = tasks[0].result["proposal"]
+    finally:
+        project.close()
+        control.db.dispose()
+    click.echo(json.dumps(proposal, indent=2, ensure_ascii=False))
+    if not yes and not click.confirm("Save this trip context?", default=True):
+        click.echo("Not saved.")
+        return
+    rev = _save_context(folder, proposal, "ai_parsed")
+    click.echo(f"Trip context saved (revision {rev}).")
+
+
+@context.command("clear")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def context_clear(folder: Path) -> None:
+    """Remove the trip context (edits then work without it)."""
+    rev = _save_context(folder, {}, "user")
+    click.echo(f"Trip context cleared (revision {rev}).")
 
 
 cli.add_command(config_group)

@@ -4,6 +4,9 @@ note: >-
   Generated from analysis; the owner reviewed the edit at G6 (2026-10-05). Owner input: the
   F-35 demonstration is the main highlight; aircraft should dominate; fewer crowd shots.
   Must-include ranges for the F-35 demo still need to be identified (draft).
+subjects:              # share of edit time by what the clip descriptions mention (owner focus, G6)
+  aircraft: [aircraft, jet, plane, airplane, f-35, fighter, smoke trail, aerobatic, formation]
+  crowd: [crowd, spectator, spectators, people watching, onlookers, visitors]
 must_include:
 - file: GX010338.MP4
   asset: ast_0020
