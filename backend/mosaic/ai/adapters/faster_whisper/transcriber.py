@@ -24,6 +24,7 @@ PROVIDER = "faster-whisper"
 MODEL_REVISIONS = {
     "small": "536b0662742c02347bc0e980a01041f333bce120",
     "medium": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+    "large-v3": "edaa852ec7e145841d8ffdb056a99866b5f0a478",  # Thorough (MIT)
 }
 BEAM = 5
 

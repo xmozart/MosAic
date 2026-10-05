@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import click
 
@@ -93,30 +93,90 @@ def _follow(control: ControlDB, job_id: int) -> str:
     return prog.status
 
 
+def _overrides(pairs: tuple[str, ...]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep:
+            raise click.ClickException(f"--set needs KEY=VALUE, got {pair!r}")
+        key = key.strip()
+        if key == "tiles":
+            cols, _, rows = value.lower().partition("x")
+            out[key] = (int(cols), int(rows)) if rows else value
+        elif key in ("l2", "l3"):
+            out[key] = value.lower() in ("1", "true", "yes", "on")
+        else:
+            out[key] = value
+    return out
+
+
+def _show_estimate(control: Any, project: Any, config: Any) -> None:
+    from mosaic.library.estimate import for_project
+    from mosaic.storage.config import ConfigService
+
+    with project.db.session() as s:
+        est = for_project(s, ConfigService(control), control.local_principal, config)
+    if not est.videos:
+        click.echo("No probed footage yet: run an analysis (or a scan) first.")
+        return
+    lo, hi = est.wall_seconds
+    cost = (
+        "AI cost unknown (no price for a configured model)"
+        if est.cost_usd is None
+        else f"AI ${est.cost_usd[0]:.2f}–{est.cost_usd[1]:.2f}"
+    )
+    click.echo(
+        f"{config.name}: {est.videos} videos, {est.video_seconds // 60} min of footage, "
+        f"{est.photos} photos"
+    )
+    click.echo(
+        f"  about {lo // 60}–{-(-hi // 60)} min · {cost} · "
+        f"{est.storage_bytes / 1e9:.1f} GB · {est.l2_calls} sheets"
+        + (f" · {est.l3_calls[0]}–{est.l3_calls[1]} deep reviews" if config.l3 else "")
+    )
+
+
 @cli.command()
 @click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option(
     "--mode",
+    type=click.Choice(["quick", "balanced", "thorough", "custom"]),
     default="balanced",
     show_default=True,
-    help="Analysis mode (M0 accepts balanced only).",
+    help="Analysis depth (docs/ANALYSIS_MODES.md).",
 )
-def analyze(folder: Path, mode: str) -> None:
+@click.option(
+    "--set",
+    "overrides",
+    multiple=True,
+    metavar="KEY=VALUE",
+    help="Custom mode parameter, e.g. sample_interval=2 or tiles=5x4 (repeatable).",
+)
+@click.option("--estimate", is_flag=True, help="Show the estimate and exit.")
+def analyze(folder: Path, mode: str, overrides: tuple[str, ...], estimate: bool) -> None:
     """Analyze FOLDER's footage into the project library."""
+    from pydantic import ValidationError
+
+    from mosaic.core.modes import UnknownModeError, resolve
     from mosaic.jobs.executor import LocalExecutor
     from mosaic.jobs.store import JobStore
-    from mosaic.media.pipeline import UnsupportedModeError, submit_analysis
+    from mosaic.media.pipeline import submit_analysis
 
+    try:
+        config = resolve(mode, _overrides(overrides) or None)
+    except (UnknownModeError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from exc
     control = _control()
     project = _open(control, folder)
     try:
+        if estimate:
+            _show_estimate(control, project, config)
+            return
         job_id = submit_analysis(
-            LocalExecutor(JobStore(control.db)), control.local_principal, project, mode
+            LocalExecutor(JobStore(control.db)), control.local_principal, project, config
         )
         click.echo(f"Analysis job {job_id} ({mode})")
         status = _follow(control, job_id)
-    except UnsupportedModeError as exc:
-        raise click.ClickException(str(exc)) from exc
     finally:
         project.close()
         control.db.dispose()
@@ -287,14 +347,23 @@ def render_cmd(
 
 @cli.command()
 @click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option("--day", type=int, default=None, help="Only this trip day (1 = first day).")
+@click.option(
+    "--day", "days", type=int, multiple=True, help="Only this trip day (1 = first); repeatable."
+)
 @click.option("--segment", "segments", multiple=True, help="Only these segments (seg_000123).")
-def deepen(folder: Path, day: int | None, segments: tuple[str, ...]) -> None:
-    """Thorough L3 review of candidate clips at full resolution (uses the reviewer model)."""
+@click.option(
+    "--target",
+    type=click.Choice(["thorough", "balanced"]),
+    default="thorough",
+    show_default=True,
+    help="balanced adds only missing L2; thorough also reviews candidates (L3).",
+)
+def deepen(folder: Path, days: tuple[int, ...], segments: tuple[str, ...], target: str) -> None:
+    """Deepen analysis of the trip, some days or some clips; earlier work is reused."""
     from mosaic.editing.retrieval import parse_ref
     from mosaic.jobs.executor import LocalExecutor
     from mosaic.jobs.store import JobStore
-    from mosaic.library.review import submit_deepen
+    from mosaic.library.review import DeepenScope, submit_deepen
 
     ids = []
     for ref in segments:
@@ -305,29 +374,33 @@ def deepen(folder: Path, day: int | None, segments: tuple[str, ...]) -> None:
     control = _control()
     project = _open(control, folder)
     try:
-        job, count, dropped = submit_deepen(
+        run = submit_deepen(
             LocalExecutor(JobStore(control.db)),
             control.local_principal,
             project,
-            day=day,
-            segment_ids=ids or None,
+            DeepenScope(days, tuple(ids)),
+            target=target,
         )
-        if dropped:
+        if run.dropped:
             click.echo(
                 "Not candidates (rejected, a non-recommended look-alike, or unknown): "
-                + ", ".join(f"seg_{i:06d}" for i in dropped)
+                + ", ".join(f"seg_{i:06d}" for i in run.dropped)
             )
-        if job is None:
-            click.echo("Nothing to review in this scope.")
+        if run.job is None:
+            click.echo("Nothing to add in this scope.")
             return
-        click.echo(f"Deep review of {count} candidate clips — job {job}")
-        status = _follow(control, job)
+        if run.l2_assets:
+            click.echo(f"Scene understanding (L2) first for {len(run.l2_assets)} clips")
+        if target == "thorough":
+            click.echo(f"Deep review of {run.candidates} candidate clips")
+        click.echo(f"Job {run.job}")
+        status = _follow(control, run.job)
     finally:
         project.close()
         control.db.dispose()
     if status != "done":
-        raise click.ClickException(f"deep review {status}")
-    click.echo("Deep review complete. New edits use it; regenerate an edit to apply it.")
+        raise click.ClickException(f"deepen {status}")
+    click.echo("Deepening complete. New edits use it; regenerate an edit to apply it.")
 
 
 @cli.group()

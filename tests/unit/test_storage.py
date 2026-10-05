@@ -267,12 +267,19 @@ def test_split_descriptor_refused_in_m0(tmp_path: Path) -> None:
         open_project(control, control.local_principal, tmp_path)
 
 
-def test_cli_analyze_rejects_other_modes(tmp_path: Path) -> None:
+def test_cli_analyze_modes_and_overrides(tmp_path: Path) -> None:
     runner = CliRunner()
     assert runner.invoke(cli, ["init", str(tmp_path)]).exit_code == 0
-    result = runner.invoke(cli, ["analyze", str(tmp_path), "--mode", "thorough"])
+    result = runner.invoke(cli, ["analyze", str(tmp_path), "--mode", "deep"])
     assert result.exit_code != 0
-    assert "supports: balanced" in result.output
+    only_custom = runner.invoke(cli, ["analyze", str(tmp_path), "--set", "sample_interval=2"])
+    assert only_custom.exit_code != 0
+    assert "only accepted with mode custom" in only_custom.output
+    bad = runner.invoke(cli, ["analyze", str(tmp_path), "--mode", "custom", "--set", "frames=9"])
+    assert bad.exit_code != 0
+    est = runner.invoke(cli, ["analyze", str(tmp_path), "--mode", "thorough", "--estimate"])
+    assert est.exit_code == 0, est.output
+    assert "No probed footage yet" in est.output
     missing = runner.invoke(cli, ["analyze", str(tmp_path / "nope")])
     assert missing.exit_code != 0
 

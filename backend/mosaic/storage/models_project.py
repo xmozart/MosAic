@@ -190,7 +190,7 @@ class Shot(ProjectBase):
     index: Mapped[int] = mapped_column(Integer)
     start_ticks: Mapped[int] = mapped_column(BigInteger)
     end_ticks: Mapped[int] = mapped_column(BigInteger)
-    method: Mapped[str] = mapped_column(String(16))  # adaptive|forced
+    method: Mapped[str] = mapped_column(String(16))  # adaptive|threshold|forced
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
 
 
@@ -461,3 +461,15 @@ class DeepReview(ProjectBase):
     data: Mapped[dict[str, Any]] = mapped_column(JSON)
     context_digest: Mapped[str] = mapped_column(String(16))
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class AssetStage(ProjectBase):
+    """The artifact key that produced an asset's current rows of a stage (``visual``,
+    ``audio``). Those rows are replaced on each run, so an existing artifact alone does
+    not prove they are current once modes can switch back (ADR 0020). An empty key means
+    a run started and has not finished; no row means a project from before M1."""
+
+    __tablename__ = "asset_stage"
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), primary_key=True)
+    stage: Mapped[str] = mapped_column(String(16), primary_key=True)
+    key: Mapped[str] = mapped_column(String(128))

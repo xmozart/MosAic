@@ -27,7 +27,9 @@ Artifacts are keyed per level and density, so moving Quick → Thorough reuses L
 | Vision model tier | Economy | Economy | Economy (L2) + Strong (L3) |
 | Goal | "Show me something fast" | Solid edits | Best selection and cut points |
 
-**Custom** exposes every parameter (Advanced mode).
+**Custom** exposes every parameter (Advanced mode): Balanced plus explicit overrides.
+
+Implementation notes (ADR 0020): each job carries its mode, and every parameter that changes a stage's output is in that stage's key. Balanced keys are those of M0. Quick's camera proxy is used only when every chapter has a valid LRF/LRV, with sound when the original has it. The shake metric, Quick's speech-only transcription and Thorough's "word timestamps everywhere" do not vary by mode yet.
 
 For reference, a 4-hour trip at Balanced produces roughly 4,800 samples before deduplication and 150–250 mosaics. Estimates shown to the user must be computed from the actual probe, not taken from this example.
 

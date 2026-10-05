@@ -20,6 +20,7 @@ Scope: a project, a trip day, or explicit segments.
 from __future__ import annotations
 
 import io
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
@@ -35,9 +36,11 @@ from mosaic.core.keys import artifact_key
 from mosaic.core.time import format_display, parse_rational
 from mosaic.editing.retrieval import capture_dates, trip_day
 from mosaic.jobs.context import TaskContext
+from mosaic.jobs.model import ResourceClass, TaskSpec
 from mosaic.jobs.registry import SkipTask, task
 from mosaic.library.context import load as load_context
 from mosaic.library.dispositions import effective
+from mosaic.media import inventory
 from mosaic.media.ffmpeg.builders import still_frame
 from mosaic.media.ffmpeg.render import SEEK_MARGIN
 from mosaic.media.ffmpeg.run import FFmpegError, run
@@ -49,6 +52,8 @@ from mosaic.storage.models_project import (
     DeepReview,
     MediaFile,
     MediaStream,
+    Mosaic,
+    MosaicTile,
     Segment,
     VisualObservation,
 )
@@ -288,55 +293,102 @@ def review_task(ctx: TaskContext) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------- deepen
+# Deepening a scope (the trip, some days, a selection) only *adds* levels to what is
+# there: L2 for clips that have none, then (target Thorough) L3 for the candidates. It
+# never recomputes L0/L1 (ANALYSIS_MODES §3, M1 acceptance 5, ADR 0020).
+
+TARGETS = ("balanced", "thorough")
+
+
+@dataclass(frozen=True)
+class DeepenScope:
+    """The trip (both empty), some trip days, or a selection of segments."""
+
+    days: tuple[int, ...] = ()
+    segment_ids: tuple[int, ...] = ()
+
+    def as_params(self) -> dict[str, Any]:
+        return {"days": list(self.days), "segment_ids": list(self.segment_ids)}
+
+    @classmethod
+    def from_params(cls, params: dict[str, Any]) -> DeepenScope:
+        return cls(tuple(params.get("days") or ()), tuple(params.get("segment_ids") or ()))
+
+
+def scope_segments(session: Session, scope: DeepenScope) -> dict[int, list[int]]:
+    """Asset id → every segment in scope (any disposition), in time order. Days are
+    numbered exactly as the editor numbers them (``retrieval.trip_day``)."""
+    assets = list(session.scalars(select(Asset).where(Asset.kind == "video").order_by(Asset.id)))
+    first = min(capture_dates(assets).values(), default=None)
+    wanted = set(scope.segment_ids)
+    days = set(scope.days)
+    out: dict[int, list[int]] = {}
+    for a in assets:
+        segs = list(
+            session.scalars(
+                select(Segment).where(Segment.asset_id == a.id).order_by(Segment.start_ticks)
+            )
+        )
+        if wanted:
+            segs = [g for g in segs if g.id in wanted]
+        if days and a.tb is None:
+            continue  # no timeline: it cannot be placed on a day
+        if days and a.tb is not None:
+            rate = parse_rational(a.tb)
+            segs = [
+                g
+                for g in segs
+                if trip_day(a.capture_time, Fraction(g.start_ticks) * rate, first) in days
+            ]
+        if segs:
+            out[a.id] = [g.id for g in segs]
+    return out
 
 
 def plan_deepen(
-    session: Session, day: int | None = None, segment_ids: list[int] | None = None
+    session: Session, scope: DeepenScope | None = None
 ) -> tuple[dict[int, list[int]], list[int]]:
-    """(asset id → L3 candidates in scope, requested ids that are not candidates). Days
-    are numbered exactly as the editor numbers them (``retrieval.trip_day``)."""
-    assets = list(session.scalars(select(Asset).where(Asset.kind == "video").order_by(Asset.id)))
-    first = min(capture_dates(assets).values(), default=None)
-    wanted = set(segment_ids or [])
+    """(asset id → L3 candidates in scope, requested ids that are not candidates)."""
+    scope = scope or DeepenScope()
     plan: dict[int, list[int]] = {}
     found: set[int] = set()
-    for a in assets:
-        ids = candidate_ids(session, a.id)
-        if wanted:
-            ids = [i for i in ids if i in wanted]
-        if day is not None and a.tb is not None:
-            segs = {g.id: g for g in session.scalars(select(Segment).where(Segment.id.in_(ids)))}
-            rate = parse_rational(a.tb)
-            ids = [
-                i
-                for i in ids
-                if trip_day(a.capture_time, Fraction(segs[i].start_ticks) * rate, first) == day
-            ]
-        found |= set(ids)
-        if ids:
-            plan[a.id] = ids
-    return plan, sorted(wanted - found)
+    for aid, ids in scope_segments(session, scope).items():
+        in_scope = set(ids)
+        cands = [i for i in candidate_ids(session, aid) if i in in_scope]
+        found |= set(cands)
+        if cands:
+            plan[aid] = cands
+    return plan, sorted(set(scope.segment_ids) - found)
 
 
-def submit_deepen(
-    executor: Any,
-    principal: Any,
-    project: Any,
-    *,
-    day: int | None = None,
-    segment_ids: list[int] | None = None,
-    cost_limit_usd: float | None = None,
-) -> tuple[int | None, int, list[int]]:
-    """Start an L3 deepening job. Returns (job id, or None when nothing is in scope;
-    candidate count; requested ids that are not candidates)."""
-    from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
-    from mosaic.media.pipeline import job_cost_limit
+def l2_missing(session: Session, scoped: dict[int, list[int]]) -> list[int]:
+    """Assets with segments in scope but no L2: no contact sheets at all, or sheets whose
+    segments have no observation (a run without L2, or one stopped part-way)."""
+    out = []
+    for aid, ids in scoped.items():
+        tiled = set(
+            session.scalars(
+                select(MosaicTile.segment_id)
+                .join(Mosaic, Mosaic.id == MosaicTile.mosaic_id)
+                .where(Mosaic.asset_id == aid)
+            )
+        )
+        if not tiled:
+            out.append(aid)
+            continue
+        wanted = [i for i in ids if i in tiled]
+        observed = set(
+            session.scalars(
+                select(VisualObservation.segment_id).where(VisualObservation.segment_id.in_(wanted))
+            )
+        )
+        if set(wanted) - observed:
+            out.append(aid)
+    return out
 
-    with project.db.session() as s:
-        plan, dropped = plan_deepen(s, day, segment_ids)
-    count = sum(len(v) for v in plan.values())
-    if not plan:
-        return None, 0, dropped
+
+def review_tasks(plan: dict[int, list[int]]) -> list[TaskSpec]:
+    """One review task per asset, then dispositions (which merge the reviews)."""
     tasks = [
         TaskSpec(
             kind="library.review",
@@ -347,23 +399,133 @@ def submit_deepen(
         )
         for aid, ids in plan.items()
     ]
-    tasks.append(
-        TaskSpec(
-            kind="library.dispositions",
-            stage="dispositions",
-            resource_class=ResourceClass.CPU,
-            label="dispositions",
-            deps=list(range(len(tasks))),
-        )
+    tasks.append(_dispositions(deps=[*range(len(tasks))]))
+    return tasks
+
+
+def _dispositions(deps: list[int | tuple[str, int]]) -> TaskSpec:
+    return TaskSpec(
+        kind="library.dispositions",
+        stage="dispositions",
+        resource_class=ResourceClass.CPU,
+        label="dispositions",
+        deps=deps,
     )
+
+
+def l2_tasks(asset_ids: list[int]) -> list[TaskSpec]:
+    """Contact sheets and vision for each asset, then dispositions."""
+    tasks: list[TaskSpec] = []
+    for aid in asset_ids:
+        tasks.append(
+            TaskSpec(
+                kind="library.mosaics",
+                stage="mosaics",
+                resource_class=ResourceClass.CPU,
+                params={"asset_id": aid},
+                label=f"mosaics ast_{aid:04d}",
+            )
+        )
+        tasks.append(
+            TaskSpec(
+                kind="library.vision",
+                stage="vision",
+                resource_class=ResourceClass.AI_API,
+                params={"asset_id": aid},
+                label=f"vision ast_{aid:04d}",
+                deps=[len(tasks) - 1],
+            )
+        )
+    tasks.append(_dispositions(deps=[*range(len(tasks))]))
+    return tasks
+
+
+@dataclass(frozen=True)
+class DeepenRun:
+    job: int | None  # None: nothing to add in this scope
+    candidates: int  # L3 candidates known now (more may follow the L2 it adds)
+    l2_assets: list[int]  # clips that get L2 first
+    dropped: list[int]  # requested segment ids that are not L3 candidates
+
+
+def submit_deepen(
+    executor: Any,
+    principal: Any,
+    project: Any,
+    scope: DeepenScope | None = None,
+    *,
+    target: str = "thorough",
+    cost_limit_usd: float | None = None,
+) -> DeepenRun:
+    """Start a deepening job for ``scope``: L2 where it is missing, then (``thorough``)
+    an L3 review of the candidates."""
+    from mosaic.core.modes import resolve
+    from mosaic.jobs.model import JobSpec
+    from mosaic.media.pipeline import job_cost_limit
+
+    if target not in TARGETS:
+        raise ValueError(f"deepen target must be one of {', '.join(TARGETS)}")
+    scope = scope or DeepenScope()
+    with project.db.session() as s:
+        scoped = scope_segments(s, scope)
+        missing = l2_missing(s, scoped)
+        plan, dropped = plan_deepen(s, scope)
+    if missing:
+        # Their candidates are unknown until L2 and dispositions run: requested ids in
+        # those clips are not "dropped" yet.
+        pending = {i for aid in missing for i in scoped[aid]}
+        dropped = [i for i in dropped if i not in pending]
+    count = sum(len(v) for v in plan.values())
+    tasks: list[TaskSpec] = []
+    if missing:
+        tasks = l2_tasks(missing)
+        if target == "thorough":
+            tasks.append(
+                TaskSpec(
+                    kind="analysis.deepen",
+                    stage="deep review",
+                    resource_class=ResourceClass.CPU,
+                    params=scope.as_params(),
+                    label="deep review",
+                    deps=[len(tasks) - 1],
+                )
+            )
+    elif target == "thorough" and plan:
+        tasks = review_tasks(plan)
+    if not tasks:
+        return DeepenRun(None, count, missing, dropped)
     job = executor.submit(
         principal,
         JobSpec(
             project_id=project.id,
             kind="deepen",
-            params={"day": day, "segments": len(segment_ids or [])},
+            params={
+                **scope.as_params(),
+                "target": target,
+                "mode_config": resolve(target).model_dump(mode="json"),
+            },
             cost_limit_usd=job_cost_limit(principal) if cost_limit_usd is None else cost_limit_usd,
             tasks=tasks,
         ),
     )
-    return job, count, dropped
+    return DeepenRun(job, count, missing, dropped)
+
+
+@task("analysis.deepen")
+def deepen_stage(ctx: TaskContext) -> dict[str, Any]:
+    """L3 after dispositions: review every candidate in the task's scope (the whole
+    project in a Thorough run; unchanged reviews are skipped by key), then re-run
+    dispositions so they merge the reviews."""
+    with ctx.project.db.session() as s:
+        plan, _ = plan_deepen(s, DeepenScope.from_params(ctx.params))
+    if not plan:
+        raise SkipTask("no candidates")
+    ctx.spawn(review_tasks(plan))
+    return {"candidates": sum(len(v) for v in plan.values()), "assets": len(plan)}
+
+
+inventory.PROJECT_STAGES.append(
+    inventory.StageDef(
+        "deep review", "analysis.deepen", ResourceClass.CPU, after=("dispositions",), level=3
+    )
+)

@@ -48,8 +48,8 @@ These are the REST endpoints and SSE events the screens need.
 
 | Method | Path | Used by |
 |---|---|---|
-| GET | `/projects/{pid}/analysis/estimate?mode=&scope=` | S8, S25 |
-| POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}` | S8, S25 |
+| GET | `/projects/{pid}/analysis/estimate?mode=&scope=` (scope: `trip`, `days:2,3` or `selection:ID,…`; omitted = whole-project run). Returns videos, photos, footage seconds, segments, `l2_calls`, `l3_calls` [lo, hi], `cost_usd` [lo, hi] or null when a model has no price, `storage_bytes`, `wall_seconds` [lo, hi], `days` (ADR 0020) | S8, S25 |
+| POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}`; scope `{kind: trip\|days\|selection, days?, segment_ids?}` deepens (mode `balanced` or `thorough`: adds L2 where missing, then L3) and returns `{job_id \| null, candidates, l2_assets, dropped}`; without scope the whole project is analyzed in the mode (`overrides` only with `custom`) | S8, S25 |
 | GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, cost) | S9, S0 |
 | POST | `/jobs/{id}/pause` · `/resume` (optional body `{cost_limit_usd}`: raise the AI cost limit of a job paused at it; must exceed what the job has spent; ADR 0018) · `/cancel` · `/retry-failed` | S9, S20 |
 | GET | `/events?project=` (SSE) | all |

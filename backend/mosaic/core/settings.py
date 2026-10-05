@@ -39,7 +39,7 @@ PROVIDER_CAPABILITIES: dict[str, tuple[str, ...]] = {
 # Local providers accept only these models (pinned weights; invariant 9). Kept in step with
 # the adapters by tests/unit/test_ai.py.
 LOCAL_MODELS: dict[str, tuple[str, ...]] = {
-    "faster-whisper": ("small", "medium"),
+    "faster-whisper": ("small", "medium", "large-v3"),
     "siglip-onnx": ("base", "quantized"),
 }
 

@@ -50,7 +50,7 @@ from mosaic.storage.projects import init_project
 
 
 def test_geometry_follows_provider_image_limit() -> None:
-    geo = geometry("balanced", 1568)
+    geo = geometry((4, 4), 1568)
     assert (geo.cols, geo.rows, geo.capacity) == (4, 4, 16)
     width, height = geo.size(4)
     assert width <= 1568
@@ -58,7 +58,7 @@ def test_geometry_follows_provider_image_limit() -> None:
     assert geo.tile_width % 2 == 0
     assert geo.tile_height % 2 == 0
     # A provider with a larger image budget never gets tiles above the thumbnail size.
-    assert geometry("balanced", 4096).tile_width == 640
+    assert geometry((4, 4), 4096).tile_width == 640
     big = limits_for(ProviderChoice("vision", "anthropic", "claude-haiku-4-5", "cloud"))
     assert big.max_image_px == 1568  # static: no key needed
 
@@ -87,7 +87,7 @@ def _jpeg(color: tuple[int, int, int], size: tuple[int, int] = (640, 360)) -> by
 
 
 def test_render_sheet_burns_labels_and_crops_unused_rows() -> None:
-    geo = geometry("balanced", 1568)
+    geo = geometry((4, 4), 1568)
     tiles = [(_jpeg((200, 200, 200)), tile_label(i + 1, 1, i * 1000, "1/1000")) for i in range(5)]
     tiles.append((_jpeg((200, 200, 200), (360, 640)), "T06 · ast_0001 · 00:00:05.0"))  # portrait
     data = render_sheet(geo, tiles, used_rows=2)

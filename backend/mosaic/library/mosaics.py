@@ -24,6 +24,7 @@ from sqlalchemy import select
 
 from mosaic.ai.registry import limits_for, task_choice
 from mosaic.core.keys import artifact_key
+from mosaic.core.modes import task_mode
 from mosaic.core.time import parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
@@ -35,7 +36,6 @@ from mosaic.storage import provenance
 from mosaic.storage.models_project import Asset, Mosaic, MosaicTile, SampleFrame, Segment
 
 MOSAICS_VERSION = "mosaics/1"
-GRID = {"balanced": (4, 4)}  # tiles per sheet by analysis mode (ANALYSIS_MODES.md)
 PER_SEGMENT = 4
 MAX_TILE_WIDTH = 640  # sample thumbnails are 640 px wide; larger tiles add nothing
 GAP = 4
@@ -65,8 +65,9 @@ class Geometry:
         return c * (self.tile_width + GAP), r * (self.tile_height + GAP)
 
 
-def geometry(mode: str, max_image_px: int) -> Geometry:
-    cols, rows = GRID[mode]
+def geometry(grid: tuple[int, int], max_image_px: int) -> Geometry:
+    """Tile size for a ``cols × rows`` sheet (the analysis mode's ``tiles``)."""
+    cols, rows = grid
     width = min(MAX_TILE_WIDTH, (max_image_px - (cols - 1) * GAP) // cols) // 2 * 2
     height = round(width * 9 / 16) // 2 * 2
     if (height + GAP) * rows - GAP > max_image_px:
@@ -162,14 +163,8 @@ def render_sheet(geo: Geometry, tiles: list[tuple[bytes, str]], used_rows: int) 
 # ------------------------------------------------------------------------ task
 
 
-def _mode(ctx: TaskContext) -> str:
-    job = ctx.store.job(ctx.task.job_id)
-    mode = str((job.params if job else {}).get("mode", "balanced"))
-    return mode if mode in GRID else "balanced"
-
-
 def _geometry(ctx: TaskContext) -> Geometry:
-    return geometry(_mode(ctx), limits_for(task_choice(ctx, "vision")).max_image_px)
+    return geometry(task_mode(ctx).tiles, limits_for(task_choice(ctx, "vision")).max_image_px)
 
 
 def _inputs(ctx: TaskContext, asset_id: int) -> tuple[list[Segment], list[SampleFrame]]:
@@ -331,5 +326,7 @@ def mosaics_task(ctx: TaskContext) -> dict[str, Any]:
 
 
 inventory.ASSET_STAGES.append(
-    inventory.StageDef("mosaics", "library.mosaics", ResourceClass.CPU, after=("segments",))
+    inventory.StageDef(
+        "mosaics", "library.mosaics", ResourceClass.CPU, after=("segments",), level=2
+    )
 )

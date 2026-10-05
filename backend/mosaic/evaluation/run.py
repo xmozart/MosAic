@@ -229,9 +229,8 @@ def run_trip(
 
             if budget.remaining <= 0:
                 raise GateStop("G2", "the eval budget is used up for this run or milestone")
-            deep_job, count, _ = submit_deepen(
-                executor, me, project, cost_limit_usd=budget.remaining
-            )
+            deep = submit_deepen(executor, me, project, cost_limit_usd=budget.remaining)
+            deep_job, count = deep.job, deep.candidates
             print(f"  deep review of {count} candidates", flush=True)
             if deep_job is not None:
                 _run_job(control, deep_job, "deep review", budget, name)

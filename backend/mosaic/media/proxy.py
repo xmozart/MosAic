@@ -1,5 +1,11 @@
 """Proxies (ARCHITECTURE.md §8 stage 3): 720p H.264 8-bit SDR Rec.709 CFR, plus a tick map.
 
+Quick mode (ANALYSIS_MODES.md §2) proxies at 540p, and transcodes from the camera's own
+low-resolution files (GoPro LRF, Insta360 LRV) when every chapter has a valid one. A valid
+camera proxy has the original's frame rate and duration (``profiles.lrf_matches``), so its
+frame ``i`` is the original's frame ``i`` and the tick map stays in the original's logical
+ticks (ADR 0020).
+
 A proxy covers an asset's whole logical timeline (chapters concatenated). Proxy frame
 ``i`` is the source frame nearest to logical time ``i / proxy_rate`` (``setpts=PTS-STARTPTS``
 then the ``fps`` filter, which resamples by PTS, so VFR sources are handled). The tick map
@@ -24,6 +30,7 @@ from typing import Any
 from sqlalchemy import select
 
 from mosaic.core.keys import artifact_key
+from mosaic.core.modes import PRESETS, ModeConfig, task_mode
 from mosaic.core.time import Rounding, format_rational, parse_rational, round_fraction
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
@@ -35,13 +42,17 @@ from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.run import FFmpegError, run
 from mosaic.media.tools import media_tools, working_h264_encoders
 from mosaic.storage import provenance
-from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream
+from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
 from mosaic.storage.projects import Project
 
 PROXY_VERSION = "proxy/1"
 PROXY_SHORT_SIDE = 720
+QUICK_SHORT_SIDE = 540
+CAMERA_PROXY_KINDS = ("lrf", "lrv")
+_QUICK = PRESETS["quick"]
 PROXY_MAX_RATE = Fraction(30)
 PROXY_BITRATE = "3M"
+QUICK_BITRATE = "2M"
 
 
 def proxy_rate(source_rate: Fraction | None) -> Fraction:
@@ -52,10 +63,12 @@ def proxy_rate(source_rate: Fraction | None) -> Fraction:
     return rate
 
 
-def proxy_size(display_w: int, display_h: int) -> tuple[int, int]:
-    """Short side 720 (never upscaled), even dimensions, display aspect preserved."""
+def proxy_size(
+    display_w: int, display_h: int, short_side: int = PROXY_SHORT_SIDE
+) -> tuple[int, int]:
+    """Short side 720 (or ``short_side``; never upscaled), even dimensions, aspect kept."""
     short = min(display_w, display_h)
-    target = min(PROXY_SHORT_SIDE, short)
+    target = min(short_side, short)
     scale = Fraction(target, short)
 
     def even(x: Fraction) -> int:
@@ -91,6 +104,8 @@ class ProxyPlan:
     tb: Fraction
     duration_ticks: int
     vfr: bool
+    source: str = "original"  # original | camera (the chapters are LRF/LRV sidecars)
+    bitrate: str = PROXY_BITRATE
 
     @property
     def fingerprints(self) -> list[str]:
@@ -102,7 +117,9 @@ class ProxyPlan:
         return artifact_key(
             "proxy",
             project_id=project_id,
-            inputs={"files": self.fingerprints, "v": self.video_index, "a": self.audio_index},
+            inputs={"files": self.fingerprints, "v": self.video_index, "a": self.audio_index}
+            # Only camera-proxy plans carry a source, so 720p keys are unchanged from M0.
+            | ({"source": self.source} if self.source != "original" else {}),
             config={
                 "w": self.width,
                 "h": self.height,
@@ -110,13 +127,16 @@ class ProxyPlan:
                 "color": self.color_hint,
                 "range": self.color_range,
                 "encoder": encoder,
-                "bitrate": PROXY_BITRATE,
+                "bitrate": self.bitrate,
             },
             version=PROXY_VERSION,
         )
 
 
-def plan_for(project: Project, asset_id: int) -> ProxyPlan:
+def plan_for(project: Project, asset_id: int, mode: ModeConfig | None = None) -> ProxyPlan:
+    """The proxy of an asset for a mode (Balanced's 720p when no mode is given)."""
+    quick = mode is not None and mode.proxy == "lrf_or_540"
+    short_side = QUICK_SHORT_SIDE if quick else PROXY_SHORT_SIDE
     with project.db.session() as s:
         asset = s.get(Asset, asset_id)
         if asset is None or asset.tb is None or asset.video_stream_index is None:
@@ -141,6 +161,20 @@ def plan_for(project: Project, asset_id: int) -> ProxyPlan:
         missing = [r.rel_path for r in rows if r.AssetFile.media_file_id not in streams]
         if not rows or missing:
             raise PermanentError(f"asset {asset_id}: no video stream in {missing or 'files'}")
+        source_rate = parse_rational(asset.rate) if asset.rate else None
+        common: dict[str, Any] = {
+            "asset_id": asset_id,
+            "source_rate": source_rate,
+            "rate": proxy_rate(source_rate),
+            "tb": parse_rational(asset.tb),
+            "duration_ticks": asset.duration_ticks or 0,
+            "vfr": asset.vfr,
+            "bitrate": QUICK_BITRATE if quick else PROXY_BITRATE,
+        }
+        if quick:
+            camera = _camera_plan(s, rows, short_side, common, asset.audio_stream_index is not None)
+            if camera is not None:
+                return camera
         chapters = []
         for r in rows:
             st = streams[r.AssetFile.media_file_id]
@@ -160,10 +194,9 @@ def plan_for(project: Project, asset_id: int) -> ProxyPlan:
         w, h = proxy_size(
             asset.display_width or first.width or 1280,
             asset.display_height or first.height or 720,
+            short_side,
         )
-        source_rate = parse_rational(asset.rate) if asset.rate else None
         return ProxyPlan(
-            asset_id=asset_id,
             chapters=chapters,
             video_index=asset.video_stream_index,
             audio_index=asset.audio_stream_index,
@@ -171,12 +204,83 @@ def plan_for(project: Project, asset_id: int) -> ProxyPlan:
             color_range=first.color_range,
             width=w,
             height=h,
-            source_rate=source_rate,
-            rate=proxy_rate(source_rate),
-            tb=parse_rational(asset.tb),
-            duration_ticks=asset.duration_ticks or 0,
-            vfr=asset.vfr,
+            **common,
         )
+
+
+def _camera_plan(
+    s: Any, rows: list[Any], short_side: int, common: dict[str, Any], has_audio: bool
+) -> ProxyPlan | None:
+    """A plan over the camera's own proxies, if every chapter has a valid one (same
+    stream layout in all of them, with sound when the original has it); otherwise None
+    and the originals are transcoded."""
+    owners = [r.AssetFile.media_file_id for r in rows]
+    found: dict[int, tuple[MediaFile, list[MediaStream]]] = {}
+    for sc, mf in s.execute(
+        select(Sidecar, MediaFile)
+        .join(MediaFile, MediaFile.id == Sidecar.media_file_id)
+        .where(
+            Sidecar.owner_media_file_id.in_(owners),
+            Sidecar.kind.in_(CAMERA_PROXY_KINDS),
+            Sidecar.status == "valid",
+            Sidecar.proxy_candidate.is_(True),
+        )
+        .order_by(Sidecar.id)
+    ):
+        if sc.owner_media_file_id in found:
+            continue
+        sts = list(
+            s.scalars(
+                select(MediaStream)
+                .where(MediaStream.media_file_id == mf.id)
+                .order_by(MediaStream.stream_index)
+            )
+        )
+        found[sc.owner_media_file_id] = (mf, sts)
+    if set(found) != set(owners):
+        return None
+    chapters = []
+    layout: set[tuple[int, int | None]] = set()
+    first_video: MediaStream | None = None
+    for r in rows:
+        mf, sts = found[r.AssetFile.media_file_id]
+        video = next((x for x in sts if x.codec_type == "video"), None)
+        audio = next((x for x in sts if x.codec_type == "audio"), None)
+        if video is None or video.time_base is None:
+            return None
+        if has_audio and audio is None:
+            return None  # transcription and loudness need the sound
+        first_video = first_video or video
+        layout.add((video.stream_index, audio.stream_index if audio else None))
+        chapters.append(
+            ChapterInfo(
+                rel_path=mf.rel_path,
+                fingerprint=mf.fingerprint,
+                video_index=video.stream_index,
+                tb=parse_rational(video.time_base),
+                start_pts=video.start_pts,
+                # The camera proxy is frame-aligned with its original (validated), so it
+                # covers the original chapter's logical span.
+                logical_start_ticks=r.AssetFile.logical_start_ticks,
+                duration_ticks=r.AssetFile.duration_ticks,
+                nb_frames=video.nb_frames,
+            )
+        )
+    if len(layout) != 1 or first_video is None:
+        return None
+    ((video_index, audio_index),) = layout
+    w, h = proxy_size(first_video.width or 640, first_video.height or 360, short_side)
+    return ProxyPlan(
+        chapters=chapters,
+        video_index=video_index,
+        audio_index=audio_index,
+        color_hint="sdr",  # camera proxies are 8-bit SDR H.264
+        color_range=first_video.color_range,
+        width=w,
+        height=h,
+        source="camera",
+        **common,
+    )
 
 
 # -------------------------------------------------------------------- tick map
@@ -271,9 +375,9 @@ def _encoder() -> str:
     return encoders[0]
 
 
-def proxy_key(project: Project, asset_id: int) -> str:
+def proxy_key(project: Project, asset_id: int, mode: ModeConfig | None = None) -> str:
     """The proxy artifact key for an asset's current files and settings."""
-    return plan_for(project, asset_id).key(project.id, _encoder())
+    return plan_for(project, asset_id, mode).key(project.id, _encoder())
 
 
 @dataclass(frozen=True)
@@ -288,9 +392,21 @@ class ProxyInfo:
     tickmap: dict[str, Any]
 
 
-def load_proxy(project: Project, asset_id: int) -> ProxyInfo:
-    """The finished proxy of an asset (for downstream analysis stages)."""
-    plan = plan_for(project, asset_id)
+def load_proxy(project: Project, asset_id: int, mode: ModeConfig | None = None) -> ProxyInfo:
+    """The finished proxy of an asset. Analysis stages pass their job's mode; other
+    callers (previews) take whichever proxy exists, preferring Balanced's 720p."""
+    if mode is not None:
+        plan = plan_for(project, asset_id, mode)
+    else:
+        plans = [plan_for(project, asset_id), plan_for(project, asset_id, _QUICK)]
+        plan = next(
+            (
+                p
+                for p in plans
+                if project.artifacts.exists("tickmap", f"{p.key(project.id, _encoder())}-map")
+            ),
+            plans[0],
+        )
     key = plan.key(project.id, _encoder())
     tmap = project.artifacts.get_json("tickmap", f"{key}-map")
     return ProxyInfo(
@@ -306,7 +422,7 @@ def load_proxy(project: Project, asset_id: int) -> ProxyInfo:
 
 
 def _is_done(ctx: TaskContext) -> bool:
-    key = proxy_key(ctx.project, ctx.params["asset_id"])
+    key = proxy_key(ctx.project, ctx.params["asset_id"], task_mode(ctx))
     store = ctx.project.artifacts
     return store.exists("proxy", key) and store.exists("tickmap", f"{key}-map")
 
@@ -314,7 +430,7 @@ def _is_done(ctx: TaskContext) -> bool:
 @task("media.proxy", is_done=_is_done)
 def proxy_task(ctx: TaskContext) -> dict[str, Any]:
     binaries, caps = media_tools()
-    plan = plan_for(ctx.project, ctx.params["asset_id"])
+    plan = plan_for(ctx.project, ctx.params["asset_id"], task_mode(ctx))
     encoder = _encoder()
     hdr = plan.color_hint if plan.color_hint in ("hlg", "pq") else None
     if hdr and not caps.can_tonemap:
@@ -341,7 +457,7 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
         hdr=hdr,
         full_range=plan.color_range == "pc",
         encoder=encoder,
-        bitrate=PROXY_BITRATE,
+        bitrate=plan.bitrate,
         video_starts=[c.start_pts * c.tb for c in plan.chapters],
         video_durations=[c.duration_ticks * plan.tb for c in plan.chapters],
         hwaccel="videotoolbox" if encoder == "h264_videotoolbox" else None,

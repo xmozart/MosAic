@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from mosaic.app.routers import config, context, edits, jobs, system
+from mosaic.app.routers import analysis, config, context, edits, jobs, system
 from mosaic.app.services import Services
 
 BIND_HOST = "127.0.0.1"
@@ -27,6 +27,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(config.router)
     app.include_router(edits.router)
     app.include_router(context.router)
+    app.include_router(analysis.router)
     return app
 
 

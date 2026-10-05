@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from mosaic.core.modes import ModeConfig, resolve
 from mosaic.core.principal import Principal
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
 from mosaic.storage.projects import Project
-
-SUPPORTED_MODES = ("balanced",)
-
-
-class UnsupportedModeError(ValueError):
-    pass
 
 
 def job_cost_limit(principal: Principal) -> float:
@@ -30,20 +27,20 @@ def submit_analysis(
     executor: Executor,
     principal: Principal,
     project: Project,
-    mode: str = "balanced",
+    mode: str | ModeConfig = "balanced",
     cost_limit_usd: float | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> int:
-    """Start an analysis run. M0 accepts only ``balanced`` (ADR 0002 M)."""
-    if mode not in SUPPORTED_MODES:
-        raise UnsupportedModeError(
-            f"analysis mode {mode!r} is not available yet; M0 supports: balanced"
-        )
+    """Start an analysis run of the whole project in ``mode`` (ANALYSIS_MODES §2). Each
+    stage reads the mode from the job; whatever already matches its key is reused.
+    Raises ``modes.UnknownModeError`` or a validation error for a bad mode."""
+    config = mode if isinstance(mode, ModeConfig) else resolve(mode, overrides)
     return executor.submit(
         principal,
         JobSpec(
             project_id=project.id,
             kind="analysis",
-            params={"mode": mode},
+            params={"mode": config.name, "mode_config": config.model_dump(mode="json")},
             cost_limit_usd=(
                 job_cost_limit(principal) if cost_limit_usd is None else cost_limit_usd
             ),

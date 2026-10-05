@@ -261,5 +261,7 @@ def vision_task(ctx: TaskContext) -> dict[str, Any]:
 
 
 inventory.ASSET_STAGES.append(
-    inventory.StageDef("vision", "library.vision", ResourceClass.AI_API, after=("mosaics",))
+    inventory.StageDef(
+        "vision", "library.vision", ResourceClass.AI_API, after=("mosaics",), level=2
+    )
 )

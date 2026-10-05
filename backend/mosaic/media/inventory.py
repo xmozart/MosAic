@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key, digest
+from mosaic.core.modes import PRESETS, ModeConfig, task_mode
 from mosaic.core.time import Rounding, format_rational, round_fraction
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass, TaskSpec
@@ -57,24 +58,37 @@ class StageDef:
     kind: str
     resource_class: ResourceClass
     after: tuple[str, ...] = ()
+    level: int = 1  # ANALYSIS_MODES §1: L2 and L3 stages run only in modes that include them
 
 
 ASSET_STAGES: list[StageDef] = []
 PROJECT_STAGES: list[StageDef] = []
 
 
-def plan_stages(asset_ids: list[int]) -> list[TaskSpec]:
-    """Task specs for all registered stages; ``deps`` index into the returned list."""
+def _included(st: StageDef, mode: ModeConfig) -> bool:
+    return st.level <= 1 or (st.level == 2 and mode.l2) or (st.level == 3 and mode.l3)
+
+
+def plan_stages(asset_ids: list[int], mode: ModeConfig | None = None) -> list[TaskSpec]:
+    """Task specs for the registered stages the mode includes (Balanced when none is
+    given); ``deps`` index into the returned list."""
     for stages in (ASSET_STAGES, PROJECT_STAGES):
         names = [st.name for st in stages]
         for st in stages:
             unknown = [a for a in st.after if a not in names[: names.index(st.name)]]
             if unknown:
                 raise RuntimeError(f"stage {st.name!r} runs after unregistered or later {unknown}")
+    mode = mode or PRESETS["balanced"]
+    asset_stages = [st for st in ASSET_STAGES if _included(st, mode)]
+    project_stages = [st for st in PROJECT_STAGES if _included(st, mode)]
+    for st in asset_stages:
+        dropped = [a for a in st.after if a not in {x.name for x in asset_stages}]
+        if dropped:
+            raise RuntimeError(f"stage {st.name!r} runs after {dropped}, which this mode skips")
     specs: list[TaskSpec] = []
     for aid in asset_ids:
         local: dict[str, int] = {}
-        for st in ASSET_STAGES:
+        for st in asset_stages:
             specs.append(
                 TaskSpec(
                     kind=st.kind,
@@ -88,7 +102,7 @@ def plan_stages(asset_ids: list[int]) -> list[TaskSpec]:
             local[st.name] = len(specs) - 1
     per_asset = list(range(len(specs)))
     previous: list[int] = per_asset
-    for st in PROJECT_STAGES:
+    for st in project_stages:
         specs.append(
             TaskSpec(
                 kind=st.kind,
@@ -597,7 +611,7 @@ def group_task(ctx: TaskContext) -> dict[str, Any]:
             )
         grouper.directory(rows)
     grouper.reconcile()
-    planned = plan_stages(grouper.video_assets)
+    planned = plan_stages(grouper.video_assets, task_mode(ctx))
     if planned:
         ctx.spawn(planned)
     ctx.set_stage("analysis")

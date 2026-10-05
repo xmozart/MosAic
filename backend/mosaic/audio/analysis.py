@@ -19,6 +19,7 @@ from mosaic.ai.registry import task_transcriber
 from mosaic.audio.loudness import RATE as LOUD_RATE
 from mosaic.audio.loudness import AudioStats, LoudnessMeter
 from mosaic.core.keys import artifact_key
+from mosaic.core.modes import task_mode
 from mosaic.core.time import Rounding, SourceTime, parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
@@ -29,7 +30,7 @@ from mosaic.media.ffmpeg import builders
 from mosaic.media.ffmpeg.run import stream_stdout
 from mosaic.media.proxy import load_proxy
 from mosaic.media.tools import media_tools
-from mosaic.storage import provenance
+from mosaic.storage import provenance, stage_state
 from mosaic.storage.models_project import (
     Asset,
     AudioEvent,
@@ -54,7 +55,7 @@ def _config(ctx: TaskContext) -> dict[str, Any]:
 
 
 def _key(ctx: TaskContext) -> str:
-    px = load_proxy(ctx.project, ctx.params["asset_id"])
+    px = load_proxy(ctx.project, ctx.params["asset_id"], task_mode(ctx))
     return artifact_key(
         "audio",
         project_id=ctx.project.id,
@@ -65,7 +66,18 @@ def _key(ctx: TaskContext) -> str:
 
 
 def _is_done(ctx: TaskContext) -> bool:
-    return ctx.project.artifacts.exists("audio", _key(ctx))
+    """The artifact exists and the asset's rows came from it (ADR 0020)."""
+    key = _key(ctx)
+    if not ctx.project.artifacts.exists("audio", key):
+        return False
+    with ctx.project.db.session() as s:
+        return stage_state.is_current(s, ctx.params["asset_id"], "audio", key)
+
+
+def _finish(ctx: TaskContext, key: str, data: dict[str, Any], prov: int) -> None:
+    ctx.project.artifacts.put_json("audio", key, data, provenance_id=prov)
+    with ctx.write() as s:
+        stage_state.mark(s, ctx.params["asset_id"], "audio", key)
 
 
 def to_ticks(seconds: Fraction, tb: Fraction) -> int:
@@ -109,7 +121,7 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
     asset_id = ctx.params["asset_id"]
     tr = task_transcriber(ctx)
     key = _key(ctx)
-    px = load_proxy(ctx.project, asset_id)
+    px = load_proxy(ctx.project, asset_id, task_mode(ctx))
     with ctx.project.db.session() as s:
         asset = s.get(Asset, asset_id)
         if asset is None or asset.tb is None:
@@ -118,6 +130,7 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
         duration = asset.duration_ticks or 0
         has_audio = asset.audio_stream_index is not None
     with ctx.write() as s:
+        stage_state.mark(s, asset_id, "audio", "")  # rows are being replaced
         prov = provenance.record(
             s,
             provenance.ProvenanceInfo(
@@ -147,7 +160,7 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
             )
         )
     if not has_audio:
-        ctx.project.artifacts.put_json("audio", key, {"silent": True}, provenance_id=prov)
+        _finish(ctx, key, {"silent": True}, prov)
         return {"silent": True}
 
     ctx.set_stage("loudness")
@@ -269,7 +282,7 @@ def audio_task(ctx: TaskContext) -> dict[str, Any]:
         "words": words,
         "model": tr.model,
     }
-    ctx.project.artifacts.put_json("audio", key, summary, provenance_id=prov)
+    _finish(ctx, key, summary, prov)
     return summary
 
 

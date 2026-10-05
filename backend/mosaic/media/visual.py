@@ -18,6 +18,7 @@ from PIL import Image
 from sqlalchemy import delete
 
 from mosaic.core.keys import artifact_key
+from mosaic.core.modes import ModeConfig, task_mode
 from mosaic.core.time import Rounding, round_fraction
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
@@ -29,7 +30,7 @@ from mosaic.media.ffmpeg import builders
 from mosaic.media.ffmpeg.run import stream_stdout
 from mosaic.media.proxy import ProxyInfo, load_proxy, proxy_frame_to_source_ticks
 from mosaic.media.tools import media_tools
-from mosaic.storage import metrics, provenance
+from mosaic.storage import metrics, provenance, stage_state
 from mosaic.storage.models_project import Asset, SampleFrame, Shot, TechMetric
 
 VISUAL_VERSION = "visual/1"
@@ -70,6 +71,23 @@ def _even(x: Fraction) -> int:
     return max(2, 2 * round_fraction(x / 2, Rounding.NEAREST))
 
 
+def config_for(mode: ModeConfig) -> dict[str, Any]:
+    """The key config for a mode. Balanced is exactly ``CONFIG`` (existing analyses stay
+    valid); other modes override the sampling interval, forced split and detector."""
+    if (mode.sample_interval, mode.forced_max_shot, mode.detector) == (
+        SAMPLE_INTERVAL,
+        FORCED_MAX_SHOT,
+        "adaptive",
+    ):
+        return CONFIG
+    return CONFIG | {
+        "interval": mode.sample_interval,
+        "forced_max": mode.forced_max_shot,
+        "detector": mode.detector,
+        "threshold_cut": l1.THRESHOLD_CUT,
+    }
+
+
 def _key(ctx: TaskContext, px: ProxyInfo) -> str:
     return artifact_key(
         "visual",
@@ -77,14 +95,19 @@ def _key(ctx: TaskContext, px: ProxyInfo) -> str:
         # The asset is part of the key: rows are per asset, and two identical files share
         # one proxy blob but are two assets.
         inputs={"proxy": px.key, "asset": ctx.params["asset_id"]},
-        config=CONFIG,
+        config=config_for(task_mode(ctx)),
         version=VISUAL_VERSION,
     )
 
 
 def _is_done(ctx: TaskContext) -> bool:
-    px = load_proxy(ctx.project, ctx.params["asset_id"])
-    return ctx.project.artifacts.exists("visual", _key(ctx, px))
+    """The artifact exists and the asset's rows came from it (ADR 0020)."""
+    px = load_proxy(ctx.project, ctx.params["asset_id"], task_mode(ctx))
+    key = _key(ctx, px)
+    if not ctx.project.artifacts.exists("visual", key):
+        return False
+    with ctx.project.db.session() as s:
+        return stage_state.is_current(s, ctx.params["asset_id"], "visual", key)
 
 
 def pass_a(ctx: TaskContext, px: ProxyInfo) -> tuple[list[float], list[tuple[float, float]]]:
@@ -110,10 +133,12 @@ def pass_a(ctx: TaskContext, px: ProxyInfo) -> tuple[list[float], list[tuple[flo
     return content, shifts
 
 
-def plan_samples(shots: list[tuple[int, int, str]], rate: Fraction) -> list[tuple[int, int, str]]:
+def plan_samples(
+    shots: list[tuple[int, int, str]], rate: Fraction, every: Fraction = SAMPLE_INTERVAL
+) -> list[tuple[int, int, str]]:
     """``(frame, shot_index, reason)``: one scene-change frame per shot plus fixed-interval
-    frames that are at least 1 s away from it."""
-    interval = max(1, round_fraction(SAMPLE_INTERVAL * rate, Rounding.NEAREST))
+    frames (every ``every`` seconds) that are at least 1 s away from it."""
+    interval = max(1, round_fraction(every * rate, Rounding.NEAREST))
     offset = round_fraction(SCENE_OFFSET * rate, Rounding.NEAREST)
     gap = round_fraction(rate, Rounding.NEAREST)
     out: list[tuple[int, int, str]] = []
@@ -143,7 +168,7 @@ def _thumb(rgb: np.ndarray) -> bytes:
 def visual_task(ctx: TaskContext) -> dict[str, Any]:
     binaries, _ = media_tools()
     asset_id = ctx.params["asset_id"]
-    px = load_proxy(ctx.project, asset_id)
+    px = load_proxy(ctx.project, asset_id, task_mode(ctx))
     key = _key(ctx, px)
     tmap = px.tickmap
     with ctx.project.db.session() as s:
@@ -157,13 +182,16 @@ def visual_task(ctx: TaskContext) -> dict[str, Any]:
     ctx.set_stage("shots")
     content, shifts = pass_a(ctx, px)
     n = len(content)
+    mode = task_mode(ctx)
     min_len = max(1, round_fraction(MIN_SHOT * px.rate, Rounding.NEAREST))
-    max_len = round_fraction(FORCED_MAX_SHOT * px.rate, Rounding.NEAREST)
-    starts = [0, *l1.adaptive_cuts(content, min_len)]
-    shots = l1.force_split(starts, n, max_len)
-    candidates = plan_samples(shots, px.rate)
+    max_len = round_fraction(mode.forced_max_shot * px.rate, Rounding.NEAREST)
+    detect = l1.threshold_cuts if mode.detector == "threshold" else l1.adaptive_cuts
+    starts = [0, *detect(content, min_len)]
+    shots = l1.force_split(starts, n, max_len, mode.detector)
+    candidates = plan_samples(shots, px.rate, mode.sample_interval)
 
     with ctx.write() as s:
+        stage_state.mark(s, asset_id, "visual", "")  # rows are being replaced
         prov = provenance.record(
             s,
             provenance.ProvenanceInfo(
@@ -333,6 +361,8 @@ def visual_task(ctx: TaskContext) -> dict[str, Any]:
         {"shots": len(shots), "samples": len(candidates), "kept": kept},
         provenance_id=prov,
     )
+    with ctx.write() as s:
+        stage_state.mark(s, asset_id, "visual", key)
     return {"shots": len(shots), "samples": len(candidates), "kept": kept}
 
 

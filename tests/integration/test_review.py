@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from mosaic.ai.adapters.fake import adapter as fake
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
-from mosaic.library.review import plan_deepen, submit_deepen
+from mosaic.library.review import DeepenScope, plan_deepen, submit_deepen
 from mosaic.storage.models_project import DeepReview, Disposition, Provenance
 from tests.support.runner import run_job
 
@@ -25,9 +25,11 @@ def test_deep_review_one_call_per_candidate_then_cached(analyzed_session: Any) -
     assert candidates > 0
     executor = LocalExecutor(JobStore(control.db))
     before = fake.CALLS.count("review")
-    job, count, _ = submit_deepen(executor, control.local_principal, project)
+    run = submit_deepen(executor, control.local_principal, project)
+    job = run.job
     assert job is not None
-    assert count == candidates
+    assert run.candidates == candidates
+    assert run.l2_assets == [], "the analysis left no clip without L2"
     assert run_job(control, job, timeout=900) == "done"
     assert fake.CALLS.count("review") - before == candidates, "one AI call per candidate"
     with project.db.session() as s:
@@ -45,7 +47,7 @@ def test_deep_review_one_call_per_candidate_then_cached(analyzed_session: Any) -
         assert isinstance(r.data["best_frame"]["time"]["ticks"], int)
     # Deepening again: every candidate's stored key matches, so nothing is decoded or asked.
     before = fake.CALLS.count("review")
-    job, _, _ = submit_deepen(executor, control.local_principal, project)
+    job = submit_deepen(executor, control.local_principal, project).job
     assert job is not None
     assert run_job(control, job, timeout=900) == "done"
     assert fake.CALLS.count("review") == before
@@ -110,15 +112,16 @@ def test_cost_limit_pause_then_raise_and_resume(
     monkeypatch.setattr(ai_client, "AI_CACHE_VERSION", "ai-cache/test-pause")
     with project.write() as s:  # make them due again (keys would match otherwise)
         s.query(DeepReview).filter(DeepReview.segment_id.in_(seg_ids)).delete()
-    job, count, _ = submit_deepen(
+    run = submit_deepen(
         LocalExecutor(store),
         control.local_principal,
         project,
-        segment_ids=seg_ids,
+        DeepenScope(segment_ids=tuple(seg_ids)),
         cost_limit_usd=0.5,
     )
+    job = run.job
     assert job is not None
-    assert count == 3
+    assert run.candidates == 3
     _until_paused(control, job)
     paused = store.job(job)
     assert paused is not None
@@ -198,11 +201,11 @@ def test_day_scope_matches_the_editor(tmp_path: Any) -> None:
     assert {d: len(v) for d, v in by_day.items()} == {1: 2, 2: 4}
     with project.db.session() as s:
         for day, expected in by_day.items():
-            plan, dropped = plan_deepen(s, day=day)
+            plan, dropped = plan_deepen(s, DeepenScope(days=(day,)))
             got = {sid for ids in plan.values() for sid in ids}
             assert got == expected, (day, got, expected)
             assert dropped == []
-        plan, dropped = plan_deepen(s, segment_ids=[999_999])
+        plan, dropped = plan_deepen(s, DeepenScope(segment_ids=(999_999,)))
     assert plan == {}
     assert dropped == [999_999]
     project.close()
@@ -225,9 +228,13 @@ def test_undecodable_frames_skip_the_clip(
         raise FFmpegError("still", [], 1, "invalid data")
 
     monkeypatch.setattr(review, "run", broken)
-    job, count, _ = submit_deepen(
-        LocalExecutor(JobStore(control.db)), control.local_principal, project, segment_ids=ids
+    run = submit_deepen(
+        LocalExecutor(JobStore(control.db)),
+        control.local_principal,
+        project,
+        DeepenScope(segment_ids=tuple(ids)),
     )
+    job, count = run.job, run.candidates
     assert job is not None
     assert run_job(control, job, timeout=300) == "done", "bad media never fails the task"
     task = next(t for t in JobStore(control.db).tasks(job) if t.kind == "library.review")

@@ -84,6 +84,21 @@ def _codex_cli_limits(model: str) -> AdapterLimits:
     return limits(model)
 
 
+def _anthropic_price(model: str) -> tuple[float, float] | None:
+    from mosaic.ai.adapters.anthropic.adapter import PRICES
+
+    return PRICES.get(model)
+
+
+def _unpriced(_model: str) -> tuple[float, float] | None:
+    return None
+
+
+def _free(_model: str) -> tuple[float, float] | None:
+    """Subscription apps and local adapters cost no API budget (ADR 0014)."""
+    return (0.0, 0.0)
+
+
 def _app_check(binary: str, setting: str) -> Callable[[ConfigService, Principal], None]:
     def check(config: ConfigService, principal: Principal) -> None:
         from mosaic.ai.adapters.cli_common import find_binary
@@ -108,16 +123,21 @@ class ProviderEntry:
     limits: Callable[[str], AdapterLimits]
     remote: bool  # sends footage or text off this machine (blocked by ai.local_only)
     check: Callable[[ConfigService, Principal], None] = _no_check  # installed app present
+    # USD per million (input, output) tokens, without a key; None when unknown (estimates).
+    price: Callable[[str], tuple[float, float] | None] = _unpriced
 
 
 PROVIDERS: dict[str, ProviderEntry] = {
-    "anthropic": ProviderEntry(_anthropic, True, _anthropic_limits, remote=True),
+    "anthropic": ProviderEntry(
+        _anthropic, True, _anthropic_limits, remote=True, price=_anthropic_price
+    ),
     "claude-cli": ProviderEntry(
         _claude_cli,
         False,
         _claude_cli_limits,
         remote=True,
         check=_app_check("claude", "ai.cli.claude_path"),
+        price=_free,
     ),
     "codex-cli": ProviderEntry(
         _codex_cli,
@@ -125,9 +145,16 @@ PROVIDERS: dict[str, ProviderEntry] = {
         _codex_cli_limits,
         remote=True,
         check=_app_check("codex", "ai.cli.codex_path"),
+        price=_free,
     ),
-    "fake": ProviderEntry(_fake, False, _fake_limits, remote=False),
+    "fake": ProviderEntry(_fake, False, _fake_limits, remote=False, price=_free),
 }
+
+
+def price_for(choice: ProviderChoice) -> tuple[float, float] | None:
+    """USD per million (input, output) tokens of the configured model, or None."""
+    entry = PROVIDERS.get(choice.provider)
+    return entry.price(choice.model) if entry is not None else None
 
 
 def limits_for(choice: ProviderChoice) -> AdapterLimits:
@@ -180,9 +207,13 @@ _local_instances: dict[tuple[str, str], Any] = {}
 _local_lock = threading.Lock()
 
 
-def _local(config: ConfigService, principal: Principal, capability: str) -> Any:
+def _local(
+    config: ConfigService, principal: Principal, capability: str, model: str | None = None
+) -> Any:
+    """A local adapter instance. ``model`` (an analysis mode's choice) replaces the
+    profile's model; the test environment override wins over both."""
     choice = config.provider(principal, capability)
-    model = os.environ.get(ENV_OVERRIDES[capability]) or choice.model
+    model = os.environ.get(ENV_OVERRIDES[capability]) or model or choice.model
     key = (choice.provider, model)
     with _local_lock:
         if key not in _local_instances:
@@ -195,8 +226,10 @@ def _local(config: ConfigService, principal: Principal, capability: str) -> Any:
         return _local_instances[key]
 
 
-def transcriber(config: ConfigService, principal: Principal) -> Transcriber:
-    t: Transcriber = _local(config, principal, "transcriber")
+def transcriber(
+    config: ConfigService, principal: Principal, model: str | None = None
+) -> Transcriber:
+    t: Transcriber = _local(config, principal, "transcriber", model)
     return t
 
 
@@ -249,4 +282,12 @@ def task_embedder(ctx: TaskContext) -> Embedder:
 
 
 def task_transcriber(ctx: TaskContext) -> Transcriber:
-    return transcriber(*_task_config(ctx))
+    """The job owner's transcriber, with the job's analysis mode's Whisper model (a
+    faster-whisper model name) when the owner uses faster-whisper."""
+    from mosaic.core.modes import task_mode
+
+    config, owner = _task_config(ctx)
+    model = task_mode(ctx).stt_model
+    if model and config.provider(owner, "transcriber").provider != "faster-whisper":
+        model = None  # the mode's model names are faster-whisper's
+    return transcriber(config, owner, model)

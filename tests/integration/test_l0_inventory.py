@@ -10,9 +10,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
+from mosaic.core.modes import UnknownModeError
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
-from mosaic.media.pipeline import UnsupportedModeError, submit_analysis
+from mosaic.media.pipeline import submit_analysis
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_project import (
     Asset,
@@ -56,8 +57,8 @@ def test_l0_inventory_of_synthetic_corpus(corpus_dir: Path, tmp_path: Path) -> N
     control = ControlDB()
     project = init_project(control, control.local_principal, root)
     ex = LocalExecutor(JobStore(control.db))
-    with pytest.raises(UnsupportedModeError):
-        submit_analysis(ex, control.local_principal, project, "thorough")
+    with pytest.raises(UnknownModeError):
+        submit_analysis(ex, control.local_principal, project, "deep")
     job = submit_analysis(ex, control.local_principal, project)
     assert run_job(control, job) == "done"
 

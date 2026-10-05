@@ -80,9 +80,28 @@ def adaptive_cuts(
     return cuts
 
 
-def force_split(starts: list[int], total: int, max_len: int) -> list[tuple[int, int, str]]:
-    """Shots as ``(start, end, method)``; shots longer than ``max_len`` frames are split
-    evenly."""
+THRESHOLD_CUT = 27.0  # Quick mode: PySceneDetect ContentDetector's default threshold
+
+
+def threshold_cuts(
+    content: Sequence[float], min_scene_len: int, threshold: float = THRESHOLD_CUT
+) -> list[int]:
+    """Fast threshold detector (Quick mode): a cut wherever the frame-to-frame content
+    change reaches ``threshold``, at least ``min_scene_len`` frames after the last."""
+    cuts: list[int] = []
+    last = 0
+    for i in range(1, len(content)):
+        if content[i] >= threshold and i - last >= min_scene_len:
+            cuts.append(i)
+            last = i
+    return cuts
+
+
+def force_split(
+    starts: list[int], total: int, max_len: int, method: str = "adaptive"
+) -> list[tuple[int, int, str]]:
+    """Shots as ``(start, end, method)``: the detector's ``method`` for the first part of
+    each shot, ``forced`` for the parts of shots longer than ``max_len`` frames."""
     bounds = [*starts, total]
     out: list[tuple[int, int, str]] = []
     for a, b in itertools.pairwise(bounds):
@@ -93,7 +112,7 @@ def force_split(starts: list[int], total: int, max_len: int) -> list[tuple[int, 
         for p in range(parts):
             s = a + round(p * step)
             e = a + round((p + 1) * step) if p < parts - 1 else b
-            out.append((s, e, "adaptive" if p == 0 else "forced"))
+            out.append((s, e, method if p == 0 else "forced"))
     return out
 
 
