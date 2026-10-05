@@ -114,6 +114,9 @@ def test_lrf_validation() -> None:
     assert lrf_matches(a, _probe([_video()], duration="10.3")) is None
 
 
+CID = "com.apple.quicktime.content.identifier"
+
+
 def test_iphone_detection_capture_time_and_live_photo() -> None:
     tags = {
         "com.apple.quicktime.make": "Apple",
@@ -121,13 +124,26 @@ def test_iphone_detection_capture_time_and_live_photo() -> None:
         "com.apple.quicktime.content.identifier": "ABC",
     }
     mov = _rec(1, "IMG_0001.MOV", _probe([_video()], duration="2.5", tags=tags))
-    still = _rec(2, "IMG_0001.HEIC", None, MediaType.PHOTO)
+    photo = _probe([_video()], duration="0", tags={"make": "Apple"})
+    still = _rec(2, "IMG_0001.HEIC", photo, MediaType.PHOTO)
     assert profile_for(mov).id == "iphone"
+    assert profile_for(still).id == "iphone"
     assert IPhoneProfile().capture_time(mov.probe) == "2025-02-21T10:12:10+04:00"  # type: ignore[arg-type]
     groups = IPhoneProfile().group([mov, still])
-    assert [(g.kind, g.status) for g in groups] == [("live_photo", "deferred")]
+    assert [(g.kind, g.status) for g in groups] == [("live_photo", "ok")]
+    assert [f.id for f in groups[0].files] == [2, 1], "the still first, then its motion"
     long_mov = _rec(1, "IMG_0001.MOV", _probe([_video()], duration="10", tags=tags))
     assert {g.kind for g in IPhoneProfile().group([long_mov, still])} == {"video", "photo"}
+    # Paired by the content identifier both halves carry, whatever their names.
+    tagged = _probe([_video()], duration="0", tags={"make": "Apple", **{CID: "ABC"}})
+    renamed = _rec(3, "edited_copy.HEIC", tagged, MediaType.PHOTO)
+    groups = IPhoneProfile().group([mov, still, renamed])
+    live = [g for g in groups if g.kind == "live_photo"]
+    assert [[f.id for f in g.files] for g in live] == [[3, 1]]
+    # A still whose identifier differs is not paired by name.
+    other = _probe([_video()], duration="0", tags={"make": "Apple", **{CID: "XYZ"}})
+    named = _rec(4, "IMG_0001.HEIC", other, MediaType.PHOTO)
+    assert {g.kind for g in IPhoneProfile().group([mov, named])} == {"video", "photo"}
 
 
 def test_select_audio_prefers_stereo_aac() -> None:

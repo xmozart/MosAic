@@ -58,6 +58,11 @@ CATALOG: dict[str, Entry] = {
             "Export ProRes or H.264 from REDCINE-X or your editor.",
         ),
         Entry(
+            "raw_not_v1",
+            "This camera's raw photo format is not supported yet.",
+            "Shoot RAW+JPEG, or export JPEGs from the camera maker's software.",
+        ),
+        Entry(
             "no_stream",
             "No playable video or audio stream.",
             "Check that the copy finished, or export the clip again.",
@@ -76,6 +81,10 @@ _BY_EXTENSION = {
     ".insp": "insta360_photo_360",
     ".braw": "braw",
     ".r3d": "red_raw",
+    ".cr3": "raw_not_v1",
+    ".raf": "raw_not_v1",
+    ".orf": "raw_not_v1",
+    ".rw2": "raw_not_v1",
 }
 
 

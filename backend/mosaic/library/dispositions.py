@@ -44,7 +44,7 @@ from mosaic.storage.models_project import (
     VisualObservation,
 )
 
-DISPOSITION_VERSION = "dispositions/4"  # AI "obstructed" needs usable=false (ADR 0013 §5)
+DISPOSITION_VERSION = "dispositions/5"  # 5: photos, no length rules (ADR 0025)
 SEVERITY = {"USE": 0, "MAYBE": 1, "REJECT": 2}
 
 MIN_USABLE = Fraction(7, 10)  # seconds of usable range
@@ -114,6 +114,7 @@ class SegmentFacts:
     shake: list[tuple[float, float | None]]
     shake_floor: float
     frozen_fraction: float
+    still: bool = False  # a photo (one frame)
 
 
 def _median(values: Iterable[float]) -> float | None:
@@ -123,10 +124,11 @@ def _median(values: Iterable[float]) -> float | None:
 
 def rule_reasons(f: SegmentFacts) -> list[Reason]:
     out: list[Reason] = []
-    if f.asset_seconds < MIN_ASSET:
-        out.append(Reason("accidental_recording", "REJECT", "rule"))
-    if f.usable_seconds < MIN_USABLE:
-        out.append(Reason("too_short", "REJECT", "rule"))
+    if not f.still:  # a photo has no duration: length rules do not apply (ADR 0025)
+        if f.asset_seconds < MIN_ASSET:
+            out.append(Reason("accidental_recording", "REJECT", "rule"))
+        if f.usable_seconds < MIN_USABLE:
+            out.append(Reason("too_short", "REJECT", "rule"))
     black = _median(f.clip_low)
     if black is not None and black >= BLACK_CLIP:
         out.append(Reason("black_frames", "REJECT", "rule"))
@@ -228,7 +230,7 @@ def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
         for m in metrics:
             if m.sample_id is not None:
                 t = sample_ticks.get(m.sample_id, m.start_ticks)
-                if a <= t < b:
+                if a <= t < b or a == b == t:  # a photo's segment is the one frame at 0
                     at_sample.setdefault(m.name, []).append(m)
             elif m.start_ticks < b and m.end_ticks > a:
                 in_range.setdefault(m.name, []).append(m)
@@ -245,6 +247,7 @@ def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
             shake=[(m.value, m.percentile) for m in in_range.get(shake_name, [])],
             shake_floor=WOBBLE_FLOOR[shake_name],
             frozen_fraction=frozen / (b - a) if b > a else 0.0,
+            still=asset.kind in ("photo", "live_photo"),
         )
     return out
 
@@ -304,7 +307,11 @@ def dispositions_task(ctx: TaskContext) -> dict[str, Any]:
         )
     with ctx.project.db.session() as s:
         asset_ids = list(
-            s.scalars(select(Asset.id).where(Asset.kind == "video").order_by(Asset.id))
+            s.scalars(
+                select(Asset.id)
+                .where(Asset.kind.in_(("video", "photo", "live_photo")))
+                .order_by(Asset.id)
+            )
         )
     counts = {"USE": 0, "MAYBE": 0, "REJECT": 0}
     now = now_iso()

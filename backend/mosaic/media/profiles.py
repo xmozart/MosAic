@@ -21,6 +21,8 @@ from mosaic.media.probe import HFR_THRESHOLD, ProbeResult, StreamInfo
 from mosaic.media.scan import MediaType
 from mosaic.media.unsupported import CATALOG, unsupported_by_extension
 
+CONTENT_ID = "com.apple.quicktime.content.identifier"  # MOVs; photos report it the same
+
 
 @dataclass(frozen=True)
 class FileRecord:
@@ -152,9 +154,7 @@ def low_bitrate(probe: ProbeResult, stream: StreamInfo | None) -> bool:
 def _single(profile: str, rec: FileRecord) -> AssetGroup:
     kind = {MediaType.PHOTO: "photo", MediaType.AUDIO: "audio"}.get(rec.media_type, "video")
     group = AssetGroup(key=f"{profile}:{rec.rel_path}", profile=profile, kind=kind, files=[rec])
-    if kind == "photo":
-        group.status, group.reason = "deferred", "Photos are analyzed from M1."
-    elif kind == "audio":
+    if kind == "audio":
         group.status = "deferred"
         group.reason = "Standalone audio files are used in a later version."
     return group
@@ -207,7 +207,7 @@ class IPhoneProfile(GenericProfile):
     id = "iphone"
 
     def detect(self, probe: ProbeResult | None, path: str) -> float:
-        if probe and (probe.tag("com.apple.quicktime.make") or "").lower() == "apple":
+        if probe and (probe.tag("com.apple.quicktime.make", "make") or "").lower() == "apple":
             return 0.95
         name = PurePosixPath(path).name
         if re.match(r"^IMG_\d{4}", name, re.I) or name.endswith("_iOS.MOV"):
@@ -215,30 +215,46 @@ class IPhoneProfile(GenericProfile):
         return 0.0
 
     def group(self, files: Sequence[FileRecord]) -> list[AssetGroup]:
-        """Pair Live Photos: a still and a short MOV with the same name, where the MOV
-        carries an Apple content identifier. (Comparing the still's own identifier needs
-        photo parsing, which arrives with photos in M1.)"""
-        stills = {(f.parent, f.stem.lower()): f for f in files if f.media_type is MediaType.PHOTO}
+        """Pair Live Photos: a still and a short MOV that carry the same Apple content
+        identifier (ADR 0025). When the still has no readable identifier, a still and a
+        short MOV with the same name, where the MOV has one, are paired as before."""
+        stills = [f for f in files if f.media_type is MediaType.PHOTO and f.probe is not None]
+        by_id = {}
+        for f in stills:
+            assert f.probe is not None
+            cid = f.probe.tag(CONTENT_ID)
+            if cid:
+                by_id[cid] = f
+        by_name = {(f.parent, f.stem.lower()): f for f in stills}
         used: set[int] = set()
         groups: list[AssetGroup] = []
         for f in files:
             if f.media_type is not MediaType.VIDEO or f.probe is None:
                 continue
-            still = stills.get((f.parent, f.stem.lower()))
-            content_id = f.probe.tag("com.apple.quicktime.content.identifier")
+            content_id = f.probe.tag(CONTENT_ID)
             short = f.probe.duration is not None and f.probe.duration <= 4
-            if still is not None and content_id and short:
-                groups.append(
-                    AssetGroup(
-                        key=f"iphone:live:{f.rel_path}",
-                        profile=self.id,
-                        kind="live_photo",
-                        files=[still, f],
-                        status="deferred",
-                        reason="Live Photos are analyzed from M1.",
-                    )
+            if not content_id or not short:
+                continue
+            still = by_id.get(content_id)
+            if still is None:
+                named = by_name.get((f.parent, f.stem.lower()))
+                if (
+                    named is not None
+                    and named.probe is not None
+                    and not named.probe.tag(CONTENT_ID)
+                ):
+                    still = named
+            if still is None or still.id in used:
+                continue
+            groups.append(
+                AssetGroup(
+                    key=f"iphone:live:{f.rel_path}",
+                    profile=self.id,
+                    kind="live_photo",
+                    files=[still, f],
                 )
-                used |= {still.id, f.id}
+            )
+            used |= {still.id, f.id}
         groups += [_single(self.id, f) for f in files if f.id not in used]
         return groups
 
@@ -248,7 +264,10 @@ class IPhoneProfile(GenericProfile):
         )
 
     def camera(self, probe: ProbeResult) -> tuple[str | None, str | None]:
-        return probe.tag("com.apple.quicktime.make"), probe.tag("com.apple.quicktime.model")
+        return (
+            probe.tag("com.apple.quicktime.make", "make"),
+            probe.tag("com.apple.quicktime.model", "model"),
+        )
 
 
 _GOPRO_NEW = re.compile(r"^G([HXL])(\d{2})(\d{4})$", re.I)  # GX010201: chapter 01, file 0201

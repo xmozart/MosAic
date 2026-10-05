@@ -80,8 +80,9 @@ def test_shot_boundaries_match_scene_changes(analyzed: Project, ffmpeg_bin: FFmp
 
 def test_samples_metrics_and_thumbnails(analyzed: Project) -> None:
     with analyzed.db.session() as s:
-        shots = {sh.id: sh for sh in s.scalars(select(Shot))}
-        samples = list(s.scalars(select(SampleFrame)))
+        # Video shots only: a photo's one shot holds its one "photo" sample (ADR 0025).
+        shots = {sh.id: sh for sh in s.scalars(select(Shot).where(Shot.method != "photo"))}
+        samples = [sm for sm in s.scalars(select(SampleFrame)) if sm.shot_id in shots]
         metrics = list(s.scalars(select(TechMetric)))
     assert samples
     per_shot_scene: dict[int, int] = {}

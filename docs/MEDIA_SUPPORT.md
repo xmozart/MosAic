@@ -75,7 +75,7 @@ class CameraProfile(Protocol):                # ADR 0006
 - **Color:** D-Log M and HLG.
 
 ### Generic
-- Any FFmpeg-decodable video or audio, and any Pillow-decodable image (with `pillow-heif` for HEIC).
+- Any FFmpeg-decodable video or audio, and any Pillow-decodable image (HEIC/HEIF through `pi-heif`, decode-only; `pillow-heif` is not used because its wheels bundle the GPL x265 encoder; ADR 0025). TIFF-based raws (NEF, NRW, DNG, ARW, CR2) are read through their embedded preview; other raw formats (CR3, RAF, ORF, RW2) are unsupported with a fix.
 - Screen recordings and messaging-app re-encodes are flagged `low_bitrate_source`.
 
 ## 3. Photos as first-class assets

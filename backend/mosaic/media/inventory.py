@@ -7,6 +7,7 @@ directory at a time so memory stays bounded on large projects (invariant 13).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path, PurePosixPath
@@ -23,6 +24,7 @@ from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass, TaskSpec
 from mosaic.jobs.registry import task
 from mosaic.media import probe as probing
+from mosaic.media.photo import PhotoError, photo_probe
 from mosaic.media.profiles import (
     PROFILES,
     AssetGroup,
@@ -35,15 +37,24 @@ from mosaic.media.profiles import (
     profile_for,
     select_audio,
 )
-from mosaic.media.scan import MediaType, ScannedFile, fingerprint, is_offline, scan
+from mosaic.media.scan import (
+    PHOTO_EXT,
+    MediaType,
+    ScannedFile,
+    fingerprint,
+    is_offline,
+    scan,
+)
 from mosaic.media.tools import media_tools
-from mosaic.media.unsupported import CATALOG, unsupported_codec
+from mosaic.media.unsupported import CATALOG, unsupported_by_extension, unsupported_codec
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
 
 PROBE_VERSION = "probe/2"  # 2: Insta360, DJI and Nikon profiles (ADR 0024)
+PHOTO_PROBE_VERSION = "photo-probe/1"  # media/photo.py, not ffprobe (ADR 0025)
 GROUP_VERSION = "group/2"
 PROXY_SIDECARS = (".lrf", ".lrv")
+PHOTO_KINDS = ("photo", "live_photo")
 _REPAIR = "Check that the copy finished; copy the file again from the camera or card."
 
 
@@ -60,6 +71,7 @@ class StageDef:
     resource_class: ResourceClass
     after: tuple[str, ...] = ()
     level: int = 1  # ANALYSIS_MODES §1: L2 and L3 stages run only in modes that include them
+    kinds: tuple[str, ...] = ("video",)  # asset kinds a per-asset stage runs for
 
 
 ASSET_STAGES: list[StageDef] = []
@@ -70,9 +82,13 @@ def _included(st: StageDef, mode: ModeConfig) -> bool:
     return st.level <= 1 or (st.level == 2 and mode.l2) or (st.level == 3 and mode.l3)
 
 
-def plan_stages(asset_ids: list[int], mode: ModeConfig | None = None) -> list[TaskSpec]:
+def plan_stages(
+    asset_ids: list[int], mode: ModeConfig | None = None, photo_ids: Sequence[int] = ()
+) -> list[TaskSpec]:
     """Task specs for the registered stages the mode includes (Balanced when none is
-    given); ``deps`` index into the returned list."""
+    given): per-asset stages for each video (``asset_ids``) and photo (``photo_ids``) by
+    their ``kinds``, then the project stages. ``deps`` index into the returned list; a
+    stage depends on the stages named in ``after`` that run for the same asset."""
     for stages in (ASSET_STAGES, PROJECT_STAGES):
         names = [st.name for st in stages]
         for st in stages:
@@ -80,27 +96,30 @@ def plan_stages(asset_ids: list[int], mode: ModeConfig | None = None) -> list[Ta
             if unknown:
                 raise RuntimeError(f"stage {st.name!r} runs after unregistered or later {unknown}")
     mode = mode or PRESETS["balanced"]
-    asset_stages = [st for st in ASSET_STAGES if _included(st, mode)]
+    included = [st for st in ASSET_STAGES if _included(st, mode)]
+    excluded = {st.name for st in ASSET_STAGES if not _included(st, mode)}
     project_stages = [st for st in PROJECT_STAGES if _included(st, mode)]
-    for st in asset_stages:
-        dropped = [a for a in st.after if a not in {x.name for x in asset_stages}]
+    for st in included:
+        dropped = [a for a in st.after if a in excluded]
         if dropped:
             raise RuntimeError(f"stage {st.name!r} runs after {dropped}, which this mode skips")
     specs: list[TaskSpec] = []
-    for aid in asset_ids:
-        local: dict[str, int] = {}
-        for st in asset_stages:
-            specs.append(
-                TaskSpec(
-                    kind=st.kind,
-                    stage=st.name,
-                    resource_class=st.resource_class,
-                    params={"asset_id": aid},
-                    label=f"{st.name} ast_{aid:04d}",
-                    deps=[local[a] for a in st.after],
+    for kind, ids in (("video", asset_ids), ("photo", photo_ids)):
+        stages = [st for st in included if kind in st.kinds]
+        for aid in ids:
+            local: dict[str, int] = {}
+            for st in stages:
+                specs.append(
+                    TaskSpec(
+                        kind=st.kind,
+                        stage=st.name,
+                        resource_class=st.resource_class,
+                        params={"asset_id": aid},
+                        label=f"{st.name} ast_{aid:04d}",
+                        deps=[local[a] for a in st.after if a in local],
+                    )
                 )
-            )
-            local[st.name] = len(specs) - 1
+                local[st.name] = len(specs) - 1
     per_asset = list(range(len(specs)))
     previous: list[int] = per_asset
     for st in project_stages:
@@ -284,9 +303,6 @@ def _place(s: Session, row: MediaFile, f: ScannedFile) -> TaskSpec | None:
     if f.offline:
         row.status, row.reason = "offline", "File is in the cloud and not downloaded."
         return None
-    if f.media_type is MediaType.PHOTO:
-        row.status, row.reason = "deferred", "Photos are analyzed from M1."
-        return None
     if f.media_type is MediaType.OTHER:
         row.status, row.reason = "unsupported", CATALOG["not_media"].reason
         return None
@@ -309,12 +325,18 @@ def _place(s: Session, row: MediaFile, f: ScannedFile) -> TaskSpec | None:
 
 
 def _probe_key(ctx: TaskContext, fp: str, rel_path: str) -> str:
-    _, caps = media_tools()
+    """Photos are read by ``media.photo`` (versioned on its own); everything else by
+    ffprobe (versioned with the probe stage and the FFmpeg build)."""
+    if PurePosixPath(rel_path).suffix.lower() in PHOTO_EXT:
+        version = PHOTO_PROBE_VERSION
+    else:
+        _, caps = media_tools()
+        version = f"{PROBE_VERSION}+ffprobe-{caps.version}"
     return artifact_key(
         "probe",
         project_id=ctx.project.id,
         inputs={"fingerprint": fp, "path": rel_path},
-        version=f"{PROBE_VERSION}+ffprobe-{caps.version}",
+        version=version,
     )
 
 
@@ -391,7 +413,7 @@ def probe_task(ctx: TaskContext) -> dict[str, Any]:
     with ctx.project.db.session() as s:
         row = s.get(MediaFile, ctx.params["media_file_id"])
         assert row is not None
-        rel_path, size = row.rel_path, row.size
+        rel_path, size, media_type = row.rel_path, row.size, row.media_type
     path = ctx.project.root / rel_path
     try:
         if is_offline(path.lstat()):  # evicted to the cloud since the scan: never download
@@ -410,6 +432,8 @@ def probe_task(ctx: TaskContext) -> dict[str, Any]:
         )
         return {"status": "unsupported"}
     key = _probe_key(ctx, fp, rel_path)
+    if media_type == MediaType.PHOTO.value:
+        return _probe_photo(ctx, path, rel_path, fp, key)
 
     try:
         data = probing.ffprobe(binaries, path)
@@ -486,6 +510,54 @@ def probe_task(ctx: TaskContext) -> dict[str, Any]:
     return {"status": status, "profile": profile.id}
 
 
+def _probe_photo(ctx: TaskContext, path: Path, rel_path: str, fp: str, key: str) -> dict[str, Any]:
+    """Photos are described by ``media.photo`` (Pillow, pi-heif, raw previews) in the shape
+    of a probe result; nothing is ever written to the original (ADR 0025)."""
+    known = unsupported_by_extension(rel_path)
+    if known is not None:
+        _mark(ctx, "unsupported", known.reason, known.fix, fp=fp)
+        return {"status": "unsupported"}
+    try:
+        data = photo_probe(path)
+    except PhotoError as exc:
+        _mark(
+            ctx,
+            "unsupported",
+            f"{str(exc)[:1].upper()}{str(exc)[1:]}.",
+            "Check that the copy finished, or export the photo again.",
+            fp=fp,
+        )
+        return {"status": "unsupported"}
+    result = probing.parse_probe(data)
+    with ctx.write() as s:
+        prov = provenance.record(
+            s,
+            provenance.ProvenanceInfo(
+                kind="probe",
+                algorithm_version=PHOTO_PROBE_VERSION,
+                input_keys=[fp],
+            ),
+        )
+    ctx.project.artifacts.put_json("probe", key, data, provenance_id=prov)
+    rec = FileRecord(id=0, rel_path=rel_path, media_type=MediaType.PHOTO, probe=result, usable=True)
+    profile = profile_for(rec)
+    make, model = profile.camera(result)
+    with ctx.write() as s:
+        r = s.get(MediaFile, ctx.params["media_file_id"])
+        assert r is not None
+        s.execute(delete(MediaStream).where(MediaStream.media_file_id == r.id))
+        for st in result.streams:
+            s.add(_stream_row(r.id, st, False))
+        r.fingerprint, r.probe_key = fp, key
+        r.status, r.reason, r.suggested_fix = "ok", None, None
+        r.container = "image"
+        r.bit_rate = None
+        r.profile = profile.id
+        r.capture_time = profile.capture_time(result)
+        r.camera_make, r.camera_model = make, model
+    return {"status": "ok", "profile": profile.id, "kind": "photo"}
+
+
 # ------------------------------------------------------------------------ group
 
 
@@ -525,6 +597,7 @@ class _Grouper:
         self.produced: set[str] = set()
         self.summary: dict[str, int] = {}
         self.video_assets: list[int] = []
+        self.photo_assets: list[int] = []
         self.now = now_iso()
 
     def _count(self, key: str) -> None:
@@ -562,7 +635,7 @@ class _Grouper:
     def _apply(self, s: Session, g: AssetGroup) -> Asset:
         asset = self._asset(s, g.key, [f.id for f in g.files], g.kind)
         profile = profile_by_id(g.profile)
-        first = g.files[0] if g.kind != "live_photo" else g.files[-1]
+        first = g.files[0]  # a Live Photo's still comes first; its MOV is kept with it
         probe = first.probe
         v = probe.video_streams[0] if probe and probe.video_streams else None
         a = select_audio(probe) if probe else None
@@ -607,11 +680,28 @@ class _Grouper:
             asset.vfr = any(r.id in self.vfr_files for r in g.files)
             asset.capture_time = profile.capture_time(probe)
             asset.camera_make, asset.camera_model = profile.camera(probe)
+        elif g.kind in PHOTO_KINDS and probe is not None:
+            # A still: one picture, no timeline (ADR 0025). Its single shot, sample and
+            # segment sit at tick 0 of a 1/1 time base.
+            asset.tb, asset.duration_ticks, asset.vfr, asset.rate = "1/1", 0, False, None
+            s.add(
+                AssetFile(
+                    asset_id=asset.id,
+                    order=0,
+                    media_file_id=first.id,
+                    logical_start_ticks=0,
+                    duration_ticks=0,
+                )
+            )
+            asset.capture_time = profile.capture_time(probe)
+            asset.camera_make, asset.camera_model = profile.camera(probe)
         for rec in g.files:
             s.execute(update(MediaFile).where(MediaFile.id == rec.id).values(asset_id=asset.id))
         self._count(f"{g.kind}:{g.status}")
         if asset.kind == "video" and asset.status == "ok":
             self.video_assets.append(asset.id)
+        elif asset.kind in PHOTO_KINDS and asset.status == "ok":
+            self.photo_assets.append(asset.id)
         return asset
 
     def directory(self, rows: list[MediaFile]) -> None:
@@ -757,7 +847,7 @@ def group_task(ctx: TaskContext) -> dict[str, Any]:
             )
         grouper.directory(rows)
     grouper.reconcile()
-    planned = plan_stages(grouper.video_assets, task_mode(ctx))
+    planned = plan_stages(grouper.video_assets, task_mode(ctx), grouper.photo_assets)
     if planned:
         ctx.spawn(planned)
     ctx.set_stage("analysis")

@@ -144,7 +144,14 @@ def _footage(session: Session, asset_ids: set[int] | None = None) -> tuple[int, 
         videos += 1
         if a.duration_ticks and a.tb:
             footage += a.duration_ticks * parse_rational(a.tb)
-    photos = session.scalar(select(func.count(Asset.id)).where(Asset.kind == "photo")) or 0
+    photos = (
+        session.scalar(
+            select(func.count(Asset.id)).where(
+                Asset.kind.in_(("photo", "live_photo")), Asset.status == "ok"
+            )
+        )
+        or 0
+    )
     return videos, photos, footage
 
 
@@ -153,7 +160,9 @@ def _segment_seconds(session: Session) -> Fraction:
     total = Fraction(0)
     n = 0
     for g, tb in session.execute(
-        select(Segment, Asset.tb).join(Asset, Asset.id == Segment.asset_id)
+        select(Segment, Asset.tb)
+        .join(Asset, Asset.id == Segment.asset_id)
+        .where(Asset.kind == "video")  # photo segments have no length
     ):
         if tb:
             total += (g.end_ticks - g.start_ticks) * parse_rational(tb)
@@ -172,7 +181,8 @@ def for_project(
     l2_cost: tuple[float, float] | None = (0.0, 0.0)
     if mode.l2:
         calls, capacity = _vision(config, me, mode)
-        n = math.ceil(segments * PER_SEGMENT / capacity)
+        # Each photo is a one-tile sheet and one vision call (ADR 0025).
+        n = math.ceil(segments * PER_SEGMENT / capacity) + photos
         l2 = (n, n)
         l2_cost = calls.cost(l2)
     l3 = (0, 0)

@@ -656,7 +656,7 @@ class CorpusGenerator:
             CaseInfo(
                 "portrait_jpeg",
                 ["IMG_0001.jpg"],
-                "photo orientation (deferred)",
+                "photo orientation (not a video case)",
                 expect_deferred=True,
             )
         )

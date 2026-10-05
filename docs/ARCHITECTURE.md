@@ -337,7 +337,7 @@ Behaviour:
 ## 12. Search
 
 - **Hybrid search.** SigLIP text→image similarity over sample embeddings, plus full-text search (FTS5) over descriptions, tags and transcripts. The two result sets are merged with reciprocal rank fusion.
-- Vectors live in sqlite-vec inside the project DB, one index per (owner kind, model, dimension): sample and segment vectors are indexed separately. The index mirrors the `embedding` table, whose rows are rebuilt when the producing stage's key (which includes the algorithm version) changes. A model change creates a new index; it does not overwrite the old one (ADR 0011).
+- Vectors live in sqlite-vec inside the project DB, one index per (owner kind, model, dimension): sample, segment and photo-segment vectors are indexed separately (ADR 0025). The index mirrors the `embedding` table, whose rows are rebuilt when the producing stage's key (which includes the algorithm version) changes. A model change creates a new index; it does not overwrite the old one (ADR 0011).
 
 ## 13. Edit versioning
 

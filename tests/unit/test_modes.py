@@ -200,3 +200,30 @@ def test_scope_query_and_body_validation() -> None:
     with pytest.raises(HTTPException):
         _mode("custom", {"tiles": [2, 2]}, Scope(kind="trip"))
     assert _mode("thorough", None, Scope(kind="trip")).l3
+
+
+def test_plan_stages_by_asset_kind() -> None:
+    import importlib
+
+    from mosaic.jobs.registry import HANDLER_MODULES
+    from mosaic.media.inventory import plan_stages
+
+    for m in HANDLER_MODULES:
+        importlib.import_module(m)
+
+    def per_asset(specs: Any, aid: int) -> list[tuple[str, list[str]]]:
+        mine = [(i, t) for i, t in enumerate(specs) if t.params.get("asset_id") == aid]
+        names = {i: t.stage for i, t in mine}
+        return [(t.stage, [names[d] for d in t.deps]) for _, t in mine]
+
+    specs = plan_stages([1], None, [2])
+    video = per_asset(specs, 1)
+    photo = per_asset(specs, 2)
+    assert "photo" not in {s for s, _ in video}
+    assert [s for s, _ in photo] == ["photo", "embed", "photo_segment", "mosaics", "vision"]
+    assert dict(photo)["embed"] == ["photo"]
+    assert dict(photo)["mosaics"] == ["photo_segment"]
+    assert "visual" in dict(video)["embed"]
+    assert plan_stages([], None, [2])[-1].stage == "summaries"
+    only_video = [t.stage for t in plan_stages([1], None, [])]
+    assert "photo" not in only_video

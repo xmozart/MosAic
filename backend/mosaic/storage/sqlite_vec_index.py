@@ -22,10 +22,10 @@ PREFIX = "vec_"
 
 
 def index_name(model: str, dim: int, kind: str) -> str:
-    if kind not in ("sample", "segment"):
+    if kind not in ("sample", "segment", "photo_segment"):
         raise ValueError(f"unknown embedding owner kind {kind!r}")
     name = f"{PREFIX}{kind}_{digest(model, 12)}_{dim}"
-    if not re.fullmatch(r"vec_(sample|segment)_[0-9a-f]{12}_\d+", name):
+    if not re.fullmatch(r"vec_(sample|segment|photo_segment)_[0-9a-f]{12}_\d+", name):
         raise ValueError(name)
     return name
 

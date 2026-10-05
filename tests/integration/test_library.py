@@ -98,7 +98,11 @@ def test_embeddings_exist_and_index_finds_duplicates(analyzed: Project) -> None:
         seg_vecs = {
             e.owner_id: e
             for e in s.scalars(
-                select(Embedding).where(Embedding.owner_kind == "segment", Embedding.model == model)
+                # Photos' one-frame segments have their own kind and index (ADR 0025).
+                select(Embedding).where(
+                    Embedding.owner_kind.in_(("segment", "photo_segment")),
+                    Embedding.model == model,
+                )
             )
         }
         assert set(kept) <= sample_vecs

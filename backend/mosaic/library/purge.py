@@ -36,6 +36,7 @@ def purge_segments(session: Session, asset_id: int) -> None:
     seg_ids = list(session.scalars(select(Segment.id).where(Segment.asset_id == asset_id)))
     purge_mosaics(session, asset_id)
     sqlite_vec_index.delete_embeddings(session, "segment", seg_ids)
+    sqlite_vec_index.delete_embeddings(session, "photo_segment", seg_ids)
     if seg_ids:
         session.execute(
             update(SimilarityGroup)

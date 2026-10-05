@@ -280,7 +280,7 @@ class Embedding(ProjectBase):
 
     __tablename__ = "embedding"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    owner_kind: Mapped[str] = mapped_column(String(16))  # sample|segment
+    owner_kind: Mapped[str] = mapped_column(String(16))  # sample|segment|photo_segment
     owner_id: Mapped[int] = mapped_column(Integer)
     model: Mapped[str] = mapped_column(String(128))
     dim: Mapped[int] = mapped_column(Integer)

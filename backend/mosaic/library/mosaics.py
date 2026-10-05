@@ -29,10 +29,11 @@ from mosaic.core.time import parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass
 from mosaic.jobs.registry import SkipTask, task
+from mosaic.library import photo_segment as _photo_segment  # noqa: F401 - registers first
 from mosaic.library import segments as _segments  # noqa: F401 - registers "segments" first
 from mosaic.library.purge import purge_mosaics
 from mosaic.media import inventory
-from mosaic.storage import provenance
+from mosaic.storage import provenance, stage_state
 from mosaic.storage.models_project import Asset, Mosaic, MosaicTile, SampleFrame, Segment
 
 MOSAICS_VERSION = "mosaics/1"
@@ -230,7 +231,12 @@ def _is_done(ctx: TaskContext) -> bool:
     if not segments:
         return True
     with ctx.project.db.session() as s:
-        return s.scalar(select(Mosaic.id).where(Mosaic.asset_id == asset_id).limit(1)) is not None
+        if s.scalar(select(Mosaic.id).where(Mosaic.asset_id == asset_id).limit(1)) is None:
+            return False
+        # The rows must be this key's: switching modes back and forth can leave another
+        # mode's sheets on an asset whose samples did not change (a photo; ADR 0020).
+        key = _key(ctx, _geometry(ctx), segments, samples)
+        return stage_state.is_current(s, asset_id, "mosaics", key)
 
 
 @task("library.mosaics", is_done=_is_done)
@@ -299,6 +305,7 @@ def mosaics_task(ctx: TaskContext) -> dict[str, Any]:
 
     with ctx.write() as s:
         purge_mosaics(s, asset_id)
+        stage_state.mark(s, asset_id, "mosaics", key)  # with the rows, atomically
         for n, (image_key, layout) in enumerate(built):
             row = Mosaic(
                 asset_id=asset_id,
@@ -327,6 +334,11 @@ def mosaics_task(ctx: TaskContext) -> dict[str, Any]:
 
 inventory.ASSET_STAGES.append(
     inventory.StageDef(
-        "mosaics", "library.mosaics", ResourceClass.CPU, after=("segments",), level=2
+        "mosaics",
+        "library.mosaics",
+        ResourceClass.CPU,
+        after=("segments", "photo_segment"),
+        level=2,
+        kinds=("video", "photo"),
     )
 )

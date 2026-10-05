@@ -109,7 +109,8 @@ def test_l0_inventory_of_synthetic_corpus(corpus_dir: Path, tmp_path: Path) -> N
         assert corrupt.reason
         assert corrupt.suggested_fix
         photo = asset_of("IMG_0001.jpg")
-        assert (photo.kind, photo.status) == ("photo", "deferred")
+        assert (photo.kind, photo.status) == ("photo", "ok")  # analyzed since M1 (ADR 0025)
+        assert (photo.display_width, photo.display_height) == (480, 640), "EXIF orientation"
 
         off = s.scalar(
             select(MediaStream).where(

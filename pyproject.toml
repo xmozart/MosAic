@@ -12,6 +12,7 @@ dependencies = [
     "huggingface-hub>=1.33.0",
     "keyring>=25.7.0",
     "numpy>=2.5.3",
+    "pi-heif>=1.0",
     "pillow>=12.3.0",
     "platformdirs>=4.2",
     "pydantic>=2.8",

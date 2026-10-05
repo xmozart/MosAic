@@ -163,11 +163,18 @@ def similarity_task(ctx: TaskContext) -> dict[str, Any]:
         for asset_id in s.scalars(select(Asset.id).where(Asset.kind == "video")):
             quality.update(asset_quality(s, asset_id))
         index = sqlite_vec_index.index_name(model, emb.dim, "segment")
+        # Video segments only: photos are grouped as bursts and moments (ADR 0025), so a
+        # photo never makes a video segment a non-recommended look-alike.
         emb_of = {
             r[0]: r[1]
             for r in s.execute(
-                select(Embedding.owner_id, Embedding.id).where(
-                    Embedding.owner_kind == "segment", Embedding.model == model
+                select(Embedding.owner_id, Embedding.id)
+                .join(Segment, Segment.id == Embedding.owner_id)
+                .join(Asset, Asset.id == Segment.asset_id)
+                .where(
+                    Embedding.owner_kind == "segment",
+                    Embedding.model == model,
+                    Asset.kind == "video",
                 )
             )
         }

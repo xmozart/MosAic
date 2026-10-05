@@ -329,7 +329,7 @@ def test_switching_back_to_a_mode_restores_its_rows(quick: tuple[Any, Any, int])
     )
     assert run_job(control, job, timeout=1800) == "done"
     with project.db.session() as s:
-        methods = set(s.scalars(select(Shot.method)))
+        methods = set(s.scalars(select(Shot.method).where(Shot.method != "photo")))
         sheets = {(m.cols, m.rows) for m in s.scalars(select(Mosaic))}
     assert methods <= {"threshold", "forced"}
     assert sheets == {(6, 4)}
