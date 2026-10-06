@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@source not "./**/*.test.ts";
+@source not "./**/*.test.tsx";
+@import "./styles/tokens.css";
+@import "./styles/fonts.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
+  }
+  * {
+    border-color: var(--border);
+  }
+}
+
+/* Every timecode, duration, cost, size and filename (DESIGN_TOKENS.md §3). */
+@utility mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The timecode styles carry their family and numerals too. */
+@layer utilities {
+  .text-timecode,
+  .text-timecode-sm {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-pulse,
+  .motion-shimmer {
+    animation: none !important;
+  }
+}

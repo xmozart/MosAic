@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from mosaic.app.routers import (
     analysis,
@@ -76,7 +79,40 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(devices.router)
     app.include_router(search.router)
     app.include_router(library.router)
+    mount_ui(app)
     return app
+
+
+def ui_dir() -> Path | None:
+    """The built web UI: ``$MOSAIC_UI_DIR``, else the repo's ``frontend/dist``."""
+    env = os.environ.get("MOSAIC_UI_DIR")
+    path = Path(env) if env else Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    return path if (path / "index.html").is_file() else None
+
+
+def mount_ui(app: FastAPI) -> None:
+    """Serve the single-page app: built assets as files, every other non-API path as
+    ``index.html`` (client-side routes). API paths never fall through to the UI."""
+    root = ui_dir()
+    if root is None:
+        return
+    index = root / "index.html"
+    app.mount("/assets", StaticFiles(directory=root / "assets", check_dir=False), name="ui-assets")
+
+    @app.api_route(
+        "/{path:path}",
+        methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+        include_in_schema=False,
+    )
+    async def _spa(path: str, request: Request) -> Response:
+        if path == "api" or path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        if request.method not in ("GET", "HEAD"):
+            return JSONResponse(status_code=405, content={"detail": "Method Not Allowed"})
+        file = (root / path).resolve()
+        if path and file.is_file() and file.is_relative_to(root.resolve()):
+            return FileResponse(file)
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 def serve(port: int = 8765) -> None:

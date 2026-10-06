@@ -98,6 +98,35 @@ SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIME
   dynamically, so they can be replaced (LGPL relinking). It is the decode-only sibling of
   pillow-heif, which is **not** used because its wheels bundle the GPL x265 encoder.
 
+## Web UI (frontend/)
+
+Bundled into the app: every package in `npm ls --omit=dev --all`. `frontend/src/test/licenses.test.ts` fails on a license outside the allowed list or a package missing from this table.
+
+| Package | Version | License | Use |
+|---|---|---|---|
+| Geist, Geist Mono (`@fontsource-variable/geist`, `@fontsource-variable/geist-mono`) | 5.3.0 | SIL OFL 1.1 | UI fonts, bundled as local files (never fetched at runtime). Not the `geist` npm package: it pulls in Next.js and sharp (LGPL libvips) as a peer |
+| react, react-dom | 19.3.0 | MIT | UI |
+| react-router | 8.4.0 | MIT | Routing |
+| @tanstack/react-query | 5.104.1 | MIT | Server state |
+| @tanstack/react-virtual | 3.14.13 | MIT | Virtualized grids and lists |
+| zustand | 5.0.15 | MIT | Client state |
+| lucide-react | 1.52.0 | ISC | Icons |
+| clsx, tailwind-merge | 2.1.1, 3.7.0 | MIT | Class names |
+| class-variance-authority | 0.7.1 | Apache-2.0 | Component variants |
+| openapi-fetch | 0.17.0 | MIT | Generated API client |
+| scheduler | 0.28.0 | MIT | React runtime (dependency of react-dom) |
+| use-sync-external-store | 1.7.0 | MIT | React store shim (dependency of zustand) |
+| @tanstack/query-core | 5.104.1 | MIT | Dependency of @tanstack/react-query |
+| @tanstack/virtual-core | 3.17.11 | MIT | Dependency of @tanstack/react-virtual |
+| @remix-run/route-pattern | 0.22.1 | MIT | Dependency of react-router |
+| cookie-es | 3.1.1 | MIT | Dependency of react-router |
+| openapi-typescript-helpers | 0.1.0 | MIT | Types for openapi-fetch |
+| tslib | 2.8.1 | 0BSD | TypeScript runtime helpers (0BSD: the BSD family's public-domain-equivalent form) |
+| @types/react, csstype | 19.3.0, 3.2.3 | MIT | Type declarations only (no runtime code) |
+| Tailwind preflight | 4.3.3 | MIT | CSS reset compiled into the stylesheet |
+
+Build and test only (not shipped): tailwindcss and @tailwindcss/vite 4.3 (MIT), vite 8.3 (MIT), @vitejs/plugin-react (MIT), typescript 5.9 (Apache-2.0), vitest 5.0 (MIT), jsdom (MIT), Testing Library (MIT), openapi-typescript 7.13 (MIT), Storybook 10.6 (MIT), oxlint (MIT).
+
 ## Python packages
 
 <!-- BEGIN python-packages -->

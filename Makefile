@@ -3,10 +3,11 @@
 UV ?= uv
 PYTEST = $(UV) run pytest
 
-.PHONY: help sync lint format typecheck unit check integration acceptance ci eval ffmpeg ffmpeg-ci corpus clean
+.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus clean
 
 help:
 	@echo "check       lint + types + unit tests (fast)"
+	@echo "frontend    web UI: tokens, types, lint, tests, build, Storybook"
 	@echo "integration integration tests on synthetic media"
 	@echo "acceptance  milestone acceptance tests"
 	@echo "ci          everything CI runs"
@@ -32,13 +33,22 @@ unit:
 
 check: lint typecheck unit
 
+NPM ?= npm
+frontend:
+	cd frontend && $(NPM) ci --no-audit --no-fund
+	cd frontend && $(NPM) test
+	cd frontend && $(NPM) run typecheck
+	cd frontend && $(NPM) run lint
+	cd frontend && $(NPM) run build
+	cd frontend && $(NPM) run build-storybook
+
 integration:
 	$(PYTEST) tests/integration -q
 
 acceptance:
 	$(PYTEST) tests/acceptance -q
 
-ci: sync check integration acceptance
+ci: sync check frontend integration acceptance
 
 eval:  # real corpus, real AI; exits 3 at a human gate (G1/G2) with the fix
 	$(UV) run python -m mosaic.evaluation.run

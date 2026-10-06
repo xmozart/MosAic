@@ -25,7 +25,7 @@ Generate `frontend/src/styles/tokens.css` from `tokens.json` with a build script
 
 ## 2. Tailwind mapping
 
-Expose every token as a Tailwind color through `tailwind.config` (for example `bg-surface-1`, `text-muted`, `border-border`, `bg-accent`, `text-use`).
+Expose every token as a Tailwind color (for example `bg-surface-1`, `text-text-muted`, `border-border`, `bg-accent`, `text-use`). With Tailwind 4 this is the generated `@theme` block in `tokens.css`, not a `tailwind.config` file (ADR 0032).
 
 Map the shadcn/ui CSS variables onto these tokens:
 

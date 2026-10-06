@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 planning; M1 steps 1–14 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 2 (design-system components); step 1 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -26,6 +26,22 @@ _(empty — the agent is working on M2)_
 - [x] 10. Editing: retrieval, planner, selector, solver, refiner, critic, versions, `mosaic edit`/`report`
 - [x] 11. Render: chunks, conform, tone mapping, pillarbox, silence, loudnorm, encoder selection
 - [ ] 12. Acceptance in `make ci`, `make eval` on the corpus, draft expectations, reports, findings → gate G6
+
+## M2 plan
+
+Order: design foundation first (milestone rule), then the server pieces the browser needs, then screens along the main journey, then Docker and the acceptance suite. Stop at G6 with `docs/reports/M2.md`.
+
+- [x] 1. Frontend foundation: Vite + React + TS strict, Tailwind with tokens generated from `tokens.json`, shadcn mapping, bundled Geist fonts, dark/light themes (OS default, user override), Vitest, Storybook, OpenAPI-generated client, FastAPI serving the built app, `make ci` runs frontend lint/typecheck/tests
+- [ ] 2. Design-system components used by M2 (COMPONENTS.md: shell, media, library, system rows), each with a story per state; AI-vs-you chip test (acceptance 8)
+- [ ] 3. Server mode: single admin (Argon2, secure cookie, CSRF), S2 sign-in, media roots, `/fs/browse` with path-safety tests (acceptance 2); secret backends env / Docker secrets / encrypted file; write-only key entry, last-4, validate
+- [ ] 4. Media endpoints: proxy with HTTP range, frames, filmstrip, waveform; `Player`
+- [ ] 5. Shell and journey I: S0 app shell + dialogs + command palette, S3 Home, S4 Open folder, S5 Inventory, S6 Clock check, S7 Trip context
+- [ ] 6. Journey II: S8 Analysis setup (mode cards, estimates), S9 progress over SSE (pause/resume/cancel/retry), S25 Deepen
+- [ ] 7. Library: S10 (virtual grid, filters < 300 ms, hover-scrub, bulk, keyboard), S11 clip detail, decisions API, S12 search (acceptance 4, 5)
+- [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
+- [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
+- [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
+- [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
 
 ## M1 plan
 
@@ -48,6 +64,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 
 ## Carry-forward notes
 
+- M2 follow-ups from step 1: the 1280×800 minimum viewport (`min-width` on the app shell) lands with S0 in step 5; the inline pre-paint theme script in `index.html` needs a CSP hash (or an external file) when step 3 adds a CSP.
 - CPU worker slots are threads: Python-heavy per-frame work contends for the GIL (40-hour run: summed task time ≈ 5× wall on 5 slots). Consider process-based CPU slots with the M2 desktop packaging (ADR 0031).
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - A job paused at its cost limit needs a way to raise that job's `cost_limit_usd` before resuming (S9/S20, API `resume` parameter).
@@ -117,3 +134,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M1.14a · Migrations in one real transaction (driver autocommit + explicit BEGIN, FKs off, foreign_key_check before commit): fixes upgrading populated projects found by `make eval`; Dubai M1 eval 15 events, +0 frames, must-include 7/7
 - 2026-10-06 · M1.14 · M1 report: acceptance 1, 2, 3, 5, 6, 7 met; 4 partial (Q-3); Airshow and Dubai evals on the final code
 - 2026-10-06 · M1.14b · Airshow M1 eval after the owner-approved removal of the leaked empty table: upgraded cleanly, 43 events, +0 frames, 116 deep reviews, aircraft 79 % / crowd 2 %, 0/92 must-exclude violations
+- 2026-10-06 · M2.1 · Web UI foundation: Vite + React 19 + TS 5.9 strict, Tailwind 4 `@theme` generated from tokens.json (checked in tests), bundled Geist fonts via Fontsource (the `geist` package pulls Next.js + LGPL libvips), dark/light themes, Storybook 10, openapi-fetch client generated from the API schema (kept current by a test), shipped-license test, API serves the built UI with SPA fallback (ADR 0032)
