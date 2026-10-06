@@ -119,3 +119,23 @@ def test_a_preset_run_carries_the_project_overrides(corpus_dir: Any, tmp_path: A
     assert mode["sample_interval"] == "2"
     assert mode["l3"] is True
     client.post(f"/api/jobs/{r.json()['job_id']}/cancel")
+
+
+def test_progress_of_a_deepening_job_carries_its_scope(analyzed_session: Any) -> None:
+    project, control = analyzed_session
+    client = _client(control)
+    r = client.post(
+        f"/api/projects/{project.id}/analysis-runs",
+        json={"mode": "thorough", "scope": {"kind": "trip"}},
+    )
+    assert r.status_code == 202, r.text
+    job = r.json()["job_id"]
+    if job is None:
+        pytest.fail("a Balanced corpus has L3 candidates to deepen")
+    try:
+        p = client.get(f"/api/projects/{project.id}/analysis/progress", params={"job": job}).json()
+        assert p["kind"] == "deepen"
+        assert p["mode"] == "thorough"
+        assert p["deepen"] == {"target": "thorough", "days": [], "segment_ids": []}
+    finally:
+        client.post(f"/api/jobs/{job}/cancel")

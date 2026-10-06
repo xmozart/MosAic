@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router";
 
+import { AnalysisProgressScreen } from "@/features/analysis/AnalysisProgressScreen";
+import { AnalysisSetupScreen } from "@/features/analysis/AnalysisSetupScreen";
+import { DeepenRoute } from "@/features/analysis/DeepenRoute";
 import { AuthGate } from "@/features/auth/AuthGate";
 import { TripContextScreen } from "@/features/context/TripContextScreen";
 import { HomeScreen } from "@/features/home/HomeScreen";
@@ -27,7 +30,9 @@ export function App() {
                 <Route index element={<ProjectIndex />} />
                 <Route path="inventory" element={<InventoryScreen />} />
                 <Route path="context" element={<TripContextScreen />} />
-                <Route path="analyze" element={<Placeholder title="Analysis setup" />} />
+                <Route path="analyze" element={<AnalysisSetupScreen />} />
+                <Route path="analysis" element={<AnalysisProgressScreen />} />
+                <Route path="deepen" element={<DeepenRoute />} />
                 <Route path="*" element={<Placeholder title="Coming in this milestone" />} />
               </Route>
               <Route path="*" element={<Placeholder title="Not found" />} />

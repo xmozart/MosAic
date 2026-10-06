@@ -54,6 +54,27 @@
   - The same rule appears as `ready_to_browse` in the progress view, so a page opened later still knows.
   - "Once" is per event stream. A reconnect may repeat it, so clients deduplicate by `job_id`.
 
+## Screens (step 6b)
+
+- **S8 Advanced edits.** Edits stay local until **Analyze**. Analyze PATCHes them, together with `analysis.mode`, then starts the preset. Estimates follow unsaved edits through `?overrides=`.
+  - Each field shows its source: Changed here, This project, Your preference, Default, or From the mode.
+  - **Reset** on a saved project value clears it at once, so the field shows the mode's own value.
+  - The GPS hint says location stays on this computer and that no analysis step uses it yet.
+- **S9 type sizes.** The big percentage uses the `display` token (32 px), not the mockup's 40 px; the cost uses `subhead`. Tokens only (invariant 15).
+- **S9 cancelled runs.** "Resume analysis" starts the same preset again. Artifacts are keyed, so everything finished is reused (invariant 9), and a cancelled job is never reopened.
+- **S9 cost-limit pause.** It reuses the S0 cost-ceiling dialog: the new limit must exceed both the old limit and the amount spent.
+- **Ready to browse.** The event also shows one toast per job anywhere in the app. S9 shows its banner from the progress view, which it polls every 2 s.
+- **S9 copy that needs data the server doesn't have yet:**
+  - The cost-limit banner offers **Raise limit** and **Keep paused**, where Keep paused only dismisses the notice. It leaves out S9b's "About $2.40 more to finish": no projection of the remaining cost exists yet, and invariant 16 forbids inventing one.
+  - The completed card shows cost and counts, but not elapsed time, which the job does not report.
+  - The ready-to-browse toast doesn't name the project: the activity stream carries ids, not names.
+- **S9 deepening jobs.** The card is labelled "Deepening · Thorough". "Resume analysis" on a cancelled deepening re-posts its own scope and target, never a whole-project run.
+- **S9 resume keeps the job's cost limit.** A cancelled run starts again with the limit it had, which may have been raised during the run. Keep paused hides the notice for that pause only: reaching a new limit shows it again.
+- **S25 day numbers** come from the server: the inventory's `days[].n` uses `retrieval.capture_dates` and `trip_day`, as deepening does. A day in the list is always the day that gets deepened.
+  - Day 1 is `retrieval.first_capture_date`, streamed rather than loaded (invariant 13).
+  - A clip counts on the day it starts, while deepening places each segment by its own start, so a clip that runs past midnight can add work to the next day as well.
+- **S25 days.** The day list comes from the inventory's days, which now carry clip counts, plus the places from the trip context. "Current selection" uses the segment ids the Library passes when it opens the dialog. Until the Library exists (step 7) it explains how to select. A run with nothing new to add (`job_id: null`) says so and starts nothing.
+
 ## Consequences
 
 - S21 (step 9) edits the same settings with the same sources.

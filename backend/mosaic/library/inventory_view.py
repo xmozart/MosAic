@@ -8,6 +8,7 @@ ffprobe output. Durations are display seconds; dates are the clips' own correcte
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from sqlalchemy import Text, cast, func, select
@@ -70,6 +71,7 @@ def inventory(s: Session) -> dict[str, Any]:
     )
     cams: dict[str, dict[str, Any]] = {}
     days: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    day_clips: dict[str, int] = defaultdict(int)
     footage = 0.0
     clips = photos = limited = 0
     first = last = None
@@ -113,6 +115,7 @@ def inventory(s: Session) -> dict[str, Any]:
             clips += 1
             if a.capture_time:
                 days[a.capture_time[:10]][key] += secs
+                day_clips[a.capture_time[:10]] += 1
         else:
             c["photos"] += 1
             photos += 1
@@ -136,6 +139,7 @@ def inventory(s: Session) -> dict[str, Any]:
         if a.capture_time:
             first = min(first or a.capture_time, a.capture_time)
             last = max(last or a.capture_time, a.capture_time)
+    first_day = _first_day(s)
     for c in cams.values():
         c["badges"] = sorted(c["badges"])
         c["footage_seconds"] = round(c["footage_seconds"])
@@ -156,12 +160,28 @@ def inventory(s: Session) -> dict[str, Any]:
         },
         "cameras": sorted(cams.values(), key=lambda c: (-c["clips"] - c["photos"], c["label"])),
         "days": [
-            {"date": d, "by_camera": {k: round(v) for k, v in sorted(by.items())}}
+            {
+                "date": d,
+                "n": _day_number(d, first_day),
+                "clips": day_clips[d],
+                "by_camera": {k: round(v) for k, v in sorted(by.items())},
+            }
             for d, by in sorted(days.items())
         ],
         "attention": _attention(s, limited),
         "notes": _notes(s),
     }
+
+
+def _first_day(s: Session) -> date | None:
+    """Day 1 as the editor and deepening number days (``retrieval.first_capture_date``)."""
+    from mosaic.editing.retrieval import first_capture_date
+
+    return first_capture_date(s)
+
+
+def _day_number(day: str, first: date | None) -> int | None:
+    return (date.fromisoformat(day) - first).days + 1 if first else None
 
 
 def _attention(s: Session, limited: int) -> list[dict[str, Any]]:

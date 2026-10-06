@@ -58,6 +58,16 @@ export const Modes: Story = {
   },
 };
 
+export const ModesEstimating: Story = {
+  render: () => (
+    <div role="radiogroup" aria-label="Analysis mode" className="grid w-[1100px] grid-cols-3 gap-4">
+      <ModeCard title="Quick" description="See results fast. Good for short trips or a first look." estimate="" loading />
+      <ModeCard title="Balanced" description="Great edits for most trips." estimate="" loading recommended selected />
+      <ModeCard title="Thorough" description="Best shot selection and cut points. Deep review of your best clips." estimate="" loading />
+    </div>
+  ),
+};
+
 export const Placements: Story = {
   render: () => (
     <div className="flex flex-wrap gap-2">

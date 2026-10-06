@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { useToasts } from "@/lib/toasts";
+
 /** One running job as the rail and its popover show it (S0). */
 export interface JobSummary {
   jobId: number;
@@ -63,6 +65,9 @@ export function overall(jobs: JobSummary[]): number | null {
   return Math.round(running.reduce((s, j) => s + j.pct, 0) / running.length);
 }
 
+/** Analysis jobs already announced as ready to browse (deduplicated across reconnects). */
+const announced = new Set<number>();
+
 /** Feeds the store from the server's event stream (all projects). */
 export function connectActivity(url = "/api/events"): () => void {
   if (typeof EventSource === "undefined") return () => {};
@@ -100,6 +105,15 @@ export function connectActivity(url = "/api/events"): () => void {
   es.addEventListener("job.state", (e) => {
     const d = JSON.parse((e as MessageEvent).data) as { job_id: number; state: string };
     store().setState(d.job_id, d.state);
+  });
+  es.addEventListener("analysis.ready_to_browse", (e) => {
+    const d = JSON.parse((e as MessageEvent).data) as { job_id: number; project_id: string };
+    if (announced.has(d.job_id)) return; // a reconnect may repeat it (API_MAP)
+    announced.add(d.job_id);
+    useToasts.getState().push({
+      kind: "success",
+      message: "Your footage is ready to browse and edit. Deeper analysis continues in the background.",
+    });
   });
   es.addEventListener("lock.lost", (e) => {
     const d = JSON.parse((e as MessageEvent).data) as { project_id: string };

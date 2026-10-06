@@ -4,13 +4,14 @@ export interface ModeCardProps {
   title: string;
   description: string;
   estimate: string; // mono: "About 1 h 40 m · $2–4 · 18 GB"
+  loading?: boolean; // the estimate is still being computed: a skeleton line
   recommended?: boolean;
   selected?: boolean;
   onSelect?: () => void;
 }
 
 /** An analysis mode with its estimate line (COMPONENTS.md ModeCard; S8). */
-export function ModeCard({ title, description, estimate, recommended, selected, onSelect }: ModeCardProps) {
+export function ModeCard({ title, description, estimate, loading, recommended, selected, onSelect }: ModeCardProps) {
   return (
     <button
       type="button"
@@ -29,7 +30,13 @@ export function ModeCard({ title, description, estimate, recommended, selected, 
         )}
       </span>
       <span className="text-small text-text-muted">{description}</span>
-      <span className="mono text-timecode text-text">{estimate}</span>
+      {loading ? (
+        <span role="status" className="block h-[18px] w-3/4 animate-pulse rounded-sm bg-surface-3">
+          <span className="sr-only">Estimating</span>
+        </span>
+      ) : (
+        <span className="mono text-timecode text-text">{estimate}</span>
+      )}
     </button>
   );
 }

@@ -233,6 +233,7 @@ def step_state(done: int, failed: int, running: int, total: int, status: str) ->
 
 def analysis_progress(control: Session, s: Session, job: Job) -> dict[str, Any]:
     counts = stage_status_counts(control, job.id)
+    params = job.params or {}
     levels = stage_levels()
     notes = _notes(s)
     steps = []
@@ -263,7 +264,17 @@ def analysis_progress(control: Session, s: Session, job: Job) -> dict[str, Any]:
     return {
         "job_id": job.id,
         "kind": job.kind,
-        "mode": (job.params or {}).get("preset") or (job.params or {}).get("mode"),
+        "mode": params.get("preset") or params.get("mode") or params.get("target"),
+        # A deepening job's scope, so S9 can label it and start it again as it was.
+        "deepen": (
+            {
+                "target": params.get("target"),
+                "days": list(params.get("days") or []),
+                "segment_ids": list(params.get("segment_ids") or []),
+            }
+            if job.kind == "deepen"
+            else None
+        ),
         "steps": steps,
         "ready_to_browse": job.kind == "analysis" and ready_to_browse(counts, levels),
         "live": _live(s),

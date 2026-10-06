@@ -146,6 +146,22 @@ def _capture(asset: Asset) -> datetime | None:
         return None
 
 
+def first_capture_date(session: Session) -> date | None:
+    """Day 1 of the trip: the earliest local capture date of any video asset, streamed
+    (invariant 13). The same rule as ``capture_dates`` over every video."""
+    first: date | None = None
+    q = select(Asset.capture_time).where(Asset.kind == "video", Asset.capture_time.is_not(None))
+    for ct in session.scalars(q.execution_options(yield_per=1000)):
+        if not ct:
+            continue
+        try:
+            d = datetime.fromisoformat(ct.replace("Z", "+00:00")).date()
+        except ValueError:
+            continue
+        first = d if first is None or d < first else first
+    return first
+
+
 def capture_dates(assets: list[Asset]) -> dict[int, date]:
     """Asset id → local capture date (each in its own recorded offset), when known."""
     out = {}

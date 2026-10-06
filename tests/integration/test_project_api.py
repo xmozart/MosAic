@@ -99,6 +99,21 @@ def test_preview_writes_nothing_then_create_scans_only(
     assert client.get(files, params={"kind": "everything"}).status_code == 422
     assert client.get(files, params={"kind": "cloud"}).json()["items"] == []
     assert all("limited" in c for c in inv["cameras"])
+    from collections import Counter
+
+    from mosaic.storage.models_project import Asset
+    from mosaic.storage.projects import open_project
+
+    opened = open_project(control, control.local_principal, trip)
+    with opened.db.session() as s:
+        dated = Counter(
+            a.capture_time[:10]
+            for a in s.query(Asset).filter(Asset.kind == "video", Asset.status == "ok")
+            if a.capture_time
+        )
+    opened.close()
+    assert {d["date"]: d["clips"] for d in inv["days"] if d["clips"]} == dict(dated)
+    assert all(d["n"] >= 1 for d in inv["days"]), "days are numbered from the first video"
 
 
 def test_list_opens_no_project_db_and_flags_missing_folders(

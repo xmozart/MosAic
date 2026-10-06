@@ -66,5 +66,6 @@ export function formatBytes(bytes: number): string {
     v /= 1000;
     i++;
   }
-  return `${v >= 10 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+  const shown = v >= 10 || i === 0 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, "");
+  return `${shown} ${units[i]}`;
 }

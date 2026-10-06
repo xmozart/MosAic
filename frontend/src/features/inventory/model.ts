@@ -11,7 +11,7 @@ export interface Inventory {
     cameras: number;
   };
   cameras: Camera[];
-  days: { date: string; by_camera: Record<string, number> }[];
+  days: { date: string; clips?: number; by_camera: Record<string, number> }[];
   attention: Attention[];
   notes: { chaptered_recordings: number; live_photos: number; bursts: number };
 }

@@ -63,7 +63,7 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | Component | Notes |
 |---|---|
 | `StageList` | Each stage is pending / running (ring) / done (✓) / failed / paused, with a mono note. |
-| `ModeCard` | Analysis mode with an estimate line in mono. |
+| `ModeCard` | Analysis mode with an estimate line in mono; a skeleton line while the estimate loads. |
 | `EstimateCard` | Time · cost · storage. |
 | `PlacementBadge` | In folder / Split · NAS / Split · iCloud / Stored separately / External drive. |
 | `UnsupportedRow` | Icon, title, reason, fix action, optional inline progress; rows divide one "Needs attention" card. |

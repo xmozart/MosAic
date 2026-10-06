@@ -2,6 +2,7 @@
 export const media = {
   proxy: (pid: string, aid: number) => `/api/media/${pid}/proxy/${aid}`,
   frame: (pid: string, sampleId: number) => `/api/media/${pid}/frame/${sampleId}`,
+  mosaic: (pid: string, mosaicId: number) => `/api/media/${pid}/mosaic/${mosaicId}`,
   filmstrip: (pid: string, aid: number, n = 8, range?: { startTicks?: number; endTicks?: number }) => {
     const q = new URLSearchParams({ n: String(n) });
     if (range?.startTicks !== undefined) q.set("start_ticks", String(range.startTicks));

@@ -57,3 +57,38 @@ def test_rows_with_one_reason_and_different_fixes_list_their_own_files(tmp_path:
                 assert r["example"] == "c.BRAW"
                 assert listed[0]["path"] == "cards/c.BRAW"
     project.close()
+
+
+def test_days_count_clips_and_number_like_deepening(tmp_path: Path) -> None:
+    """S25 lists days by the number deepening uses: from the first video of any status."""
+    control = ControlDB()
+    project = init_project(control, control.local_principal, tmp_path)
+    clips = [
+        ("2026-07-13T23:30:00-06:00", "unsupported"),  # day 1 even though it can't be read
+        ("2026-07-14T09:00:00-06:00", "ok"),
+        ("2026-07-14T18:00:00-06:00", "ok"),
+        ("2026-07-16T10:00:00-06:00", "ok"),
+    ]
+    with project.write() as s:
+        prov = provenance.record(s, provenance.ProvenanceInfo(kind="test"))
+        for i, (when, status) in enumerate(clips):
+            s.add(
+                Asset(
+                    kind="video",
+                    status=status,
+                    profile="generic",
+                    group_key=f"v{i}",
+                    capture_time=when,
+                    tb="1/90000",
+                    duration_ticks=90000,
+                    provenance_id=prov,
+                    created_at=T,
+                )
+            )
+    with project.db.session() as s:
+        days = inventory(s)["days"]
+    assert [(d["date"], d["n"], d["clips"]) for d in days] == [
+        ("2026-07-14", 2, 2),
+        ("2026-07-16", 4, 1),
+    ]
+    project.close()
