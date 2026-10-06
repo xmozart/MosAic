@@ -343,6 +343,28 @@ class ProxySpec:
     hwaccel: str | None = None
     out: Path | None = None
     projection: str | None = None  # "fisheye" | "dfisheye": a forward view of 360 footage
+    lut: Path | None = None  # a 3D .cube LUT for log footage (ADR 0028)
+
+
+def lut_file(path: Path) -> str:
+    """A LUT path as a ``lut3d`` option inside a filtergraph. FFmpeg unescapes twice:
+    once parsing the graph, then parsing the filter's options. So the path is escaped for
+    the options (``\\ ' :``), and that result again for the graph. ``lut3d`` opens a plain
+    path, not an FFmpeg URL."""
+    raw = str(path.resolve())
+    option = raw.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
+    return escape_filter_value(option)
+
+
+def lut_filters(lut: Path, full_range: bool) -> list[Filter]:
+    """Apply a LUT in RGB: the source's YUV (with its range) converted explicitly to
+    full-range RGB, the LUT, and RGB out; the next ``scale`` then reads RGB. The LUT
+    replaces tone mapping: its output is SDR Rec.709 (ADR 0028)."""
+    return [
+        Filter.of("scale", in_range="pc" if full_range else "tv", out_range="pc"),
+        Filter.of("format", "gbrp16le"),
+        Filter.of("lut3d", file=lut_file(lut), interp="tetrahedral"),
+    ]
 
 
 # Insta360 lenses see about 200° (``ih_fov``/``iv_fov`` are per lens, also for
@@ -395,6 +417,8 @@ def proxy(spec: ProxySpec) -> FFmpegCommand:
         vin, ain = "[v0]", "[a0]"
 
     vfilters: list[Filter] = []
+    if spec.lut is not None:  # log footage to Rec.709 first, in the source's pixels
+        vfilters += lut_filters(spec.lut, spec.full_range)
     if spec.projection:
         # 360 footage is analyzed through a fixed forward view (MEDIA_SUPPORT.md §2).
         vfilters.append(
@@ -410,8 +434,17 @@ def proxy(spec: ProxySpec) -> FFmpegCommand:
                 h=spec.height,
             )
         )
-    vfilters += [
-        Filter.of(
+    if spec.lut is not None:  # RGB from the LUT: no source range to interpret
+        main = Filter.of(
+            "scale",
+            w=spec.width,
+            h=spec.height,
+            flags="bicubic",
+            out_range="tv",
+            out_color_matrix="bt709",
+        )
+    elif not spec.hdr:
+        main = Filter.of(
             "scale",
             w=spec.width,
             h=spec.height,
@@ -420,10 +453,10 @@ def proxy(spec: ProxySpec) -> FFmpegCommand:
             out_range="tv",
             out_color_matrix="bt709",
         )
-        if not spec.hdr
-        else Filter.of("scale", w=spec.width, h=spec.height, flags="bicubic"),
-    ]
-    if spec.hdr:
+    else:
+        main = Filter.of("scale", w=spec.width, h=spec.height, flags="bicubic")
+    vfilters.append(main)
+    if spec.hdr and spec.lut is None:
         vfilters += list(TONEMAP_TO_SDR)
     vfilters += [
         Filter.of("setsar", "1"),

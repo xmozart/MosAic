@@ -15,7 +15,8 @@ from mosaic.app.deps import principal, services
 from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
-from mosaic.library.devices import device_rows, set_offset, submit_time_refresh
+from mosaic.library.devices import device_rows, set_lut, set_offset, submit_time_refresh
+from mosaic.media.lut import LutError
 from mosaic.storage.models_project import Device, DeviceSuggestion
 
 router = APIRouter(prefix="/api")
@@ -31,11 +32,21 @@ class DeviceChange(BaseModel):
     id: int
     clock_offset_ms: int | None = Field(default=None, ge=-MAX_OFFSET_MS, le=MAX_OFFSET_MS)
     accept_suggestion: bool = False
+    lut_path: str | None = Field(default=None, min_length=1, max_length=4096)
+    clear_lut: bool = False
 
     @model_validator(mode="after")
     def _one(self) -> DeviceChange:
-        if (self.clock_offset_ms is not None) == self.accept_suggestion:
-            raise ValueError("give exactly one of clock_offset_ms or accept_suggestion")
+        actions = [
+            self.clock_offset_ms is not None,
+            self.accept_suggestion,
+            self.lut_path is not None,
+            self.clear_lut,
+        ]
+        if sum(actions) != 1:
+            raise ValueError(
+                "give exactly one of clock_offset_ms, accept_suggestion, lut_path or clear_lut"
+            )
         return self
 
 
@@ -66,11 +77,26 @@ def put_devices(
 ) -> dict[str, Any]:
     check(me, "devices.write", pid)
     with _project(svc, me, pid, write=True) as project:
+        with project.db.session() as s:
+            missing = [ch.id for ch in body.devices if s.get(Device, ch.id) is None]
+        if missing:
+            raise HTTPException(404, f"no device {missing[0]}")  # before any change
         changed = 0
+        luts = 0
+        for ch in body.devices:
+            if ch.lut_path is None and not ch.clear_lut:
+                continue
+            try:
+                set_lut(project, ch.id, ch.lut_path)
+            except LookupError:
+                raise HTTPException(404, f"no device {ch.id}") from None
+            except LutError as exc:
+                raise HTTPException(422, str(exc)) from None
+            luts += 1
         with project.write() as s:
             for ch in body.devices:
-                if s.get(Device, ch.id) is None:
-                    raise HTTPException(404, f"no device {ch.id}")
+                if ch.lut_path is not None or ch.clear_lut:
+                    continue
                 if ch.accept_suggestion:
                     sg = s.get(DeviceSuggestion, ch.id)
                     if sg is None:
@@ -81,4 +107,11 @@ def put_devices(
         job = submit_time_refresh(svc.executor, me, project) if changed else None
         with project.db.session() as s:
             rows = device_rows(s)
-    return {"devices": rows, "assets_updated": changed, "refresh_job": job}
+    return {
+        "devices": rows,
+        "assets_updated": changed,
+        "refresh_job": job,
+        # A LUT changes proxies and renders: the owner re-runs the analysis to apply it
+        # (not started here, since it may include AI calls).
+        "reanalysis_needed": luts > 0,
+    }

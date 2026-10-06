@@ -759,4 +759,40 @@ def clock(folder: Path, sets: tuple[str, ...], accepts: tuple[int, ...]) -> None
             )
 
 
+@cli.command()
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--lut", "luts", multiple=True, metavar="DEVICE=PATH", help="Assign a .cube LUT.")
+@click.option("--clear-lut", "clears", multiple=True, type=int, help="Remove a device's LUT.")
+def device(folder: Path, luts: tuple[str, ...], clears: tuple[int, ...]) -> None:
+    """Assign LUTs to devices that record log footage (Apple Log, N-Log, D-Log M…)."""
+    from mosaic.library.devices import device_rows, set_lut
+    from mosaic.media.lut import LutError
+
+    control = _control()
+    writing = bool(luts or clears)
+    project = _open(control, folder, read_only=not writing)
+    try:
+        for item in luts:
+            dev, _, path = item.partition("=")
+            try:
+                set_lut(project, int(dev), path)
+            except (ValueError, LookupError, LutError) as exc:
+                raise click.ClickException(str(exc)) from exc
+        for dev_id in clears:
+            try:
+                set_lut(project, dev_id, None)
+            except LookupError as exc:
+                raise click.ClickException(str(exc)) from exc
+        with project.db.session() as s:
+            rows = device_rows(s)
+    finally:
+        project.close()
+        control.db.dispose()
+    for r in rows:
+        lut = r["lut_path"] or "no LUT"
+        click.echo(f"{r['id']:>3}  {r['label']} ({r['assets']} items)  {lut}")
+    if writing:
+        click.echo(f"Run `mosaic analyze {folder}` to apply it to previews and analysis.")
+
+
 cli.add_command(config_group)

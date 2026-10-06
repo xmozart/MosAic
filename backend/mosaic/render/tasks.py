@@ -20,6 +20,7 @@ from mosaic.core.clock import now_iso
 from mosaic.core.time import parse_rational
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
+from mosaic.library.devices import asset_lut
 from mosaic.media.ffmpeg import render as rb
 from mosaic.media.ffmpeg.builders import (
     audio_sample_count,
@@ -113,7 +114,13 @@ def _chunk_plan(
             raise PermanentError(f"{e['asset_id']}: not a playable video asset")
         s.expunge(asset)
     files = _sources(ctx, asset, prof.kind)
-    key = chunk_key(ctx.project.id, e, [f.fingerprint for f in files], prof, v.rate)
+    inputs = [f.fingerprint for f in files]
+    if prof.kind == "final":  # previews read proxies, which already carry the LUT
+        with ctx.project.db.session() as s:
+            lut = asset_lut(s, asset)
+        if lut:
+            inputs.append(f"lut:{lut}")
+    key = chunk_key(ctx.project.id, e, inputs, prof, v.rate)
     return key, files
 
 
@@ -212,7 +219,10 @@ def chunk_task(ctx: TaskContext) -> dict[str, Any]:
         asset = s.get(Asset, int(_event(v, index)["asset_id"][4:]))
         assert asset is not None
         s.expunge(asset)
-    if asset.color_hint in ("hlg", "pq") and r.profile["kind"] == "final" and not caps.can_tonemap:
+    with ctx.project.db.session() as s:
+        lut = asset_lut(s, asset) if r.profile["kind"] == "final" else None
+    hdr_source = asset.color_hint in ("hlg", "pq") and r.profile["kind"] == "final"
+    if hdr_source and not lut and not caps.can_tonemap:
         raise PermanentError("HDR source needs zscale + tonemap; this FFmpeg build lacks them")
     with ctx.write() as s:
         prov = provenance.record(
@@ -226,6 +236,9 @@ def chunk_task(ctx: TaskContext) -> dict[str, Any]:
         )
     with ctx.project.artifacts.writer("chunk", key, ".mov", provenance_id=prov) as tmp:
         spec = _spec(r, v, index, files, asset, tmp, _full_range(ctx, asset))
+        if lut:
+            spec.lut = ctx.project.artifacts.path("lut", lut)
+            spec.hdr = None  # the LUT replaces tone mapping (ADR 0028)
         result = run(binaries, rb.chunk(spec))
         # Never cache a wrong chunk: exact frames and samples, or the task fails.
         frames, samples = stream_counts(binaries, tmp)

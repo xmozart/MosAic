@@ -22,7 +22,7 @@ Analysis results are always written in source ticks (invariant 4); callers use
 from __future__ import annotations
 
 import bisect
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -42,7 +42,14 @@ from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.run import FFmpegError, run
 from mosaic.media.tools import media_tools, working_h264_encoders
 from mosaic.storage import provenance
-from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
+from mosaic.storage.models_project import (
+    Asset,
+    AssetFile,
+    Device,
+    MediaFile,
+    MediaStream,
+    Sidecar,
+)
 from mosaic.storage.projects import Project
 
 PROXY_VERSION = "proxy/1"
@@ -107,6 +114,7 @@ class ProxyPlan:
     source: str = "original"  # original | camera (the chapters are LRF/LRV sidecars)
     bitrate: str = PROXY_BITRATE
     projection: str | None = None  # 360 footage: a forward view (ADR 0024)
+    lut_key: str | None = None  # the device's LUT for log footage (ADR 0028)
 
     @property
     def fingerprints(self) -> list[str]:
@@ -128,7 +136,8 @@ class ProxyPlan:
                 }
                 if self.projection
                 else {}
-            ),
+            )
+            | ({"lut": self.lut_key} if self.lut_key else {}),
             config={
                 "w": self.width,
                 "h": self.height,
@@ -171,7 +180,13 @@ def plan_for(project: Project, asset_id: int, mode: ModeConfig | None = None) ->
         if not rows or missing:
             raise PermanentError(f"asset {asset_id}: no video stream in {missing or 'files'}")
         source_rate = parse_rational(asset.rate) if asset.rate else None
+        lut = (
+            s.scalar(select(Device.lut_key).where(Device.id == asset.device_id))
+            if asset.device_id is not None
+            else None
+        )
         common: dict[str, Any] = {
+            "lut_key": lut,
             "asset_id": asset_id,
             "source_rate": source_rate,
             "rate": proxy_rate(source_rate),
@@ -447,6 +462,9 @@ def load_proxy(project: Project, asset_id: int, mode: ModeConfig | None = None) 
         plan = plan_for(project, asset_id, mode)
     else:
         plans = [plan_for(project, asset_id), plan_for(project, asset_id, _QUICK)]
+        # A LUT set since the last analysis: its proxies are not made yet, so previews use
+        # the proxies without it until the owner re-runs the analysis (ADR 0028).
+        plans += [replace(p, lut_key=None) for p in plans if p.lut_key]
         plan = next(
             (
                 p
@@ -481,6 +499,8 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
     plan = plan_for(ctx.project, ctx.params["asset_id"], task_mode(ctx))
     encoder = _encoder()
     hdr = plan.color_hint if plan.color_hint in ("hlg", "pq") else None
+    if plan.lut_key:
+        hdr = None  # the LUT replaces tone mapping: its output is SDR Rec.709 (ADR 0028)
     if plan.projection and not caps.has_filter("v360"):
         raise PermanentError("360 footage needs the v360 filter; this FFmpeg build lacks it")
     if hdr and not caps.can_tonemap:
@@ -512,6 +532,7 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
         video_durations=[c.duration_ticks * plan.tb for c in plan.chapters],
         hwaccel="videotoolbox" if encoder == "h264_videotoolbox" else None,
         projection=plan.projection,
+        lut=ctx.project.artifacts.path("lut", plan.lut_key) if plan.lut_key else None,
     )
     with ctx.project.artifacts.writer("proxy", key, ".mp4", provenance_id=prov) as tmp:
         spec.out = tmp

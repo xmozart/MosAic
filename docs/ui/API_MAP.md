@@ -38,7 +38,7 @@ These are the REST endpoints and SSE events the screens need.
 | POST | `/projects/{pid}/relink` `{choose_folder?}` → `{job_id, root, mode}` (re-scan with the last analysis mode; `409` if the folder is gone and none is chosen; `422` if the chosen folder is not this project's) | S0 |
 | GET | `/projects/{pid}/inventory` (cameras, day histogram, needs-attention, grouping notes) | S5 |
 | POST | `/projects/{pid}/cloud-files/download` (job) | S5 |
-| GET/PUT | `/projects/{pid}/devices` (clock offsets, LUT path; PUT `{devices: [{id, clock_offset_ms \| accept_suggestion}]}` → `{devices, assets_updated, refresh_job}`) · GET `/projects/{pid}/devices/suggestions` (offset, verdict, evidence pairs; ADR 0027) | S6, S21 |
+| GET/PUT | `/projects/{pid}/devices` (clock offsets, LUT path; PUT `{devices: [{id, clock_offset_ms \| accept_suggestion \| lut_path \| clear_lut}]}` → `{devices, assets_updated, refresh_job, reanalysis_needed}`; LUTs ADR 0028) · GET `/projects/{pid}/devices/suggestions` (offset, verdict, evidence pairs; ADR 0027) | S6, S21 |
 | GET/PUT | `/projects/{pid}/trip-context` (PUT returns `summaries_job`: a context change re-runs summaries only) · POST `/trip-context/parse` `{text}` → proposed structure | S7 |
 | GET | `/projects/{pid}/summaries?level=day\|trip\|scene\|shot&after_ref=&limit=` (`day`: the trip plus each day; scene and shot are paged by ref, limit ≤ 1000) → `{items: [{level, ref, text, themes?, highlights, subjects?, span?}], next_after_ref}` (ADR 0021) | S10, S16 |
 | GET/PATCH | `/projects/{pid}/settings` (effective values with source) | S21 |

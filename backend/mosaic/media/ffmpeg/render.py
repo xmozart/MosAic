@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
 
-from mosaic.media.ffmpeg.builders import TONEMAP_TO_SDR, seconds_expr
+from mosaic.media.ffmpeg.builders import TONEMAP_TO_SDR, lut_filters, seconds_expr
 from mosaic.media.ffmpeg.command import (
     FFmpegCommand,
     Filter,
@@ -69,6 +69,7 @@ class ChunkSpec:
     source_rate: Fraction | None = None  # for exact nearest-frame conform
     threads: int = 0
     extra: list[tuple[str, OptionValue]] = field(default_factory=list)
+    lut: Path | None = None  # final renders of log footage (previews read LUT'd proxies)
 
 
 def conform_shift(timeline_rate: Fraction, source_rate: Fraction | None) -> Fraction:
@@ -89,7 +90,21 @@ def _video_chain(spec: ChunkSpec, src: str) -> str:
         Filter.of("setpts", f"PTS+{seconds_expr(conform_shift(spec.rate, spec.source_rate))}/TB"),
         Filter.of("fps", fps=spec.rate, round="near", start_time=0),
     ]
-    if spec.hdr:
+    if spec.lut is not None:  # the LUT replaces tone mapping (ADR 0028)
+        fit += lut_filters(spec.lut, spec.full_range)
+        fit.append(
+            Filter.of(
+                "scale",
+                w=spec.width,
+                h=spec.height,
+                force_original_aspect_ratio="decrease",
+                force_divisible_by=2,
+                flags="bicubic",
+                out_range="tv",
+                out_color_matrix="bt709",
+            )
+        )
+    elif spec.hdr:
         fit += [
             Filter.of(
                 "scale",

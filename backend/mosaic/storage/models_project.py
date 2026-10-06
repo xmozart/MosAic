@@ -533,7 +533,8 @@ class Device(ProjectBase):
     # When a correction came from a reference device: its UTC offset (minutes), so the
     # corrected times also read in the right local zone (day boundaries; ADR 0027).
     utc_offset_min: Mapped[int | None] = mapped_column(Integer)
-    lut_path: Mapped[str | None] = mapped_column(Text)
+    lut_path: Mapped[str | None] = mapped_column(Text)  # where the owner's file was
+    lut_key: Mapped[str | None] = mapped_column(String(64))  # its copy in the artifacts
 
 
 class DeviceSuggestion(ProjectBase):

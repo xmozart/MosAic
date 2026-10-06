@@ -488,3 +488,57 @@ def format_offset(offset_ms: int) -> str:
     h, rem = divmod(total, 3600)
     m, sec = divmod(rem, 60)
     return f"{sign}{h}:{m:02d}:{sec:02d}"
+
+
+def set_lut(project: Any, device_id: int, path: str | None) -> str | None:
+    """Assign (or with ``None`` remove) a device's LUT: copied once to a private temp file,
+    validated and hashed there, stored in the artifact store by content, then recorded on
+    the device. Returns the artifact key. Proxies and renders of the device change, so
+    the owner re-runs the analysis to apply it."""
+    import shutil
+    import stat
+    import tempfile
+    from pathlib import Path
+
+    from mosaic.media import lut
+
+    with project.db.session() as s:
+        if s.get(Device, device_id) is None:
+            raise LookupError(f"no device {device_id}")
+    key = None
+    src = Path(path).expanduser().resolve() if path is not None else None
+    if src is not None:
+        if src.suffix.lower() != ".cube":
+            raise lut.LutError("a LUT must be a .cube file")
+        try:
+            st = src.stat()
+        except OSError as exc:
+            raise lut.LutError(f"cannot read the LUT: {exc.strerror or exc}") from None
+        if not stat.S_ISREG(st.st_mode):
+            raise lut.LutError("the LUT is not a regular file")
+        if st.st_size > lut.MAX_BYTES:
+            raise lut.LutError("the LUT file is too large")
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "lut.cube"
+            shutil.copyfile(src, copy)  # one read of the owner's file
+            lut.check_cube(copy)
+            key = lut.lut_key(lut.digest(copy))
+            if not project.artifacts.exists("lut", key):
+                with project.write() as s:
+                    prov = provenance.record(
+                        s, provenance.ProvenanceInfo(kind="lut", input_keys=[key])
+                    )
+                project.artifacts.put_file("lut", key, copy, provenance_id=prov)
+    with project.write() as s:
+        dev = s.get(Device, device_id)
+        assert dev is not None
+        dev.lut_path = str(src) if src is not None else None
+        dev.lut_key = key
+    return key
+
+
+def asset_lut(s: Session, asset: Asset) -> str | None:
+    """The artifact key of the LUT for an asset's device, if any."""
+    if asset.device_id is None:
+        return None
+    return s.scalar(select(Device.lut_key).where(Device.id == asset.device_id))
