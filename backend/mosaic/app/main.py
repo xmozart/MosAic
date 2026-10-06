@@ -23,6 +23,7 @@ from mosaic.app.routers import (
     context,
     devices,
     edits,
+    files,
     jobs,
     library,
     projects,
@@ -88,6 +89,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     install_security_headers(app)
     app.include_router(auth_router.router)
     app.include_router(system.router)
+    app.include_router(files.router)
     app.include_router(jobs.router)
     app.include_router(config.router)
     app.include_router(edits.router)

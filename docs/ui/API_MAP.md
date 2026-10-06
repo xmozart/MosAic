@@ -16,8 +16,8 @@ These are the REST endpoints and SSE events the screens need.
 | POST | `/auth/setup` · `/auth/login` (public; set the HttpOnly SameSite=Strict session cookie and the readable `mosaic_csrf` cookie; 401 wrong password, 429 with `Retry-After` after 5 failures) · `/auth/logout`. Server mode: every other `/api` request needs the session, and writes need `X-CSRF-Token` (ADR 0034) | S2 |
 | GET | `/system/info` (mode: desktop/server, version, hardware probe with fingerprint, encoders, `workers` slots per resource class, `benchmark` or null, `rate_limits` per provider; ADR 0030) | S0, S22 |
 | POST | `/projects/{pid}/benchmark?force=` → `{job_id}`: measure this computer in the project's queue (ADR 0030) | S8, S22 |
-| GET/POST/DELETE | `/admin/media-roots` | S22 (admin) |
-| GET | `/fs/browse?root=&path=` (server only; within media roots; returns counts and has_project) | S4 |
+| GET/POST/DELETE | `/admin/media-roots` (server only; `{id, label, path, source: admin\|env}`; POST `{path, label?}` → 201, 422 for a relative or missing folder; ADR 0035) | S22 (admin) |
+| GET | `/fs/browse?root=&path=&cursor=` (server only; without `root`: the roots, no paths. With it: `{root, path, crumbs, here, items: [{name, path, videos, photos, has_project}], next_cursor}`; paths relative to the root; 403 outside it, 404 unknown; ADR 0035) | S4 |
 
 ## Settings & secrets
 

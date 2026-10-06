@@ -9,12 +9,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from mosaic.app.auth import server_mode
 from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
 from mosaic.core.modes import from_params
 from mosaic.core.principal import Principal, check
 from mosaic.media.pipeline import needs_benchmark, submit_analysis
-from mosaic.storage import lease
+from mosaic.storage import lease, media_roots
 from mosaic.storage.descriptor import read_descriptor
 from mosaic.storage.placement import Placement
 from mosaic.storage.projects import (
@@ -113,14 +114,20 @@ def relink(
     body = body or RelinkBody()
     root = _root(svc, pid)
     if body.choose_folder:
-        chosen = Path(body.choose_folder).expanduser().resolve()
+        if server_mode():  # a server opens folders inside its media roots only (§14)
+            try:
+                _, chosen = media_roots.confine(svc.control, body.choose_folder)
+            except media_roots.PathRefusedError as exc:
+                raise HTTPException(403, str(exc)) from None
+        else:
+            chosen = Path(body.choose_folder).expanduser().resolve()
         if not chosen.is_dir():
-            raise HTTPException(422, f"not a folder: {chosen}")
+            raise HTTPException(422, "That isn't a folder.")
         if not _same_project(pid, chosen, svc):
-            raise HTTPException(422, "that folder does not hold this project's footage")
+            raise HTTPException(422, "That folder doesn't hold this project's footage.")
         root = chosen
     elif not root.is_dir():
-        raise HTTPException(409, f"the project folder is missing: {root}; choose where it is")
+        raise HTTPException(409, "The project folder is missing. Choose where it is now.")
     project = open_project(svc.control, me, root)  # registers the (new) root
     try:
         # The mode of the last analysis, so nothing is recomputed at another density.
@@ -132,4 +139,16 @@ def relink(
         )
     finally:
         project.close(checkpoint=False)
-    return {"job_id": job, "root": str(root), "mode": mode.name}
+    return {"job_id": job, "root": _client_root(svc, root), "mode": mode.name}
+
+
+def _client_root(svc: Services, root: Path) -> str | dict[str, Any]:
+    """Desktop: the folder path. Server: never an absolute server path (§14) — the media
+    root and the path relative to it."""
+    if not server_mode():
+        return str(root)
+    try:
+        r, inside = media_roots.confine(svc.control, str(root))
+    except media_roots.PathRefusedError:
+        return {"root": None, "path": None}
+    return {"root": r.id, "path": media_roots.relative(r, inside)}

@@ -219,3 +219,14 @@ class AuthSession(ControlBase):
     created_ms: Mapped[int] = mapped_column(BigInteger)
     last_seen_ms: Mapped[int] = mapped_column(BigInteger)
     expires_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+
+
+class MediaRoot(ControlBase):
+    """A folder the server may browse and open projects in (ARCHITECTURE.md §3, §14)."""
+
+    __tablename__ = "media_root"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    path: Mapped[str] = mapped_column(Text, unique=True)  # canonical, absolute
+    label: Mapped[str] = mapped_column(String(120))
+    source: Mapped[str] = mapped_column(String(8), default="admin")  # admin|env
+    created_at: Mapped[str] = mapped_column(String(40))

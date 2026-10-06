@@ -175,6 +175,13 @@ def test_lockouts_double_and_reset_on_success() -> None:
     th.succeeded("a")
     t[0] += 1
     assert fail_until_locked() == LOCK_S, "a success resets the doubling"
+    # Old failures do not add up with new ones much later.
+    for _ in range(FAILURES_BEFORE_LOCK - 1):
+        assert th.attempt("c") == 0
+    t[0] += LOCK_MAX_S + 1
+    for _ in range(FAILURES_BEFORE_LOCK - 1):  # a fresh budget, not one left
+        assert th.attempt("c") == 0
+        assert th.wait_s("c") == 0, "the earlier failures were forgotten"
 
 
 def test_public_sign_in_refuses_other_sites_and_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,3 +233,27 @@ def test_every_route_but_sign_in_needs_a_session(monkeypatch: pytest.MonkeyPatch
             assert r.status_code == 401, (method, path, r.status_code)
             checked += 1
     assert checked > 20
+    # Hidden routes (not in the schema) under /api must not skip the guard either. None
+    # exist today, so mount one the way a careless router would and check it is caught.
+    from fastapi import Depends
+    from fastapi.routing import APIRoute
+
+    from mosaic.app.deps import principal
+
+    app = client.app  # type: ignore[attr-defined]
+
+    def _probe(_me: object = Depends(principal)) -> dict[str, bool]:
+        return {"ok": True}
+
+    app.add_api_route("/api/_hidden_probe", _probe, methods=["GET"], include_in_schema=False)
+    app.router.routes.insert(0, app.router.routes.pop())  # ahead of the UI's catch-all
+
+    hidden = [
+        r
+        for r in app.routes
+        if isinstance(r, APIRoute) and not r.include_in_schema and r.path.startswith("/api")
+    ]
+    assert [r.path for r in hidden] == ["/api/_hidden_probe"]
+    for r in hidden:
+        for method in r.methods:
+            assert client.request(method, r.path).status_code == 401

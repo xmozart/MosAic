@@ -11,12 +11,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from mosaic.app.auth import server_mode
 from mosaic.app.deps import principal, services
 from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
 from mosaic.library.devices import device_rows, set_lut, set_offset, submit_time_refresh
 from mosaic.media.lut import LutError
+from mosaic.storage import media_roots
 from mosaic.storage.models_project import Device, DeviceSuggestion
 
 router = APIRouter(prefix="/api")
@@ -86,8 +88,16 @@ def put_devices(
         for ch in body.devices:
             if ch.lut_path is None and not ch.clear_lut:
                 continue
+            lut_path = ch.lut_path
+            if lut_path is not None and server_mode():
+                # A server reads files inside its media roots only (§14, ADR 0035).
+                try:
+                    _, canonical = media_roots.confine(svc.control, lut_path)
+                except media_roots.PathRefusedError as exc:
+                    raise HTTPException(403, str(exc)) from None
+                lut_path = str(canonical)
             try:
-                set_lut(project, ch.id, ch.lut_path)
+                set_lut(project, ch.id, lut_path)
             except LookupError:
                 raise HTTPException(404, f"no device {ch.id}") from None
             except LutError as exc:

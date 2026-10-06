@@ -50,6 +50,9 @@ The desktop app keeps binding to loopback. Its per-launch token arrives with Tau
   - With it unset, every client appears as the proxy, so all clients share one lockout.
   - With `*`, anyone can spoof the header and bypass the lockout.
   - The compose files (step 10) document this.
+- **The proxy must forward the original `Host`.** The Host allowlist and the sign-in Origin check compare against it.
+  - Caddy and Traefik do this by default; nginx needs `proxy_set_header Host $host` (its default sends the upstream name).
+  - `X-Forwarded-Host` is not trusted.
 - **TLS and HSTS** are the proxy's job.
 
 ## Consequences

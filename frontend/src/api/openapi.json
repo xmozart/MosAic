@@ -217,6 +217,33 @@
         "title": "ResumeBody",
         "type": "object"
       },
+      "RootBody": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "RootBody",
+        "type": "object"
+      },
       "RunBody": {
         "additionalProperties": false,
         "properties": {
@@ -361,6 +388,96 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/media-roots": {
+      "get": {
+        "operationId": "list_roots_api_admin_media_roots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Roots Api Admin Media Roots Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Roots"
+      },
+      "post": {
+        "operationId": "add_root_api_admin_media_roots_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RootBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Root Api Admin Media Roots Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Root"
+      }
+    },
+    "/api/admin/media-roots/{root_id}": {
+      "delete": {
+        "operationId": "delete_root_api_admin_media_roots__root_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Root"
+      }
+    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",
@@ -798,6 +915,82 @@
           }
         },
         "summary": "Events"
+      }
+    },
+    "/api/fs/browse": {
+      "get": {
+        "description": "Without ``root``: the media roots. With it: the folders in ``path`` (relative to\nthe root) with their direct video/photo counts and whether each holds a project.",
+        "operationId": "browse_api_fs_browse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "root",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Root"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 4096,
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Browse Api Fs Browse Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse"
       }
     },
     "/api/jobs": {

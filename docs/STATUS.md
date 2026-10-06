@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 3b (media roots, folder browser, path safety); steps 1–3a done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 3c (server secret backends); steps 1–3b done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -35,7 +35,7 @@ Order: design foundation first (milestone rule), then the server pieces the brow
 - [x] 2a. Design-system components: primitives (Button, TextField, Segmented, Switch, Kbd), media (DispositionChip, DispositionControl, StarRating, IncludeToggle, CameraBadge, QualityRow, ClipTile with every listed state), system rows (StageList, ModeCard, EstimateCard, PlacementBadge, UnsupportedRow, ClockOffsetRow, SettingRow, SecretField, StorageBreakdown), stories per state, AI-vs-you test (acceptance 8)
 - [ ] 2b. Data-bound components come with the screen step that first uses them, each with its stories: shell (AppRail, ActivityPopover, ProjectHeader, CommandPalette, Toast, ConfirmDialog) in 5; Player, Filmstrip, Waveform, Transcript in 4/7; library (VirtualGrid, LibraryToolbar, GroupHeader, DayScrubber, BulkBar, ClipInspector, SimilarShots) in 7; editing basics in 8
 - [x] 3a. Server mode sign-in: single admin (Argon2), HttpOnly SameSite=Strict Secure session cookie, double-submit CSRF on writes, lockout after 5 failures, security headers with a hashed-inline-script CSP, `MOSAIC_MODE`/`MOSAIC_BIND`/`MOSAIC_ALLOWED_HOSTS`, S2 screen and auth gate
-- [ ] 3b. Media roots (`/admin/media-roots`), `/fs/browse` and every path-taking endpoint confined to media roots in server mode, path-safety API tests (acceptance 2)
+- [x] 3b. Media roots (`/admin/media-roots`, `MOSAIC_MEDIA_ROOTS`), `/fs/browse` with counts and has_project, relink confined to media roots in server mode, path-safety API tests (acceptance 2)
 - [ ] 3c. Server secret backends: env, Docker secrets, encrypted file with a master key; write-only entry, last-4, validate
 - [ ] 4. Media endpoints: proxy with HTTP range, frames, filmstrip, waveform; `Player`
 - [ ] 5. Shell and journey I: S0 app shell + dialogs + command palette, S3 Home, S4 Open folder, S5 Inventory, S6 Clock check, S7 Trip context
@@ -140,3 +140,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.1 · Web UI foundation: Vite + React 19 + TS 5.9 strict, Tailwind 4 `@theme` generated from tokens.json (checked in tests), bundled Geist fonts via Fontsource (the `geist` package pulls Next.js + LGPL libvips), dark/light themes, Storybook 10, openapi-fetch client generated from the API schema (kept current by a test), shipped-license test, API serves the built UI with SPA fallback (ADR 0032)
 - 2026-10-06 · M2.2a · Design-system components with stories per state (both themes): primitives, media chips/controls/ClipTile, system rows; AI-vs-you test (acceptance 8); tailwind-merge taught the token type sizes (it dropped colour classes next to `text-caption`); generated npm license table in LICENSES.md; on-media tokens and `micro`/`tag` type, footage overlays always in dark token values (ADR 0033)
 - 2026-10-06 · M2.3a · Server-mode sign-in: one admin (Argon2), hashed session and CSRF tokens in the control DB, HttpOnly/SameSite=Strict/Secure cookie, CSRF header on writes, 5-failure lockout with countdown, security headers (CSP allows the hashed theme script), S2 screen + auth gate; desktop mode unchanged (ADR 0034)
+- 2026-10-06 · M2.3b · Media roots and the server folder browser: one confinement gate (canonical paths, no `..`, absolute or escaping symlinks), relative paths only to clients, relink confined in server mode; acceptance 2 tests; sign-in throttle forgets quiet clients, route guard covers hidden /api routes, proxy must forward Host (ADR 0035, 0034)

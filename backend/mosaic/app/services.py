@@ -110,6 +110,12 @@ class Services:
     def create(cls, control: ControlDB | None = None) -> Services:
         control = control or ControlDB()
         store = JobStore(control.db)
+        from mosaic.app.auth import server_mode
+
+        if server_mode():
+            from mosaic.storage.media_roots import seed_from_env
+
+            seed_from_env(control)  # MOSAIC_MEDIA_ROOTS (docker compose)
         return cls(control, store, LocalExecutor(store))
 
     @property

@@ -85,12 +85,19 @@ class Throttle:
         self._attempts: dict[str, int] = {}
         self._until: dict[str, float] = {}
         self._strikes: dict[str, int] = {}
+        self._last: dict[str, float] = {}
 
     def _prune(self, now: float) -> None:
-        """Forget a client once its last lock ended a full maximum lock ago (keeps memory
-        bounded; within that window locks keep doubling)."""
-        for client in [c for c, t in self._until.items() if now - t > LOCK_MAX_S]:
-            for d in (self._attempts, self._until, self._strikes):
+        """Forget a client that has been quiet for a full maximum lock: no attempt and no
+        lock in that time (memory stays bounded, and old failures do not add up with new
+        ones months later; within that window locks keep doubling)."""
+        quiet = [
+            c
+            for c, last in self._last.items()
+            if now - max(last, self._until.get(c, 0.0)) > LOCK_MAX_S
+        ]
+        for client in quiet:
+            for d in (self._attempts, self._until, self._strikes, self._last):
                 d.pop(client, None)
 
     def attempt(self, client: str) -> int:
@@ -101,6 +108,7 @@ class Throttle:
             until = self._until.get(client, 0.0)
             if until > now:
                 return max(1, int(until - now + 0.999))
+            self._last[client] = now
             n = self._attempts.get(client, 0) + 1
             self._attempts[client] = n
             if n >= FAILURES_BEFORE_LOCK:
@@ -117,7 +125,7 @@ class Throttle:
 
     def succeeded(self, client: str) -> None:
         with self._lock:
-            for d in (self._attempts, self._until, self._strikes):
+            for d in (self._attempts, self._until, self._strikes, self._last):
                 d.pop(client, None)
 
 
