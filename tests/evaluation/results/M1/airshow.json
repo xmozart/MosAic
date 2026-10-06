@@ -1,9 +1,9 @@
 {
   "trip": "Airshow",
-  "started_at": "2026-10-05T15:51:47-04:00",
+  "started_at": "2026-10-06T06:31:19-04:00",
   "deep_review_candidates": 116,
   "edit": "edt_0001",
-  "version": 7,
+  "version": 8,
   "request": {
     "duration_s": 180,
     "story": "cinematic_journey",
@@ -59,6 +59,7 @@
       "rejected": 151,
       "too_short": 1,
       "duplicate": 217,
+      "analysis_only": 0,
       "candidates": 116,
       "capped": 0
     },
@@ -77,12 +78,12 @@
       "planner": {
         "provider": "claude-cli",
         "model": "claude-sonnet-5-5",
-        "cached": false
+        "cached": true
       },
       "selector": {
         "provider": "claude-cli",
         "model": "claude-sonnet-5-5",
-        "cached": false
+        "cached": true
       },
       "cost_usd": 0.0
     }
@@ -102,7 +103,7 @@
     "crowd": 0.018
   },
   "render": {
-    "path": "/Users/michaeldemb/Script/MosAic/Samples/Airshow/MosAic/renders/edt_0001/v007-final-r0009.mp4",
+    "path": "/Users/michaeldemb/Script/MosAic/Samples/Airshow/MosAic/renders/edt_0001/v008-final-r0010.mp4",
     "metrics": {
       "frames": 5395,
       "rate": "30000/1001",
@@ -112,5 +113,5 @@
       "normalized": true
     }
   },
-  "finished_at": "2026-10-05T15:52:02-04:00"
+  "finished_at": "2026-10-06T06:35:06-04:00"
 }

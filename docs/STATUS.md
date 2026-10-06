@@ -4,7 +4,7 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-- **Airshow project DB** (not a gate; M2 continues): one empty, unused table (`asset_stage`) left by a failed upgrade before the M1.14a fix stops the project from opening. Choose: let the agent drop it, drop it yourself (`sqlite3 Samples/Airshow/MosAic/project.db "DROP TABLE asset_stage;"`), or have the migration accept an existing empty table. See `docs/reports/M1.md` → Owner actions.
+_(empty — the agent is working on M2)_
 
 ## Current
 
@@ -115,4 +115,5 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M1.12 · Hardware probe (cores, memory, working hardware encoders, fingerprint), `system.benchmark` (generated 4K clip through the real proxy builder, frame pass and embedder; stored per computer; first analysis on a machine runs it), benchmark-based wall-time estimates with `basis`, worker slots sized from the probe (`workers.*` overrides), per-provider AI rate limits (`ai.rate.*`), `mosaic hardware`, `/system/info`, `POST /projects/{pid}/benchmark` (ADR 0030); eval budgets were already job cost limits
 - 2026-10-05 · M1.13 · 40-hour synthetic project (`mosaic-dev gen-long`, lazily generated in .cache/long-40h), offline fake embedder, `GET /projects/{pid}/library` keyset pages by day or camera, acceptance 6: L0/L1 of 40 h in 922 s with a 500 MB worker peak, slowest list page 18.6 ms (ADR 0031)
 - 2026-10-06 · M1.14a · Migrations in one real transaction (driver autocommit + explicit BEGIN, FKs off, foreign_key_check before commit): fixes upgrading populated projects found by `make eval`; Dubai M1 eval 15 events, +0 frames, must-include 7/7
-- 2026-10-06 · M1.14 · M1 report: acceptance 1, 2, 3, 5, 6, 7 met; 4 partial (Q-3); Airshow final re-run waits on the owner action above
+- 2026-10-06 · M1.14 · M1 report: acceptance 1, 2, 3, 5, 6, 7 met; 4 partial (Q-3); Airshow and Dubai evals on the final code
+- 2026-10-06 · M1.14b · Airshow M1 eval after the owner-approved removal of the leaked empty table: upgraded cleanly, 43 events, +0 frames, 116 deep reviews, aircraft 79 % / crowd 2 %, 0/92 must-exclude violations
