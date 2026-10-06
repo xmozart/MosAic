@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, useParams } from "react-router";
 
-import { Placeholder } from "@/features/shell/AppShell";
+import { LibraryScreen } from "@/features/library/LibraryScreen";
 
 import { DeepenDialog } from "./DeepenDialog";
 
@@ -12,7 +12,7 @@ export function DeepenRoute() {
   const selection = (useLocation().state as { segmentIds?: number[] } | null)?.segmentIds ?? [];
   return (
     <>
-      <Placeholder title="Library" />
+      <LibraryScreen />
       <DeepenDialog pid={pid} open selection={selection} onClose={() => navigate(`/p/${pid}/library`, { replace: true })} />
     </>
   );

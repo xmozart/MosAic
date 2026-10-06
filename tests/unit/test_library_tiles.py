@@ -66,6 +66,8 @@ def test_tiles_groups_and_filters(tmp_path: Path) -> None:
         assert a["caption"] == "Falls revealed", "the most interesting moment speaks for the clip"
         assert (b["caption"], b["shot_type"], b["has_speech"]) == ("A toucan", "close_up", True)
         assert (a["similar_count"], b["similar_count"], a["has_speech"]) == (1, 1, False)
+        assert a["offline"] is False
+        assert a["camera"] == {"label": "Generic", "kind": "camera"}
         f = browse.Filters(show_rejected=True)
         days = browse.groups(s, "day", f)
         assert days[0] == {
@@ -96,4 +98,45 @@ def test_tiles_groups_and_filters(tmp_path: Path) -> None:
         assert [i["asset_id"] for i in silent] == [ids["a"]]
         close = browse.page(s, "day", None, 50, browse.Filters(shot_type="close_up")).items
         assert [i["asset_id"] for i in close] == [ids["b"]]
+    project.close()
+
+
+def test_offline_files_and_camera_kinds(tmp_path: Path) -> None:
+    from sqlalchemy import update
+
+    from mosaic.storage.models_project import Asset, MediaFile
+
+    project, ids = _project(tmp_path)
+    when = "2026-07-15T09:00:00+00:00"
+    with project.write() as s:
+        for name, status in (("a", "offline"), ("b", "missing")):
+            s.add(
+                MediaFile(
+                    rel_path=f"{name}.mp4",
+                    size=1,
+                    mtime_ns=0,
+                    fingerprint="",
+                    media_type="video",
+                    status=status,
+                    asset_id=ids[name],
+                    created_at=when,
+                )
+            )
+        s.execute(update(Asset).where(Asset.id == ids["b"]).values(profile="dji"))
+        s.execute(update(Asset).where(Asset.id == ids["c"]).values(camera_model="HERO12 Black"))
+    with project.db.session() as s:
+        items = {
+            i["asset_id"]: i
+            for i in browse.page(s, "day", None, 50, browse.Filters(show_rejected=True)).items
+        }
+        cameras = {
+            g["key"]: g["label"]
+            for g in browse.groups(s, "camera", browse.Filters(show_rejected=True))
+        }
+    assert items[ids["a"]]["offline"], "cloud-only"
+    assert items[ids["b"]]["offline"], "unplugged"
+    assert not items[ids["c"]]["offline"]
+    assert items[ids["b"]]["camera"]["kind"] == "drone"
+    assert items[ids["c"]]["camera"]["label"] == "HERO12 Black"
+    assert cameras == {"0": "Unknown camera"}, "no devices in this fixture: one camera group"
     project.close()

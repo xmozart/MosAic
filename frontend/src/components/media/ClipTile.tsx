@@ -35,6 +35,9 @@ export interface ClipTileProps {
   onOpen?: () => void;
   /** Pins the hover-scrub position (stories and tests); normally driven by the pointer. */
   scrubIndex?: number;
+  /** A grid's roving tabindex: only its focused tile is in the tab order (S10). */
+  tabIndex?: number;
+  onFocus?: () => void;
 }
 
 /** Library tile (COMPONENTS.md ClipTile; DS-Components "Thumbnail tile"). */
@@ -52,6 +55,8 @@ export function ClipTile({
   onSelect,
   onOpen,
   scrubIndex,
+  tabIndex = 0,
+  onFocus,
 }: ClipTileProps) {
   const [pointer, setScrub] = useState<number | null>(null);
   const scrub = scrubIndex ?? pointer;
@@ -75,7 +80,8 @@ export function ClipTile({
       )}
       <div
         role="button"
-        tabIndex={0}
+        tabIndex={tabIndex}
+        onFocus={onFocus}
         aria-pressed={selected}
         aria-label={asset.name}
         onClick={onSelect}

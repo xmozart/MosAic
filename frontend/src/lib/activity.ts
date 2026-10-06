@@ -65,6 +65,13 @@ export function overall(jobs: JobSummary[]): number | null {
   return Math.round(running.reduce((s, j) => s + j.pct, 0) / running.length);
 }
 
+export const CLIP_UPDATED = "mosaic:clip-updated";
+export interface ClipUpdated {
+  project_id: string;
+  asset_id: number | null; // null: many clips changed, refetch
+  fields: string[];
+}
+
 /** Analysis jobs already announced as ready to browse (deduplicated across reconnects). */
 const announced = new Set<number>();
 
@@ -114,6 +121,11 @@ export function connectActivity(url = "/api/events"): () => void {
       kind: "success",
       message: "Your footage is ready to browse and edit. Deeper analysis continues in the background.",
     });
+  });
+  es.addEventListener("clip.updated", (e) => {
+    // Library decisions changed (here or in another window): screens refetch (ADR 0042).
+    const d = JSON.parse((e as MessageEvent).data) as ClipUpdated;
+    window.dispatchEvent(new CustomEvent<ClipUpdated>(CLIP_UPDATED, { detail: d }));
   });
   es.addEventListener("lock.lost", (e) => {
     const d = JSON.parse((e as MessageEvent).data) as { project_id: string };

@@ -8,6 +8,7 @@ import { AuthGate } from "@/features/auth/AuthGate";
 import { TripContextScreen } from "@/features/context/TripContextScreen";
 import { HomeScreen } from "@/features/home/HomeScreen";
 import { InventoryScreen } from "@/features/inventory/InventoryScreen";
+import { LibraryScreen } from "@/features/library/LibraryScreen";
 import { AppShell, Placeholder } from "@/features/shell/AppShell";
 import { ProjectIndex } from "@/features/shell/ProjectIndex";
 import { ProjectLayout } from "@/features/shell/ProjectLayout";
@@ -33,6 +34,8 @@ export function App() {
                 <Route path="analyze" element={<AnalysisSetupScreen />} />
                 <Route path="analysis" element={<AnalysisProgressScreen />} />
                 <Route path="deepen" element={<DeepenRoute />} />
+                <Route path="library" element={<LibraryScreen />} />
+                <Route path="clips/:aid" element={<Placeholder title="Clip detail" />} />
                 <Route path="*" element={<Placeholder title="Coming in this milestone" />} />
               </Route>
               <Route path="*" element={<Placeholder title="Not found" />} />

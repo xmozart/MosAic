@@ -30,6 +30,7 @@ from mosaic.storage.models_project import (
 )
 
 GROUPS = ("day", "camera", "similar")
+KIND = {"iphone": "phone", "gopro": "actioncam", "insta360": "360", "dji": "drone"}
 NO_GROUP = 2**62  # sorts clips without a similar group after every group
 SHOWN_KINDS = ("video", "photo", "live_photo")
 UNKNOWN_TIME = "~"  # sorts after every ISO time: undated clips come last
@@ -335,7 +336,13 @@ def _day_key(time: str | None) -> str:
     return time[:10] if time else "unknown"
 
 
-_NO_FACTS = {"caption": None, "shot_type": None, "has_speech": False, "similar_count": 0}
+_NO_FACTS = {
+    "caption": None,
+    "shot_type": None,
+    "has_speech": False,
+    "similar_count": 0,
+    "offline": False,
+}
 
 
 def _tile_facts(session: Session, ids: list[int]) -> dict[int, dict[str, Any]]:
@@ -370,6 +377,15 @@ def _tile_facts(session: Session, ids: list[int]) -> dict[int, dict[str, Any]]:
         .distinct()
     ):
         out[aid]["has_speech"] = True
+    # A file only in the cloud or on an unplugged drive: the tile says so (the proxy, if
+    # made, still plays).
+    for (aid,) in session.execute(
+        select(MediaFile.asset_id)
+        .where(MediaFile.asset_id.in_(ids), MediaFile.status.in_(("offline", "missing")))
+        .distinct()
+    ):
+        if aid is not None:
+            out[aid]["offline"] = True
     other = aliased(Segment)
     for aid, n in session.execute(
         select(Segment.asset_id, func.count(func.distinct(other.asset_id)))
@@ -451,6 +467,13 @@ def page(
         ).all()
     )
     tile = _tile_facts(session, ids)
+    device_labels = dict(
+        session.execute(
+            select(Device.id, Device.label).where(
+                Device.id.in_({a.device_id for a in assets if a.device_id})
+            )
+        ).all()
+    )
     decided = decisions.decisions(session, ids)
     clip_tags = decisions.tags(session, ids)
     items = []
@@ -480,6 +503,12 @@ def page(
                 "decided_by": ("ai" if by_ai else "user") if prio else None,
                 "decision": decisions.clip_json(dec, clip_tags.get(a.id, [])),
                 "sample_id": tiles.get(a.id),
+                "camera": {
+                    "label": device_labels.get(a.device_id) or a.camera_model or a.profile.title(),
+                    "kind": "photo"
+                    if a.kind != "video" and a.profile == "generic"
+                    else KIND.get(a.profile, "camera"),
+                },
                 **tile.get(a.id, _NO_FACTS),
             }
         )
