@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.orm import Session
 
 from mosaic.core.time import parse_rational
+from mosaic.library.devices import is_consistent
 from mosaic.storage.models_project import (
     Asset,
     AssetFile,
@@ -95,6 +96,7 @@ def inventory(s: Session) -> dict[str, Any]:
                 "kind": KIND.get(a.profile, "camera"),
                 "clips": 0,
                 "photos": 0,
+                "limited": 0,
                 "files": 0,
                 "footage_seconds": 0,
                 "badges": set(),
@@ -125,6 +127,7 @@ def inventory(s: Session) -> dict[str, Any]:
             c["badges"].add("Log")
         if "analysis_only" in (a.flags or []):
             c["badges"].add("360")
+            c["limited"] += 1
             limited += 1
         if a.id in telemetry_assets:
             c["badges"].add("Telemetry")
@@ -137,10 +140,11 @@ def inventory(s: Session) -> dict[str, Any]:
         c["badges"] = sorted(c["badges"])
         c["footage_seconds"] = round(c["footage_seconds"])
         sug = suggestions.get(c["device_id"]) if c["device_id"] else None
-        if sug is not None and sug.offset_ms:
-            dev = devices[c["device_id"]]
-            if sug.offset_ms != dev.clock_offset_ms:
-                c["clock"] = {"offset_ms": sug.offset_ms, "words": _offset_words(sug.offset_ms)}
+        if sug is not None:
+            # What is still off after the offset already set, as S6 words it.
+            residual = sug.offset_ms - devices[c["device_id"]].clock_offset_ms
+            if not is_consistent(residual):
+                c["clock"] = {"offset_ms": residual, "words": _offset_words(residual)}
     return {
         "summary": {
             "footage_seconds": round(footage),
@@ -167,8 +171,17 @@ def _attention(s: Session, limited: int) -> list[dict[str, Any]]:
         .where(Asset.status == "unsupported")
         .group_by(Asset.reason, Asset.suggested_fix)
     )
-    for reason, fix, n, _aid in unsupported:
-        items.append({"kind": "unreadable", "count": n, "reason": reason, "fix": fix})
+    for reason, fix, n, aid in unsupported:
+        items.append(
+            {
+                "kind": "unreadable",
+                "group": aid,  # names this reason for ``inventory_files``
+                "count": n,
+                "reason": reason,
+                "fix": fix,
+                "example": _file_name(s, aid) if n == 1 else None,
+            }
+        )
     if limited:
         items.append(
             {
@@ -194,6 +207,61 @@ def _attention(s: Session, limited: int) -> list[dict[str, Any]]:
             }
         )
     return items
+
+
+def _file_name(s: Session, asset_id: int) -> str | None:
+    rel = s.scalar(
+        select(MediaFile.rel_path)
+        .where(MediaFile.asset_id == asset_id)
+        .order_by(MediaFile.id)
+        .limit(1)
+    )
+    return rel.rsplit("/", 1)[-1] if rel else None
+
+
+FILES_PAGE = 200
+
+
+def inventory_files(
+    s: Session, kind: str, group: int | None = None, after: int | None = None
+) -> dict[str, Any]:
+    """The files behind one "Needs attention" row (S5 "Show files"), paged by media file
+    id. Paths are relative to the project folder; reasons are catalog texts."""
+    q = select(MediaFile.id, MediaFile.rel_path, MediaFile.size)
+    if kind == "cloud":
+        q = q.where(MediaFile.status == "offline")
+    else:
+        q = q.join(Asset, Asset.id == MediaFile.asset_id)
+        if kind == "unreadable":
+            q = q.where(Asset.status == "unsupported")
+            if group is not None:
+                ref = s.get(Asset, group)
+                if ref is None or ref.status != "unsupported":
+                    raise LookupError(group)
+                # The same grouping as the row: reason and fix (``_attention``).
+                q = q.where(
+                    Asset.reason.is_(None) if ref.reason is None else Asset.reason == ref.reason,
+                    Asset.suggested_fix.is_(None)
+                    if ref.suggested_fix is None
+                    else Asset.suggested_fix == ref.suggested_fix,
+                )
+        elif kind == "limited":
+            q = q.where(
+                Asset.status == "ok",
+                Asset.kind.in_(SHOWN),
+                cast(Asset.flags, Text).like('%"analysis_only"%'),
+            )
+        else:
+            raise ValueError(kind)
+    if after is not None:
+        q = q.where(MediaFile.id > after)
+    rows = list(s.execute(q.order_by(MediaFile.id).limit(FILES_PAGE + 1)))
+    more = len(rows) > FILES_PAGE
+    rows = rows[:FILES_PAGE]
+    return {
+        "items": [{"id": r.id, "path": r.rel_path, "bytes": r.size} for r in rows],
+        "next_after": rows[-1].id if more else None,
+    }
 
 
 def _notes(s: Session) -> dict[str, int]:

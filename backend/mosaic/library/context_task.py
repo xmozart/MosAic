@@ -28,4 +28,7 @@ def parse_task(ctx: TaskContext) -> dict[str, Any]:
     )
     proposal = result.data
     assert isinstance(proposal, TripContext)
-    return {"proposal": proposal.model_dump(mode="json"), "cached": result.cached}
+    out = {"proposal": proposal.model_dump(mode="json"), "cached": result.cached}
+    # S7 reads the proposal from ``GET /jobs/{id}`` to show it for confirmation.
+    ctx.store.set_job_result(ctx.task.job_id, {"proposal": out["proposal"]})
+    return out

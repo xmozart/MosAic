@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
 import { frame } from "@/stories/frames";
 
-import { ClockOffsetRow } from "./ClockOffsetRow";
+import { ClockOffsetRow, type ClockChoice } from "./ClockOffsetRow";
 import { EstimateCard } from "./EstimateCard";
 import { ModeCard } from "./ModeCard";
 import { PlacementBadge } from "./PlacementBadge";
@@ -72,7 +72,7 @@ export const Placements: Story = {
 
 export const NeedsAttention: Story = {
   render: () => (
-    <div className="flex w-[720px] flex-col gap-2">
+    <div className="flex w-[720px] flex-col rounded-lg border border-border bg-surface-1 px-[18px]">
       <UnsupportedRow
         kind="unreadable"
         title="3 Nikon N-RAW clips can't be read"
@@ -97,20 +97,23 @@ export const NeedsAttention: Story = {
 };
 
 export const ClockOffset: Story = {
-  render: () => (
-    <div className="w-[720px]">
-      <ClockOffsetRow
-        device="GoPro HERO12 Black"
-        summary="Appears 5 h 00 m ahead"
-        offset="−5 h 00 m"
-        evidence={{ reference: "iPhone · Jul 15 10:42", device: "GoPro · Jul 15 15:43", frames: [frame(0), frame(0, 2)], moment: "the waterfall trail on Day 2." }}
-        onStep={() => {}}
-        onAccept={() => {}}
-        onAdjust={() => {}}
-        onLeave={() => {}}
-      />
-    </div>
-  ),
+  render: function Render() {
+    const [choice, setChoice] = useState<ClockChoice>("accept");
+    return (
+      <div className="flex w-[832px] flex-col gap-4">
+        <ClockOffsetRow
+          device="GoPro HERO12 Black"
+          summary="Appears 5 h 00 m ahead"
+          offset="−5 h 00 m"
+          evidence={{ reference: "iPhone · Jul 15 10:42", device: "GoPro · Jul 15 15:43", frames: [frame(0), frame(0, 2)], moment: "the waterfall trail on Day 2." }}
+          choice={choice}
+          onChoice={setChoice}
+          onStep={() => setChoice("adjust")}
+        />
+        <ClockOffsetRow device="Sony ZV-1" summary="No matching moments found yet." offset="0 h 00 m" choice="leave" onChoice={() => {}} onStep={() => {}} />
+      </div>
+    );
+  },
 };
 
 export const Settings: Story = {

@@ -86,6 +86,19 @@ def test_preview_writes_nothing_then_create_scans_only(
     assert unread, "the corrupt file is listed"
     assert all("ffprobe" not in (a["reason"] or "").lower() for a in unread), "catalog reasons only"
     assert inv["notes"]["chaptered_recordings"] >= 1, "GoPro chapters joined"
+    files = f"/api/projects/{pid}/inventory/files"
+    group = unread[0]
+    listed_files = client.get(files, params={"kind": "unreadable", "group": group["group"]})
+    assert listed_files.status_code == 200, listed_files.text
+    paths = [f["path"] for f in listed_files.json()["items"]]
+    assert len(paths) == group["count"]
+    assert all(not p.startswith("/") for p in paths), "relative to the project folder"
+    if group["count"] == 1:
+        assert group["example"] == paths[0].rsplit("/", 1)[-1]
+    assert client.get(files, params={"kind": "unreadable", "group": 999999}).status_code == 404
+    assert client.get(files, params={"kind": "everything"}).status_code == 422
+    assert client.get(files, params={"kind": "cloud"}).json()["items"] == []
+    assert all("limited" in c for c in inv["cameras"])
 
 
 def test_list_opens_no_project_db_and_flags_missing_folders(

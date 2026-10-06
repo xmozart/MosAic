@@ -220,5 +220,6 @@ def test_context_parse_job_proposes_without_saving(
     assert run_job(control, job, timeout=120) == "done"
     proposal = store.tasks(job)[0].result["proposal"]
     assert "F-35" in proposal["free_notes"]
+    assert store.job(job).result["proposal"] == proposal, "S7 reads it from GET /jobs/{id}"
     with project.db.session() as s:
         assert load(s).is_empty(), "nothing is saved until the owner confirms"

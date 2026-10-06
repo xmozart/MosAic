@@ -15,7 +15,7 @@ from concurrent.futures import Future, wait
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from mosaic.app.deps import principal, services
@@ -229,6 +229,27 @@ def get_inventory(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str
     check(me, "library.read", pid)
     with _project(svc, me, pid) as project, project.db.session() as s:
         return inventory(s)
+
+
+@router.get("/projects/{pid}/inventory/files")
+def get_inventory_files(
+    pid: str,
+    kind: str = Query(pattern="^(unreadable|limited|cloud)$"),
+    group: int | None = None,
+    after: int | None = None,
+    svc: Services = Svc,
+    me: Principal = Me,
+) -> dict[str, Any]:
+    """S5 "Show files": the files behind one Needs-attention row (ADR 0040)."""
+    from mosaic.app.routers.edits import _project
+    from mosaic.library.inventory_view import inventory_files
+
+    check(me, "library.read", pid)
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        try:
+            return inventory_files(s, kind, group, after)
+        except LookupError:
+            raise HTTPException(404, "no such group") from None
 
 
 @router.post("/projects/{pid}/cloud-files/download", status_code=202)

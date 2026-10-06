@@ -27,7 +27,7 @@ Consistent devices are listed in one green line. Footer: Skip — I'll fix it la
 
 ## Keyboard
 
-- Tab through devices; +/− adjust the focused stepper by 1 h (Shift: 1 min).
+- Tab through devices; +/− adjust the focused stepper by 1 h (Shift: 1 min). The `=` key (and numpad `+`) means + 1 h; Shift+`=` (the `+` key on US layouts) means + 1 min (ADR 0040).
 
 ## Acceptance
 

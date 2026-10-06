@@ -22,6 +22,12 @@
   --on-media: #EDEDEC;
   --media-chip: rgba(10,11,13,0.62);
   --media-overlay: rgba(10,11,13,0.72);
+  --cam-1: #F2A541;
+  --cam-2: #6CB6D9;
+  --cam-3: #B48CF0;
+  --cam-4: #4CC38A;
+  --cam-5: #E6C35C;
+  --cam-6: #E07A5F;
   color-scheme: dark;
 }
 
@@ -46,6 +52,12 @@
   --on-media: #EDEDEC;
   --media-chip: rgba(10,11,13,0.62);
   --media-overlay: rgba(10,11,13,0.72);
+  --cam-1: #A86208;
+  --cam-2: #1F6F95;
+  --cam-3: #7246C2;
+  --cam-4: #1B7F4F;
+  --cam-5: #8A6B0A;
+  --cam-6: #B4492F;
   color-scheme: light;
 }
 
@@ -71,6 +83,12 @@
     --on-media: #EDEDEC;
     --media-chip: rgba(10,11,13,0.62);
     --media-overlay: rgba(10,11,13,0.72);
+    --cam-1: #A86208;
+    --cam-2: #1F6F95;
+    --cam-3: #7246C2;
+    --cam-4: #1B7F4F;
+    --cam-5: #8A6B0A;
+    --cam-6: #B4492F;
     color-scheme: light;
   }
 }
@@ -154,6 +172,12 @@
   --color-on-media: var(--on-media);
   --color-media-chip: var(--media-chip);
   --color-media-overlay: var(--media-overlay);
+  --color-cam-1: var(--cam-1);
+  --color-cam-2: var(--cam-2);
+  --color-cam-3: var(--cam-3);
+  --color-cam-4: var(--cam-4);
+  --color-cam-5: var(--cam-5);
+  --color-cam-6: var(--cam-6);
   --color-background: var(--bg);
   --color-foreground: var(--text);
   --color-card: var(--surface-1);

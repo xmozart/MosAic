@@ -14,6 +14,7 @@ Generate `frontend/src/styles/tokens.css` from `tokens.json` with a build script
   --use: #4CC38A; --maybe: #E6C35C; --reject: #F0575C; --user: #7AA2F7; --info: #6CB6D9;
   --scrim: rgba(0,0,0,0.55);
   --on-media: #EDEDEC; --media-chip: rgba(10,11,13,0.62); --media-overlay: rgba(10,11,13,0.72);
+  --cam-1: #F2A541; --cam-2: #6CB6D9; --cam-3: #B48CF0; --cam-4: #4CC38A; --cam-5: #E6C35C; --cam-6: #E07A5F;
 }
 [data-theme="light"] {
   --bg: #F7F6F3; --surface-1: #FFFFFF; --surface-2: #F0EFEB; --surface-3: #E6E4DF;
@@ -22,6 +23,7 @@ Generate `frontend/src/styles/tokens.css` from `tokens.json` with a build script
   --use: #1B7F4F; --maybe: #8A6B0A; --reject: #C22A2F; --user: #3558C9; --info: #1F6F95;
   --scrim: rgba(0,0,0,0.45);
   --on-media: #EDEDEC; --media-chip: rgba(10,11,13,0.62); --media-overlay: rgba(10,11,13,0.72);
+  --cam-1: #A86208; --cam-2: #1F6F95; --cam-3: #7246C2; --cam-4: #1B7F4F; --cam-5: #8A6B0A; --cam-6: #B4492F;
 }
 ```
 
@@ -65,6 +67,8 @@ Map the shadcn/ui CSS variables onto these tokens:
 - Every timecode, duration, cost, size and filename uses Geist Mono.
 
 **Over footage** (ADR 0033): text and icons use `on-media`, badges `media-chip`, centred notices `media-overlay`, label gradients `scrim`. These do not change with the theme, because footage does not.
+
+**Camera series** (ADR 0040): `cam-1` … `cam-6` tell cameras apart in charts (S5 trip timeline and legend, S21 devices), in the order the screen lists the cameras; a seventh camera repeats `cam-1`. They are never used for dispositions or user decisions, and a chart always pairs them with the camera's name (legend or label).
 
 ## 4. Spacing, radius, motion
 

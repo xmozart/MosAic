@@ -66,8 +66,8 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `ModeCard` | Analysis mode with an estimate line in mono. |
 | `EstimateCard` | Time · cost · storage. |
 | `PlacementBadge` | In folder / Split · NAS / Split · iCloud / Stored separately / External drive. |
-| `UnsupportedRow` | Icon, title, reason, fix action. |
-| `ClockOffsetRow` | Evidence pair, stepper, Accept / Adjust / Leave. |
+| `UnsupportedRow` | Icon, title, reason, fix action, optional inline progress; rows divide one "Needs attention" card. |
+| `ClockOffsetRow` | Evidence pair (left), explanation, offset stepper (+/− keys: 1 h, Shift: 1 min) and a segmented Accept suggestion / Adjust / Leave as is (right). Without a suggestion: stepper, Adjust and Leave only. |
 | `SettingRow` | Shows the effective value, "From: default / your preference / this project", and Reset. |
 | `SecretField` | Write-only. Shows "Connected · ••••last4", Validate, Replace. |
 | `StorageBreakdown` | Stacked bar with Regenerable/Kept tags. |

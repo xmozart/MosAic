@@ -43,6 +43,7 @@ from mosaic.storage.models_project import (
     Device,
     DeviceSuggestion,
     Embedding,
+    SampleFrame,
     Segment,
 )
 
@@ -442,6 +443,33 @@ def describe(offset_ms: int) -> str:
     return (f"{h} h {m:02d} m" if h else f"{m} min") + f" {word}"
 
 
+def _segment_frame(s: Session, segment_id: int) -> int | None:
+    """A frame to show for a segment: the first sample inside it, else the nearest one
+    of its shot, else of its clip (a photo's frame may sit outside its segment's range)."""
+    seg = s.get(Segment, segment_id)
+    if seg is None:
+        return None
+    mid = (seg.start_ticks + seg.end_ticks) // 2
+    for where in (
+        (
+            SampleFrame.shot_id == seg.shot_id,
+            SampleFrame.ticks >= seg.start_ticks,
+            SampleFrame.ticks < seg.end_ticks,
+        ),
+        (SampleFrame.shot_id == seg.shot_id,),
+        (SampleFrame.asset_id == seg.asset_id,),
+    ):
+        found = s.scalar(
+            select(SampleFrame.id)
+            .where(*where)
+            .order_by(func.abs(SampleFrame.ticks - mid), SampleFrame.kept.desc())
+            .limit(1)
+        )
+        if found is not None:
+            return found
+    return None
+
+
 def device_rows(s: Session) -> list[dict[str, Any]]:
     counts = dict(
         s.execute(select(Asset.device_id, func.count(Asset.id)).group_by(Asset.device_id)).all()
@@ -461,7 +489,15 @@ def device_rows(s: Session) -> list[dict[str, Any]]:
                 "applied": is_consistent(residual),
                 "reference_device_id": sg.reference_device_id,
                 "pairs": sg.pairs,
-                "evidence": sg.evidence,
+                # Each pair with a frame of either side, for S6's evidence pair.
+                "evidence": [
+                    {
+                        **e,
+                        "device_sample": _segment_frame(s, e["device_segment"]),
+                        "reference_sample": _segment_frame(s, e["reference_segment"]),
+                    }
+                    for e in sg.evidence
+                ],
             }
         out.append(
             {

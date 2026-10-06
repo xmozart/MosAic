@@ -586,6 +586,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/inventory/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inventory Files
+         * @description S5 "Show files": the files behind one Needs-attention row (ADR 0040).
+         */
+        get: operations["get_inventory_files_api_projects__pid__inventory_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/library": {
         parameters: {
             query?: never;
@@ -2221,6 +2241,43 @@ export interface operations {
     get_inventory_api_projects__pid__inventory_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inventory_files_api_projects__pid__inventory_files_get: {
+        parameters: {
+            query: {
+                kind: string;
+                group?: number | null;
+                after?: number | null;
+            };
             header?: never;
             path: {
                 pid: string;

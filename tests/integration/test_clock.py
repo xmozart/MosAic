@@ -127,6 +127,12 @@ def test_suggest_accept_and_regroup_days(trip: tuple[Any, Any]) -> None:
     assert abs(offset - 7_200_000) <= 30_000, offset
     assert drone["suggestion"]["verdict"].endswith("behind")
     assert drone["suggestion"]["pairs"] >= 3
+    shown = drone["suggestion"]["evidence"]
+    assert shown, "S6 shows evidence pairs"
+    for e in shown:  # each side of a pair can be shown as a frame
+        for side in ("device_sample", "reference_sample"):
+            assert e[side] is not None
+            assert client.get(f"/api/media/{project.id}/frame/{e[side]}").status_code == 200
     nikon = next(d for d in sugg if (d["make"] or "").startswith("NIKON"))
     assert abs(nikon["suggestion"]["offset_ms"] - 3_600_000) <= 30_000, "video vs video"
 
