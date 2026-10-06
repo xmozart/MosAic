@@ -951,16 +951,23 @@
     },
     "/api/events": {
       "get": {
-        "description": "Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and\n``lock.lost``.",
+        "description": "Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and\n``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,\nS0), and ``lock.lost`` for any project this server lost.",
         "operationId": "events_api_events_get",
         "parameters": [
           {
             "in": "query",
             "name": "project",
-            "required": true,
+            "required": false,
             "schema": {
-              "title": "Project",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
             }
           },
           {

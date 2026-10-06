@@ -65,6 +65,8 @@ def _job_json(svc: Services, job: Job) -> dict[str, Any]:
         "created_at": job.created_at,
         "error": job.error,
         "result": job.result,
+        "cost_usd": job.cost_usd,
+        "cost_limit_usd": job.cost_limit_usd,
         "progress": _progress_json(prog) if prog else None,
     }
 
@@ -145,17 +147,18 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 @router.get("/events")
 async def events(
     request: Request,
-    project: str,
+    project: str | None = None,
     until_idle: bool = False,
     svc: Services = Svc,
     _me: Principal = Me,
 ) -> StreamingResponse:
     """Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and
-    ``lock.lost``."""
+    ``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,
+    S0), and ``lock.lost`` for any project this server lost."""
 
     async def stream() -> AsyncIterator[str]:
         seen: dict[int, dict[str, Any]] = {}
-        lost_sent = False
+        lost_sent: set[str] = set()
         yield ": connected\n\n"
         first = True
         while not await request.is_disconnected():
@@ -186,13 +189,19 @@ async def events(
                 if prev != cur:
                     yield _sse(
                         "job.progress",
-                        {k: cur[k] for k in ("job_id", "pct", "stage", "item", "cost")},
+                        {
+                            **{k: cur[k] for k in ("job_id", "pct", "stage", "item", "cost")},
+                            "project_id": job.project_id,
+                            "kind": job.kind,
+                            "state": cur["state"],
+                        },
                     )
                 seen[job.id] = cur
                 active += job.status not in {s.value for s in JOB_TERMINAL}
-            if project in svc.leases.lost and not lost_sent:
-                lost_sent = True  # another computer took the project over (ADR 0023)
-                yield _sse("lock.lost", {"project_id": project})
+            for pid in sorted(svc.leases.lost):
+                if (project is None or pid == project) and pid not in lost_sent:
+                    lost_sent.add(pid)  # another computer took it over (ADR 0023)
+                    yield _sse("lock.lost", {"project_id": pid})
             if until_idle and not active:
                 return
             await asyncio.sleep(0.5)

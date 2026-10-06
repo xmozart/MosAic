@@ -102,3 +102,27 @@ def test_sse_streams_state_and_progress() -> None:
     assert "event: job.progress" in text
     assert '"state": "done"' in text
     assert f'"job_id": {job}' in text
+
+
+def test_sse_without_a_project_streams_every_project() -> None:
+    """The rail's activity ring (S0): all projects' jobs, labelled with project and kind."""
+    from mosaic.jobs.model import JobSpec, TaskSpec
+
+    client, svc = _client()
+    a = _job(svc, 1)
+    b = svc.executor.submit(svc.principal, JobSpec("P2", "render", tasks=[TaskSpec("x", "r")]))
+
+    def finish() -> None:
+        time.sleep(0.8)
+        for _ in range(2):
+            t = svc.store.lease("w", "cpu")
+            assert t is not None
+            svc.store.complete(t.id, "w")
+
+    threading.Thread(target=finish).start()
+    with client.stream("GET", "/api/events", params={"until_idle": True}) as r:
+        text = "".join(r.iter_text())
+    for job, project, kind in ((a, "P1", "analysis"), (b, "P2", "render")):
+        assert f'"job_id": {job}' in text
+        assert f'"project_id": "{project}"' in text
+        assert f'"kind": "{kind}"' in text

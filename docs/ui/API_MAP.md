@@ -56,13 +56,13 @@ These are the REST endpoints and SSE events the screens need.
 | POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}`; scope `{kind: trip\|days\|selection, days?, segment_ids?}` deepens (mode `balanced` or `thorough`: adds L2 where missing, then L3) and returns `{job_id \| null, candidates, l2_assets, dropped}`; without scope the whole project is analyzed in the mode (`overrides` only with `custom`) | S8, S25 |
 | GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, cost) | S9, S0 |
 | POST | `/jobs/{id}/pause` · `/resume` (optional body `{cost_limit_usd}`: raise the AI cost limit of a job paused at it; must exceed what the job has spent; ADR 0018) · `/cancel` · `/retry-failed` | S9, S20 |
-| GET | `/events?project=` (SSE) | all |
+| GET | `/events?project=` (SSE; without `project`: every project, for the rail's activity ring) | all |
 
 SSE event types:
 
 | Event | Payload |
 |---|---|
-| `job.progress` | `{job_id, pct, stage, item, cost}` |
+| `job.progress` | `{job_id, project_id, kind, state, pct, stage, item, cost}` |
 | `job.stage` | Stage transition |
 | `job.state` | running / paused / paused_cost_limit / done / failed / cancelled |
 | `analysis.ready_to_browse` | Fired when L0 and L1 are complete |

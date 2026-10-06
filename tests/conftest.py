@@ -26,6 +26,31 @@ def pytest_configure(config: pytest.Config) -> None:
     os.environ.setdefault("MOSAIC_EMBED_VARIANT", "quantized")
 
 
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Release the native ML runtimes (ONNX Runtime, CTranslate2) while the interpreter is
+    still healthy, then end the process with pytest's own status. Their static
+    destructors can race their thread pools at interpreter teardown ("libc++abi:
+    recursive_mutex lock failed", SIGABRT) after every test has passed; skipping that
+    teardown keeps CI's exit code the tests' exit code. Nothing is masked: the status is
+    the one pytest computed."""
+    import gc
+
+    from mosaic.ai import registry
+
+    registry._local_instances.clear()
+    gc.collect()
+    session.config.add_cleanup(lambda: _exit_now(int(exitstatus)))
+
+
+def _exit_now(status: int) -> None:
+    import os
+    import sys
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(status)
+
+
 @pytest.fixture(autouse=True)
 def _isolated_home(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch

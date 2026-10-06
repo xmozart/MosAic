@@ -225,7 +225,8 @@ export interface paths {
         /**
          * Events
          * @description Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and
-         *     ``lock.lost``.
+         *     ``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,
+         *     S0), and ``lock.lost`` for any project this server lost.
          */
         get: operations["events_api_events_get"];
         put?: never;
@@ -1443,8 +1444,8 @@ export interface operations {
     };
     events_api_events_get: {
         parameters: {
-            query: {
-                project: string;
+            query?: {
+                project?: string | null;
                 until_idle?: boolean;
             };
             header?: never;
