@@ -126,6 +126,12 @@ class Worker:
             project.checkpoint()
         except Exception:
             log.exception("snapshot of project %s failed; the live DB is unaffected", project.id)
+        try:
+            from mosaic.storage import project_cards
+
+            project_cards.refresh(self.control, project)  # the Home card (S3)
+        except Exception:
+            log.exception("updating the card of project %s failed", project.id)
 
     # ---------------------------------------------------------------- execution
 

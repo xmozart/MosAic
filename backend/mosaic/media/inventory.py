@@ -859,6 +859,11 @@ def group_task(ctx: TaskContext) -> dict[str, Any]:
             )
         grouper.directory(rows)
     grouper.reconcile()
+    job = ctx.store.job(ctx.task.job_id)
+    if job is not None and (job.params or {}).get("scan_only"):
+        # Opening a folder (S4 → S5): inventory only; analysis starts from S8.
+        ctx.store.set_job_result(ctx.task.job_id, {"inventory": grouper.summary})
+        return {"assets": grouper.summary, "spawned": 0}
     planned = plan_stages(grouper.video_assets, task_mode(ctx), grouper.photo_assets)
     if planned:
         ctx.spawn(planned)

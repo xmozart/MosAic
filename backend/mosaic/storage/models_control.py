@@ -38,6 +38,9 @@ class ProjectRegistry(ControlBase):
     last_opened_at: Mapped[str] = mapped_column(String(40))
     # External placement keys a project by its folder's content (ARCHITECTURE.md §4).
     folder_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    # The Home card (S3; ADR 0038): counts, dates, cover frames, analysis level. Written at
+    # checkpoints so the recents list never opens a project DB.
+    card: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class EditIndex(ControlBase):

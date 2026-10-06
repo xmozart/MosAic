@@ -62,6 +62,27 @@ def submit_analysis(
     )
 
 
+def submit_scan(executor: Executor, principal: Principal, project: Project) -> int:
+    """Look through the folder (files, probes, grouping) without analysing it: what S5
+    Inventory shows before the owner picks an analysis mode (S8)."""
+    return executor.submit(
+        principal,
+        JobSpec(
+            project_id=project.id,
+            kind="scan",
+            params={"scan_only": True},
+            tasks=[
+                TaskSpec(
+                    kind="analysis.scan",
+                    stage="scan",
+                    resource_class=ResourceClass.IO,
+                    label="scanning folder",
+                )
+            ],
+        ),
+    )
+
+
 def benchmark_spec(force: bool = False) -> TaskSpec:
     return TaskSpec(
         kind="system.benchmark",

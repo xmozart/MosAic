@@ -1,6 +1,52 @@
 {
   "components": {
     "schemas": {
+      "CreateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "path": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Path",
+            "type": "string"
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Placement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          }
+        },
+        "title": "CreateBody",
+        "type": "object"
+      },
       "DeviceChange": {
         "additionalProperties": false,
         "properties": {
@@ -69,6 +115,31 @@
         "title": "DevicesBody",
         "type": "object"
       },
+      "FolderRef": {
+        "additionalProperties": false,
+        "description": "Desktop: ``path`` (absolute). Server: ``root`` (a media root id) and ``path``\ninside it.",
+        "properties": {
+          "path": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Path",
+            "type": "string"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          }
+        },
+        "title": "FolderRef",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -129,6 +200,15 @@
         ],
         "title": "PasswordBody",
         "type": "object"
+      },
+      "Placement": {
+        "enum": [
+          "in_folder",
+          "split",
+          "external"
+        ],
+        "title": "Placement",
+        "type": "string"
       },
       "ProviderPatch": {
         "properties": {
@@ -1414,6 +1494,106 @@
         "summary": "Waveform"
       }
     },
+    "/api/projects": {
+      "get": {
+        "operationId": "list_projects_api_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Projects Api Projects Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Projects"
+      },
+      "post": {
+        "description": "Create the project (or open it when the folder already is one) and start a scan.",
+        "operationId": "create_project_api_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Project Api Projects Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project"
+      }
+    },
+    "/api/projects/preview": {
+      "post": {
+        "description": "What opening this folder would do \u2014 no writes (S4).",
+        "operationId": "preview_folder_api_projects_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FolderRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Preview Folder Api Projects Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Folder"
+      }
+    },
     "/api/projects/{pid}/analysis-runs": {
       "post": {
         "operationId": "post_run_api_projects__pid__analysis_runs_post",
@@ -1624,6 +1804,48 @@
           }
         },
         "summary": "Close"
+      }
+    },
+    "/api/projects/{pid}/cloud-files/download": {
+      "post": {
+        "description": "Start downloading the project's cloud-only files, then rescan (a job).",
+        "operationId": "download_cloud_files_api_projects__pid__cloud_files_download_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Download Cloud Files Api Projects  Pid  Cloud Files Download Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Cloud Files"
       }
     },
     "/api/projects/{pid}/devices": {
@@ -1847,6 +2069,48 @@
           }
         },
         "summary": "Create And Generate"
+      }
+    },
+    "/api/projects/{pid}/inventory": {
+      "get": {
+        "description": "S5: cameras, the day timeline, what needs attention and the grouping notes.",
+        "operationId": "get_inventory_api_projects__pid__inventory_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Inventory Api Projects  Pid  Inventory Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Inventory"
       }
     },
     "/api/projects/{pid}/library": {
