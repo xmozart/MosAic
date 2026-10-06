@@ -12,7 +12,7 @@ from alembic.config import Config
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from mosaic.storage.sqlite_engine import make_engine
+from mosaic.storage.sqlite_engine import make_engine, migration_transaction
 
 MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 Tree = Literal["control", "project"]
@@ -29,8 +29,9 @@ def alembic_config(tree: Tree, url: str | None = None) -> Config:
 
 
 def migrate(engine: Engine, tree: Tree) -> None:
+    """Upgrade to head in one real transaction: a failure leaves the DB as it was."""
     cfg = alembic_config(tree)
-    with engine.begin() as conn:
+    with engine.connect() as conn, migration_transaction(conn):
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
 

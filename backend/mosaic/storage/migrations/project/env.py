@@ -17,6 +17,7 @@ def run() -> None:
         context.configure(
             connection=connection, target_metadata=target_metadata, render_as_batch=True
         )
+        # Joins the caller's transaction (storage.db.migrate): no commit of its own.
         with context.begin_transaction():
             context.run_migrations()
         return

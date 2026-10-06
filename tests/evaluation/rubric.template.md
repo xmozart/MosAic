@@ -1,4 +1,4 @@
-# {{trip}} — M0 rubric
+# {{trip}} — {{milestone}} rubric
 
 Scored by the owner at gate G6 (EVALUATION.md §3). Score each 1–5; add a sentence where useful.
 Metrics, cost, model and prompt versions are in the matching `.json` file.

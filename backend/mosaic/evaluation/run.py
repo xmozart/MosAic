@@ -349,7 +349,9 @@ def write_results(result: dict[str, Any]) -> Path:
     md = out.with_suffix(".md")
     if not md.exists():  # the rubric is the owner's to fill in; never overwrite scores
         template = (REPO / "tests" / "evaluation" / "rubric.template.md").read_text()
-        md.write_text(template.replace("{{trip}}", result["trip"]))
+        md.write_text(
+            template.replace("{{trip}}", result["trip"]).replace("{{milestone}}", MILESTONE)
+        )
     return out
 
 

@@ -104,6 +104,8 @@ Tables:
 - **Settings and providers:** `user_preferences` (including `eval.corpus_dir`), `provider_profile` (non-secret: capability → provider, model, mode), `secret_ref`, `usage_record`. Edited through the `mosaic config` CLI and the `/settings`, `/providers` and `/secrets/*` API (ADR 0003).
 - **Job DAG:** `job`, `task`, `task_dependency`, `lease`. `job` carries `user_id`; `task`, `task_dependency`, `lease` and `task_event` are owned through their job. A `worker` table records live worker processes.
 
+Migrations (both trees) run in one SQLite transaction that also covers DDL, with foreign keys off while tables are rebuilt and a `foreign_key_check` before the commit; a failed upgrade leaves the DB as it was.
+
 ### 5.2 Project DB (portable)
 
 Asset hierarchy:

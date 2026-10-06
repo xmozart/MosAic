@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import sqlite_vec
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Connection, Engine, create_engine, event
 
 from mosaic.storage.locks import fsync_file
 from mosaic.storage.placement import assert_live_db_allowed
@@ -15,6 +17,8 @@ from mosaic.storage.placement import assert_live_db_allowed
 # Called with the path of every SQLite file MosAic opens read-write; a backup's read-only
 # source is not reported. M1 acceptance 1 asserts with it that nothing on a network or
 # cloud-synced folder is opened.
+log = logging.getLogger(__name__)
+
 OPEN_HOOKS: list[Callable[[Path], None]] = []
 
 
@@ -72,3 +76,52 @@ def backup(src: Path, dst: Path, *, read_only_source: bool = False) -> None:
     finally:
         source.close()
     fsync_file(dst)
+
+
+@contextmanager
+def migration_transaction(conn: Connection) -> Iterator[None]:
+    """One real transaction around a whole migration, with foreign keys off.
+
+    The ``sqlite3`` driver commits DDL on its own outside a transaction it opened, so a
+    failed upgrade could leave half its tables behind. Here the driver is put in
+    autocommit mode and ``BEGIN`` is issued explicitly: every CREATE, DROP and ALTER is
+    then inside it and rolls back with it. Foreign keys are off while a batch ``ALTER``
+    rebuilds a table (copy, drop, rename; dropping a referenced table fails while they
+    are on) and are checked before the commit."""
+    raw = conn.connection.driver_connection
+    if raw is None:
+        raise RuntimeError("no driver connection for the migration")
+    if conn.in_transaction():
+        conn.commit()
+    old = raw.isolation_level
+    raw.isolation_level = None  # the driver no longer opens or commits on its own
+    raw.execute("PRAGMA foreign_keys=OFF")
+    try:
+        # SQLAlchemy's transaction (Alembic joins it) ends with the driver's commit or
+        # rollback, which ends this BEGIN.
+        with conn.begin():
+            raw.execute("BEGIN")
+            yield
+            bad = raw.execute("PRAGMA foreign_key_check").fetchall()
+            if bad:
+                raise MigrationIntegrityError(f"migration broke references: {bad[:5]}")
+    finally:
+        # Independent of how SQLAlchemy ended (a failed commit leaves the BEGIN open, and
+        # the pragma is ignored inside a transaction): end it, turn foreign keys back on,
+        # and never return a connection without them to the pool.
+        fk_on = False
+        try:
+            if raw.in_transaction:
+                raw.rollback()
+            raw.execute("PRAGMA foreign_keys=ON")
+            fk_on = raw.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        except Exception:  # cleanup failed: drop the connection, keep the first error
+            log.exception("migration cleanup failed; discarding the connection")
+        finally:
+            raw.isolation_level = old
+        if not fk_on:
+            conn.invalidate()
+
+
+class MigrationIntegrityError(RuntimeError):
+    pass
