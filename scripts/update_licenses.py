@@ -28,7 +28,18 @@ KNOWN = {
 BEGIN, END = "<!-- BEGIN python-packages -->", "<!-- END python-packages -->"
 
 
+# Hand-written license notes that metadata cannot express (they justify the dependency).
+OVERRIDES = {
+    "pi-heif": (
+        "BSD-3-Clause (bindings); bundled libheif and libde265 are LGPL-3.0, separate shared "
+        "libraries — HEIC/HEIF decoding only (no encoder, no x265)"
+    ),
+}
+
+
 def _license(name: str) -> str:
+    if name in OVERRIDES:
+        return OVERRIDES[name]
     try:
         meta = metadata.metadata(name)
     except metadata.PackageNotFoundError:

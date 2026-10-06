@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router";
 
+import { AuthGate } from "@/features/auth/AuthGate";
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, retry: 1, refetchOnWindowFocus: false } },
 });
@@ -16,11 +18,13 @@ function Placeholder() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="*" element={<Placeholder />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthGate>
+        <BrowserRouter>
+          <Routes>
+            <Route path="*" element={<Placeholder />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthGate>
     </QueryClientProvider>
   );
 }

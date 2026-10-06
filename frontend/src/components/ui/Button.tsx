@@ -16,6 +16,7 @@ const buttonVariants = cva(
         danger: "border-reject bg-transparent text-reject hover:bg-reject/10",
       },
       size: {
+        lg: "min-h-[46px] px-5 py-3 text-subhead",
         md: "min-h-[38px] px-3.5 py-[9px] text-small",
         sm: "min-h-[30px] px-2.5 py-1.5 text-caption",
         icon: "size-[38px] p-0",

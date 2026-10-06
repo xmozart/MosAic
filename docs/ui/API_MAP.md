@@ -12,7 +12,8 @@ These are the REST endpoints and SSE events the screens need.
 
 | Method | Path | Used by |
 |---|---|---|
-| POST | `/auth/setup` · `/auth/login` · `/auth/logout` | S2 |
+| GET | `/auth/status` (public: `{mode: desktop\|server, setup_required, signed_in}`) | S2, S0 |
+| POST | `/auth/setup` · `/auth/login` (public; set the HttpOnly SameSite=Strict session cookie and the readable `mosaic_csrf` cookie; 401 wrong password, 429 with `Retry-After` after 5 failures) · `/auth/logout`. Server mode: every other `/api` request needs the session, and writes need `X-CSRF-Token` (ADR 0034) | S2 |
 | GET | `/system/info` (mode: desktop/server, version, hardware probe with fingerprint, encoders, `workers` slots per resource class, `benchmark` or null, `rate_limits` per provider; ADR 0030) | S0, S22 |
 | POST | `/projects/{pid}/benchmark?force=` → `{job_id}`: measure this computer in the project's queue (ADR 0030) | S8, S22 |
 | GET/POST/DELETE | `/admin/media-roots` | S22 (admin) |

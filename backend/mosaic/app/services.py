@@ -7,6 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from mosaic.app.auth import Auth
 from mosaic.core.principal import Principal
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
@@ -99,9 +100,11 @@ class Services:
     store: JobStore
     executor: LocalExecutor
     leases: Leases = field(init=False)
+    auth: Auth = field(init=False)
 
     def __post_init__(self) -> None:
         self.leases = Leases(self.control)
+        self.auth = Auth(self.control)
 
     @classmethod
     def create(cls, control: ControlDB | None = None) -> Services:

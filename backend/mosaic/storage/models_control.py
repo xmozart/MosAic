@@ -198,3 +198,24 @@ class HardwareBenchmark(ControlBase):
     hardware: Mapped[dict[str, Any]] = mapped_column(JSON)
     result: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[str] = mapped_column(String(40))
+
+
+class AdminAccount(ControlBase):
+    """The server's single admin (ADR 0034): an Argon2 hash, never the password."""
+
+    __tablename__ = "admin_account"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # always 1 in v1
+    password_hash: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[str] = mapped_column(String(40))
+
+
+class AuthSession(ControlBase):
+    """A signed-in browser. Only SHA-256 digests of the cookie and CSRF tokens are kept;
+    times are integer UNIX milliseconds (invariant 3: no float times)."""
+
+    __tablename__ = "auth_session"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64))
+    created_ms: Mapped[int] = mapped_column(BigInteger)
+    last_seen_ms: Mapped[int] = mapped_column(BigInteger)
+    expires_ms: Mapped[int] = mapped_column(BigInteger, index=True)

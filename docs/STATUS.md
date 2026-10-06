@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 3 (server mode: auth, media roots, secrets); steps 1–2a done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 3b (media roots, folder browser, path safety); steps 1–3a done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -34,7 +34,9 @@ Order: design foundation first (milestone rule), then the server pieces the brow
 - [x] 1. Frontend foundation: Vite + React + TS strict, Tailwind with tokens generated from `tokens.json`, shadcn mapping, bundled Geist fonts, dark/light themes (OS default, user override), Vitest, Storybook, OpenAPI-generated client, FastAPI serving the built app, `make ci` runs frontend lint/typecheck/tests
 - [x] 2a. Design-system components: primitives (Button, TextField, Segmented, Switch, Kbd), media (DispositionChip, DispositionControl, StarRating, IncludeToggle, CameraBadge, QualityRow, ClipTile with every listed state), system rows (StageList, ModeCard, EstimateCard, PlacementBadge, UnsupportedRow, ClockOffsetRow, SettingRow, SecretField, StorageBreakdown), stories per state, AI-vs-you test (acceptance 8)
 - [ ] 2b. Data-bound components come with the screen step that first uses them, each with its stories: shell (AppRail, ActivityPopover, ProjectHeader, CommandPalette, Toast, ConfirmDialog) in 5; Player, Filmstrip, Waveform, Transcript in 4/7; library (VirtualGrid, LibraryToolbar, GroupHeader, DayScrubber, BulkBar, ClipInspector, SimilarShots) in 7; editing basics in 8
-- [ ] 3. Server mode: single admin (Argon2, secure cookie, CSRF), S2 sign-in, media roots, `/fs/browse` with path-safety tests (acceptance 2); secret backends env / Docker secrets / encrypted file; write-only key entry, last-4, validate
+- [x] 3a. Server mode sign-in: single admin (Argon2), HttpOnly SameSite=Strict Secure session cookie, double-submit CSRF on writes, lockout after 5 failures, security headers with a hashed-inline-script CSP, `MOSAIC_MODE`/`MOSAIC_BIND`/`MOSAIC_ALLOWED_HOSTS`, S2 screen and auth gate
+- [ ] 3b. Media roots (`/admin/media-roots`), `/fs/browse` and every path-taking endpoint confined to media roots in server mode, path-safety API tests (acceptance 2)
+- [ ] 3c. Server secret backends: env, Docker secrets, encrypted file with a master key; write-only entry, last-4, validate
 - [ ] 4. Media endpoints: proxy with HTTP range, frames, filmstrip, waveform; `Player`
 - [ ] 5. Shell and journey I: S0 app shell + dialogs + command palette, S3 Home, S4 Open folder, S5 Inventory, S6 Clock check, S7 Trip context
 - [ ] 6. Journey II: S8 Analysis setup (mode cards, estimates), S9 progress over SSE (pause/resume/cancel/retry), S25 Deepen
@@ -65,7 +67,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 
 ## Carry-forward notes
 
-- M2 follow-ups from step 1: the 1280×800 minimum viewport (`min-width` on the app shell) lands with S0 in step 5; the inline pre-paint theme script in `index.html` needs a CSP hash (or an external file) when step 3 adds a CSP.
+- M2 follow-ups from step 1: the 1280×800 minimum viewport (`min-width` on the app shell) lands with S0 in step 5; the inline pre-paint theme script is allowed by its CSP hash (done in 3a).
 - CPU worker slots are threads: Python-heavy per-frame work contends for the GIL (40-hour run: summed task time ≈ 5× wall on 5 slots). Consider process-based CPU slots with the M2 desktop packaging (ADR 0031).
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - A job paused at its cost limit needs a way to raise that job's `cost_limit_usd` before resuming (S9/S20, API `resume` parameter).
@@ -137,3 +139,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M1.14b · Airshow M1 eval after the owner-approved removal of the leaked empty table: upgraded cleanly, 43 events, +0 frames, 116 deep reviews, aircraft 79 % / crowd 2 %, 0/92 must-exclude violations
 - 2026-10-06 · M2.1 · Web UI foundation: Vite + React 19 + TS 5.9 strict, Tailwind 4 `@theme` generated from tokens.json (checked in tests), bundled Geist fonts via Fontsource (the `geist` package pulls Next.js + LGPL libvips), dark/light themes, Storybook 10, openapi-fetch client generated from the API schema (kept current by a test), shipped-license test, API serves the built UI with SPA fallback (ADR 0032)
 - 2026-10-06 · M2.2a · Design-system components with stories per state (both themes): primitives, media chips/controls/ClipTile, system rows; AI-vs-you test (acceptance 8); tailwind-merge taught the token type sizes (it dropped colour classes next to `text-caption`); generated npm license table in LICENSES.md; on-media tokens and `micro`/`tag` type, footage overlays always in dark token values (ADR 0033)
+- 2026-10-06 · M2.3a · Server-mode sign-in: one admin (Argon2), hashed session and CSRF tokens in the control DB, HttpOnly/SameSite=Strict/Secure cookie, CSRF header on writes, 5-failure lockout with countdown, security headers (CSP allows the hashed theme script), S2 screen + auth gate; desktop mode unchanged (ADR 0034)

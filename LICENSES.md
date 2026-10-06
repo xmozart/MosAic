@@ -221,6 +221,8 @@ Used as imported libraries by the backend.
 | annotated-types | 0.8.0 | MIT |
 | anthropic | 1.11.0 | MIT License |
 | anyio | 4.15.1 | MIT |
+| argon2-cffi | 25.1.0 | MIT |
+| argon2-cffi-bindings | 26.1.0 | MIT |
 | av | 19.0.1 | NOT INSTALLED: excluded by override, its wheels bundle GPL FFmpeg (ADR 0009) |
 | certifi | 2026.7.22 | Mozilla Public License 2.0 (MPL 2.0) |
 | cffi | 2.1.1 | MIT-0 |
