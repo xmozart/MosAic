@@ -125,10 +125,10 @@ def test_stage_selection_by_level() -> None:
     assert balanced == stages(None)
     assert "deep review" not in balanced
     assert {"mosaics", "vision", "dispositions"} <= set(balanced)
-    assert balanced[-3:] == ["dispositions", "moments", "summaries"]
+    assert balanced[-4:] == ["dispositions", "moments", "clock", "summaries"]
     thorough = stages(PRESETS["thorough"])
     # Summaries come last: a summarizer failure never cancels an analysis stage.
-    assert thorough[-4:] == ["dispositions", "moments", "deep review", "summaries"]
+    assert thorough[-5:] == ["dispositions", "moments", "clock", "deep review", "summaries"]
     no_l2 = stages(resolve("custom", {"l2": False}))
     assert "mosaics" not in no_l2
     assert "vision" not in no_l2

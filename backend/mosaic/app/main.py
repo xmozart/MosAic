@@ -9,7 +9,16 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from mosaic.app.routers import analysis, config, context, edits, jobs, projects, system
+from mosaic.app.routers import (
+    analysis,
+    config,
+    context,
+    devices,
+    edits,
+    jobs,
+    projects,
+    system,
+)
 from mosaic.app.services import Services
 from mosaic.storage.lease import LeaseHeldError
 from mosaic.storage.projects import (
@@ -62,6 +71,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(context.router)
     app.include_router(analysis.router)
     app.include_router(projects.router)
+    app.include_router(devices.router)
     return app
 
 

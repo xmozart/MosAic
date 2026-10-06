@@ -694,4 +694,69 @@ def _print_summary(r: Any) -> None:
         click.echo(f"  highlights: {', '.join(r.data['highlights'])}")
 
 
+@cli.command()
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--set",
+    "sets",
+    multiple=True,
+    metavar="DEVICE=OFFSET",
+    help="Set a device's clock offset, e.g. 2=+5h or 3=-00:30:00 (added to its times).",
+)
+@click.option("--accept", "accepts", multiple=True, type=int, help="Accept a suggestion.")
+def clock(folder: Path, sets: tuple[str, ...], accepts: tuple[int, ...]) -> None:
+    """Show each device's clock offset and suggestion; set or accept offsets."""
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from mosaic.library.devices import (
+        device_rows,
+        format_offset,
+        parse_offset,
+        set_offset,
+        submit_time_refresh,
+    )
+    from mosaic.storage.models_project import DeviceSuggestion
+
+    control = _control()
+    writing = bool(sets or accepts)
+    project = _open(control, folder, read_only=not writing)
+    try:
+        if writing:
+            changed = 0
+            with project.write() as s:
+                for item in sets:
+                    dev, _, value = item.partition("=")
+                    try:
+                        changed += set_offset(s, int(dev), parse_offset(value), "user")
+                    except (ValueError, LookupError) as exc:
+                        raise click.ClickException(str(exc)) from exc
+                for dev_id in accepts:
+                    sg = s.get(DeviceSuggestion, dev_id)
+                    if sg is None:
+                        raise click.ClickException(f"device {dev_id} has no suggestion")
+                    changed += set_offset(s, dev_id, sg.offset_ms, "accepted", sg.utc_offset_min)
+            click.echo(f"Corrected the capture times of {changed} clips and photos.")
+            job = submit_time_refresh(
+                LocalExecutor(JobStore(control.db)), control.local_principal, project
+            )
+            _follow(control, job)
+        with project.db.session() as s:
+            rows = device_rows(s)
+    finally:
+        project.close()
+        control.db.dispose()
+    if not rows:
+        click.echo("No devices yet: run an analysis (or a scan) to list the cameras.")
+    for r in rows:
+        source = f" [{r['offset_source']}]" if r["offset_source"] != "none" else ""
+        offset = format_offset(r["clock_offset_ms"])
+        click.echo(f"{r['id']:>3}  {r['label']} ({r['assets']} items)  offset {offset}{source}")
+        sg = r["suggestion"]
+        if sg and not sg["applied"]:
+            click.echo(
+                f"     suggestion: appears {sg['verdict']} ({sg['pairs']} matching pairs); "
+                f"accept with --accept {r['id']}"
+            )
+
+
 cli.add_command(config_group)

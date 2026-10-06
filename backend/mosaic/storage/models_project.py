@@ -136,7 +136,11 @@ class Asset(ProjectBase):
     suggested_fix: Mapped[str | None] = mapped_column(Text)
     profile: Mapped[str] = mapped_column(String(32))
     group_key: Mapped[str] = mapped_column(String(160), unique=True)
+    # Corrected capture time: the raw time plus the device's clock offset (ADR 0027).
+    # Everything that orders or groups by time reads this one.
     capture_time: Mapped[str | None] = mapped_column(String(40))
+    capture_time_raw: Mapped[str | None] = mapped_column(String(40))  # as the file says
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("device.id"), index=True)
     camera_make: Mapped[str | None] = mapped_column(String(64))
     camera_model: Mapped[str | None] = mapped_column(String(128))
     camera_serial: Mapped[str | None] = mapped_column(String(64))
@@ -510,3 +514,36 @@ class PhotoGroupMember(ProjectBase):
     __tablename__ = "photo_group_member"
     group_id: Mapped[int] = mapped_column(ForeignKey("photo_group.id"), primary_key=True)
     segment_id: Mapped[int] = mapped_column(ForeignKey("segment.id"), primary_key=True, index=True)
+
+
+class Device(ProjectBase):
+    """A camera or phone in this project (MEDIA_SUPPORT.md §4, ADR 0027): keyed by make,
+    model and serial when known, else by camera profile. Holds the clock offset the
+    owner confirmed and, for log footage, the LUT to apply."""
+
+    __tablename__ = "device"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(256), unique=True)
+    make: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(128))
+    serial: Mapped[str | None] = mapped_column(String(64))
+    label: Mapped[str] = mapped_column(String(128))
+    clock_offset_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    offset_source: Mapped[str] = mapped_column(String(16), default="none")  # none|user|accepted
+    # When a correction came from a reference device: its UTC offset (minutes), so the
+    # corrected times also read in the right local zone (day boundaries; ADR 0027).
+    utc_offset_min: Mapped[int | None] = mapped_column(Integer)
+    lut_path: Mapped[str | None] = mapped_column(Text)
+
+
+class DeviceSuggestion(ProjectBase):
+    """A suggested clock offset for a device, from evidence pairs (ADR 0027)."""
+
+    __tablename__ = "device_suggestion"
+    device_id: Mapped[int] = mapped_column(ForeignKey("device.id"), primary_key=True)
+    reference_device_id: Mapped[int] = mapped_column(ForeignKey("device.id"))
+    offset_ms: Mapped[int] = mapped_column(BigInteger)  # the absolute offset to set
+    utc_offset_min: Mapped[int | None] = mapped_column(Integer)  # the reference's zone
+    pairs: Mapped[int] = mapped_column(Integer)  # evidence pairs that agree
+    evidence: Mapped[list[Any]] = mapped_column(JSON)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))

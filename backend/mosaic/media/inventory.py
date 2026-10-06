@@ -52,7 +52,7 @@ from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStre
 
 PROBE_VERSION = "probe/2"  # 2: Insta360, DJI and Nikon profiles (ADR 0024)
 PHOTO_PROBE_VERSION = "photo-probe/2"  # media/photo.py (ADR 0025); 2: sub-second times (0026)
-GROUP_VERSION = "group/2"
+GROUP_VERSION = "group/3"  # 3: devices, raw and corrected capture times (ADR 0027)
 PROXY_SIDECARS = (".lrf", ".lrv")
 PHOTO_KINDS = ("photo", "live_photo")
 _REPAIR = "Check that the copy finished; copy the file again from the camera or card."
@@ -632,6 +632,18 @@ class _Grouper:
         asset.provenance_id = self.prov
         return asset
 
+    def _timed(self, s: Session, asset: Asset, raw: str | None) -> None:
+        """The asset's device, its raw capture time, and the time corrected by the
+        device's clock offset (ADR 0027)."""
+        from mosaic.library.devices import ensure_device, shift
+
+        dev = ensure_device(
+            s, asset.camera_make, asset.camera_model, asset.camera_serial, asset.profile
+        )
+        asset.device_id = dev.id
+        asset.capture_time_raw = raw
+        asset.capture_time = shift(raw, dev.clock_offset_ms, dev.utc_offset_min)
+
     def _apply(self, s: Session, g: AssetGroup) -> Asset:
         asset = self._asset(s, g.key, [f.id for f in g.files], g.kind)
         profile = profile_by_id(g.profile)
@@ -678,8 +690,8 @@ class _Grouper:
                 start += dur
             asset.duration_ticks = start
             asset.vfr = any(r.id in self.vfr_files for r in g.files)
-            asset.capture_time = profile.capture_time(probe)
             asset.camera_make, asset.camera_model = profile.camera(probe)
+            self._timed(s, asset, profile.capture_time(probe))
         elif g.kind in PHOTO_KINDS and probe is not None:
             # A still: one picture, no timeline (ADR 0025). Its single shot, sample and
             # segment sit at tick 0 of a 1/1 time base.
@@ -693,8 +705,8 @@ class _Grouper:
                     duration_ticks=0,
                 )
             )
-            asset.capture_time = profile.capture_time(probe)
             asset.camera_make, asset.camera_model = profile.camera(probe)
+            self._timed(s, asset, profile.capture_time(probe))
         for rec in g.files:
             s.execute(update(MediaFile).where(MediaFile.id == rec.id).values(asset_id=asset.id))
         self._count(f"{g.kind}:{g.status}")
