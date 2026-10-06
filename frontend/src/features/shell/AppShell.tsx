@@ -9,6 +9,7 @@ import { CommandPalette, type Command } from "@/components/shell/CommandPalette"
 import { Toaster } from "@/components/ui/Toast";
 import { anyRunning, connectActivity, overall, useActivity } from "@/lib/activity";
 import { useTheme } from "@/lib/theme";
+import { useToasts } from "@/lib/toasts";
 
 import { CostCeilingDialog, LeaseLostDialog } from "./dialogs";
 
@@ -33,6 +34,7 @@ export function AppShell() {
   const qc = useQueryClient();
   const theme = useTheme();
   const [palette, setPalette] = useState(false);
+  const toast = useToasts((s) => s.push);
   const [raise, setRaise] = useState<{ jobId: number; limit: number; spent: number } | null>(null);
   const jobMap = useActivity((s) => s.jobs);
   const jobs = useMemo(() => Object.values(jobMap), [jobMap]);
@@ -112,7 +114,8 @@ export function AppShell() {
             onRaiseLimit={async (jobId) => {
               const { data } = await api.GET("/api/jobs/{job_id}", { params: { path: { job_id: jobId } } });
               const job = data as { cost_limit_usd?: number | null; cost_usd?: number } | undefined;
-              setRaise({ jobId, limit: job?.cost_limit_usd ?? 0, spent: job?.cost_usd ?? 0 });
+              const spent = job?.cost_usd ?? 0;
+              setRaise({ jobId, limit: job?.cost_limit_usd ?? spent, spent });
             }}
           >
             {button}
@@ -146,14 +149,16 @@ export function AppShell() {
         <CostCeilingDialog
           open
           limit={raise.limit}
+          spent={raise.spent}
           onKeepPaused={() => setRaise(null)}
-          onRaise={(limit) => {
+          onRaise={async (limit) => {
             const jobId = raise.jobId;
             setRaise(null);
-            void api.POST("/api/jobs/{job_id}/{action}", {
+            const { error } = await api.POST("/api/jobs/{job_id}/{action}", {
               params: { path: { job_id: jobId, action: "resume" } },
               body: { cost_limit_usd: limit },
-            } as never);
+            });
+            if (error) toast({ kind: "error", message: "Couldn't resume the analysis. Try again." });
           }}
         />
       )}

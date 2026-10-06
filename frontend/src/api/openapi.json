@@ -230,6 +230,7 @@
       },
       "RelinkBody": {
         "additionalProperties": false,
+        "description": "Desktop: ``choose_folder`` (absolute). Server: ``root`` and ``path`` inside it, the\nway the folder browser names folders (ADR 0035).",
         "properties": {
           "choose_folder": {
             "anyOf": [
@@ -241,6 +242,28 @@
               }
             ],
             "title": "Choose Folder"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
           }
         },
         "title": "RelinkBody",
@@ -2256,6 +2279,39 @@
           }
         },
         "summary": "Open "
+      }
+    },
+    "/api/projects/{pid}/recent": {
+      "delete": {
+        "description": "S3 \"Remove from list\": hides the project from recents (ADR 0039). Nothing is deleted:\nthe footage, the project's data and its registry row stay, so opening the folder again\nbrings it back with its analysis, external placement included.",
+        "operationId": "remove_recent_api_projects__pid__recent_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Recent"
       }
     },
     "/api/projects/{pid}/relink": {

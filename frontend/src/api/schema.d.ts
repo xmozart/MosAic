@@ -624,6 +624,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Recent
+         * @description S3 "Remove from list": hides the project from recents (ADR 0039). Nothing is deleted:
+         *     the footage, the project's data and its registry row stay, so opening the folder again
+         *     brings it back with its analysis, external placement included.
+         */
+        delete: operations["remove_recent_api_projects__pid__recent_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/relink": {
         parameters: {
             query?: never;
@@ -959,10 +981,18 @@ export interface components {
             /** Provider */
             provider: string;
         };
-        /** RelinkBody */
+        /**
+         * RelinkBody
+         * @description Desktop: ``choose_folder`` (absolute). Server: ``root`` and ``path`` inside it, the
+         *     way the folder browser names folders (ADR 0035).
+         */
         RelinkBody: {
             /** Choose Folder */
             choose_folder?: string | null;
+            /** Path */
+            path?: string | null;
+            /** Root */
+            root?: number | null;
         };
         /**
          * RenderBody
@@ -2283,6 +2313,35 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_recent_api_projects__pid__recent_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

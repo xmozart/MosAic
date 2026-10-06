@@ -8,6 +8,7 @@ the admin, who manages the roots themselves.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
 from mosaic.core.paths import DESCRIPTOR_NAME
 from mosaic.core.principal import Principal, check
-from mosaic.media.scan import PHOTO_EXT, VIDEO_EXT
+from mosaic.media.scan import FolderCounts, quick_counts
 from mosaic.storage import media_roots
 from mosaic.storage.media_roots import PathOutsideRootError, PathRefusedError
 
@@ -72,21 +73,17 @@ def delete_root(root_id: int, svc: Services = Svc, me: Principal = Me) -> None:
         raise HTTPException(404, "Unknown media root.")
 
 
-def _counts(folder: Path) -> tuple[int, int]:
-    videos = photos = 0
-    try:
-        with os.scandir(folder) as it:
-            for e in it:
-                if e.name.startswith(".") or not e.is_file(follow_symlinks=False):
-                    continue
-                ext = os.path.splitext(e.name)[1].lower()
-                if ext in VIDEO_EXT:
-                    videos += 1
-                elif ext in PHOTO_EXT:
-                    photos += 1
-    except OSError:
-        pass
-    return videos, photos
+FOLDER_ENTRIES = 20_000  # per listed folder: trips have deep chapter and day folders
+BROWSE_BUDGET_S = 2.0  # counting stops for the rest of the page after this
+
+
+def _counts(folder: Path, deadline: float) -> FolderCounts | None:
+    """Videos and photos under a folder (recursive, capped, stopped at the request's time
+    budget: a partial walk is a lower bound, ``complete: false``); None once the budget is
+    spent before the folder is reached (the UI shows it without counts)."""
+    if time.monotonic() > deadline:
+        return None
+    return quick_counts(folder, FOLDER_ENTRIES, deadline)
 
 
 @router.get("/fs/browse")
@@ -128,12 +125,14 @@ def browse(
     if cursor is not None:
         names = [n for n in names if (n.casefold(), n) > (cursor.casefold(), cursor)]
     entries: list[dict[str, Any]] = []
+    deadline = time.monotonic() + BROWSE_BUDGET_S  # one budget for the whole listing
+    here_counts = _counts(folder, deadline)
     for name in names:
         try:
             inside = media_roots.within(r, f"{here}/{name}" if here else name)
             if not inside.is_dir():
                 continue
-            videos, photos = _counts(inside)
+            counts = _counts(inside, deadline)
             has_project = (inside / DESCRIPTOR_NAME).is_file()
         except (PathRefusedError, OSError, ValueError):
             continue  # escaping links, unreadable folders: not listed
@@ -141,8 +140,7 @@ def browse(
             {
                 "name": name,
                 "path": media_roots.relative(r, inside),
-                "videos": videos,
-                "photos": photos,
+                "counts": counts,
                 "has_project": has_project,
             }
         )
@@ -154,7 +152,6 @@ def browse(
     for part in rel.split("/") if rel else []:
         acc.append(part)
         crumbs.append({"name": part, "path": "/".join(acc)})
-    videos, photos = _counts(folder)
     try:
         here_project = (folder / DESCRIPTOR_NAME).is_file()
     except OSError:
@@ -165,8 +162,7 @@ def browse(
         "path": rel,
         "crumbs": crumbs,
         "here": {
-            "videos": videos,
-            "photos": photos,
+            "counts": here_counts,
             "has_project": here_project,
         },
         "items": entries,

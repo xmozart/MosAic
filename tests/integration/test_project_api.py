@@ -250,3 +250,59 @@ def test_external_projects_are_recognised_and_placement_refusals_are_422(
         }
     finally:
         ro.chmod(0o755)
+
+
+def test_remove_from_recents_keeps_every_file(corpus_dir: Path, tmp_path: Path) -> None:
+    from mosaic.storage.control import ControlDB
+
+    trip = tmp_path / "trip"
+    trip.mkdir()
+    shutil.copy2(corpus_dir / "speech.mp4", trip / "speech.mp4")
+    control = ControlDB()
+    client = _client(control)
+    pid = client.post("/api/projects", json={"path": str(trip)}).json()["id"]
+    before = _snapshot(trip)
+    assert client.delete(f"/api/projects/{pid}/recent").status_code == 204
+    assert [i["id"] for i in client.get("/api/projects").json()["items"]] == []
+    lock = "MosAic/.lock"
+    after = _snapshot(trip)
+    assert lock not in after, "the lease is released like close does, not left to expire"
+    assert after == {k: v for k, v in before.items() if k != lock}, "every other file untouched"
+    again = client.post("/api/projects", json={"path": str(trip)}).json()
+    assert again == {**again, "id": pid, "created": False}, "opening the folder brings it back"
+
+
+def test_removing_an_external_project_with_edits_keeps_its_link(
+    corpus_dir: Path, tmp_path: Path
+) -> None:
+    """External placement is known only through its registry row; an indexed edit points at
+    that row. Removing from recents hides it, so neither is lost (ADR 0039)."""
+    from mosaic.storage.control import ControlDB
+
+    trip = tmp_path / "trip"
+    trip.mkdir()
+    shutil.copy2(corpus_dir / "speech.mp4", trip / "speech.mp4")
+    control = ControlDB()
+    client = _client(control)
+    made = client.post("/api/projects", json={"path": str(trip), "placement": "external"}).json()
+    pid = made["id"]
+    assert made["placement"] == "external"
+    control.index_edit(control.local_principal, "01EDIT0000000000000000000A", pid)
+    assert (
+        client.post(
+            f"/api/projects/{pid}/open", json={"read_only": False, "take_over": False}
+        ).status_code
+        == 200
+    )
+    assert client.delete(f"/api/projects/{pid}/recent").status_code == 204
+    assert client.get("/api/projects").json()["items"] == []
+    assert control.project_for_edit("01EDIT0000000000000000000A") == pid
+    assert pid not in _held(client)
+    again = client.post("/api/projects", json={"path": str(trip)}).json()
+    assert again == {**again, "id": pid, "created": False, "placement": "external"}
+    assert [i["id"] for i in client.get("/api/projects").json()["items"]] == [pid]
+    assert client.delete("/api/projects/01NOPE00000000000000000000/recent").status_code == 404
+
+
+def _held(client: Any) -> set[str]:
+    return set(client.app.state.services.leases.held)

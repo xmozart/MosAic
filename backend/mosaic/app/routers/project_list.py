@@ -10,7 +10,6 @@ a path inside it) on a server; both go through the same confinement gate (ADR 00
 
 from __future__ import annotations
 
-import os
 import threading
 from concurrent.futures import Future, wait
 from pathlib import Path
@@ -21,12 +20,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
-from mosaic.core.paths import DESCRIPTOR_NAME, WORKSPACE_DIR
+from mosaic.core.clock import now_iso
+from mosaic.core.paths import DESCRIPTOR_NAME
 from mosaic.core.principal import Principal, check
 from mosaic.core.runtime import server_mode
 from mosaic.jobs.model import JOB_TERMINAL
 from mosaic.media.pipeline import submit_scan
-from mosaic.media.scan import PHOTO_EXT, VIDEO_EXT
+from mosaic.media.scan import quick_counts
 from mosaic.storage import media_roots, project_cards
 from mosaic.storage.descriptor import read_descriptor
 from mosaic.storage.placement import PLACEMENT_FOR_CLASS, Placement, PlacementRefusedError
@@ -167,27 +167,6 @@ def list_projects(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     return {"items": items, "next_cursor": None}
 
 
-def _quick_counts(folder: Path) -> dict[str, Any]:
-    videos = photos = 0
-    seen = 0
-    complete = True
-    for _here, dirs, files in os.walk(folder):
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d != WORKSPACE_DIR]
-        for name in files:
-            seen += 1
-            if seen > PREVIEW_MAX_ENTRIES:
-                break
-            ext = os.path.splitext(name)[1].lower()
-            if ext in VIDEO_EXT:
-                videos += 1
-            elif ext in PHOTO_EXT:
-                photos += 1
-        if seen >= PREVIEW_MAX_ENTRIES:
-            complete = False
-            break
-    return {"videos": videos, "photos": photos, "complete": complete}
-
-
 @router.post("/projects/preview")
 def preview_folder(body: FolderRef, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     """What opening this folder would do — no writes (S4)."""
@@ -202,7 +181,7 @@ def preview_folder(body: FolderRef, svc: Services = Svc, me: Principal = Me) -> 
         "fs_class": c.fs_class.value,
         "reason": c.reason,
         "placement": PLACEMENT_FOR_CLASS.get(c.fs_class, Placement.IN_FOLDER).value,
-        "counts": _quick_counts(folder),
+        "counts": quick_counts(folder, PREVIEW_MAX_ENTRIES),
         "project_id": known,
     }
 
@@ -277,3 +256,22 @@ def download_cloud_files(pid: str, svc: Services = Svc, me: Principal = Me) -> d
             ),
         )
     return {"job_id": job}
+
+
+@router.delete("/projects/{pid}/recent", status_code=204)
+def remove_recent(pid: str, svc: Services = Svc, me: Principal = Me) -> None:
+    """S3 "Remove from list": hides the project from recents (ADR 0039). Nothing is deleted:
+    the footage, the project's data and its registry row stay, so opening the folder again
+    brings it back with its analysis, external placement included."""
+    from mosaic.storage import lease
+    from mosaic.storage.models_control import ProjectRegistry
+
+    check(me, "projects.write", pid)
+    with svc.control.db.session() as s:
+        row = s.get(ProjectRegistry, pid)
+        if row is None or row.user_id != me.user_id:
+            raise HTTPException(404, "unknown project")
+        row.hidden_at = now_iso()
+    folder = svc.leases.drop(pid)
+    if folder is not None:
+        lease.release(folder, svc.control.installation_id)

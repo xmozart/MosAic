@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 5c (S3 Home, S4 Open folder); steps 1–5b done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 5d (S5 Inventory, S6 Clock check, S7 Trip context); steps 1–5c done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -40,7 +40,7 @@ Order: design foundation first (milestone rule), then the server pieces the brow
 - [x] 4. Media endpoints: proxy with HTTP range, frames, filmstrip, waveform (new `media.waveform` L1 stage); Player, Waveform, Filmstrip components with stories
 - [x] 5a. Project APIs: recents from control-DB cards (no project DB opened), folder preview (no writes), create with a scan-only job, inventory, cloud download job
 - [x] 5b. Shell: AppRail (activity ring from SSE across projects), ProjectHeader (status variants, inline rename), ActivityPopover, CommandPalette, Toast, ConfirmDialog + the global dialogs (open elsewhere, cost ceiling, files moved, unsaved draft, lease lost), read-only banner, routing with 1280×800 minimum
-- [ ] 5c. S3 Home, S4 Open folder (server folder browser dialog, confirm dialog)
+- [x] 5c. S3 Home, S4 Open folder (server folder browser dialog, confirm dialog)
 - [ ] 5d. S5 Inventory, S6 Clock check, S7 Trip context
 - [ ] 6. Journey II: S8 Analysis setup (mode cards, estimates), S9 progress over SSE (pause/resume/cancel/retry), S25 Deepen
 - [ ] 7. Library: S10 (virtual grid, filters < 300 ms, hover-scrub, bulk, keyboard), S11 clip detail, decisions API, S12 search (acceptance 4, 5)
@@ -74,7 +74,8 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - From 5a: S5 inline download progress needs per-file progress from `media.cloud_download` (one task per file, or item progress); refresh the Home card on user decisions and edit renames, not only at checkpoints; typed `response_model`s for the M2 routes so the generated client is typed.
 - CPU worker slots are threads: Python-heavy per-frame work contends for the GIL (40-hour run: summed task time ≈ 5× wall on 5 slots). Consider process-based CPU slots with the M2 desktop packaging (ADR 0031).
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
-- A job paused at its cost limit needs a way to raise that job's `cost_limit_usd` before resuming (S9/S20, API `resume` parameter).
+- Raising a paused job's cost limit is wired in the Activity popover (5c); S9 and S20 still need their own entry points.
+- Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
 
@@ -150,3 +151,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.5a · Project APIs: Home cards in the control DB (refreshed at checkpoints), `GET /projects` without opening project DBs and with a non-blocking missing check, `/projects/preview` (no writes), `POST /projects` with a scan-only job, `/inventory` (catalog reasons, days by camera, attention, grouping notes), cloud download job (ADR 0038)
 - 2026-10-06 · M2.5b · App shell: rail with live activity ring (SSE for every project), project header, activity popover with pause/resume/cancel, ⌘K palette, toasts, the S0 dialogs (lease lost is blocking), read-only banner, routes; stories for every state
 - 2026-10-06 · M2.5b · (test harness) a native ML runtime teardown race (libc++abi recursive_mutex, SIGABRT) aborted `make integration` after all 107 tests passed: tests now release model instances and exit with pytest's own status at session end
+- 2026-10-06 · M2.5c · S3 Home (cards with collage cover, status ring, missing state with Reconnect, remove from recents; arrow-key grid; empty state) and S4 Open folder (server folder browser with recursive capped counts, confirm dialog with placement explanations, desktop path field until Tauri); server relink by root+path; cost-limit raise validates against spend (ADR 0039)

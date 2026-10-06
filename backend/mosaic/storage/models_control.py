@@ -41,6 +41,9 @@ class ProjectRegistry(ControlBase):
     # The Home card (S3; ADR 0038): counts, dates, cover frames, analysis level. Written at
     # checkpoints so the recents list never opens a project DB.
     card: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # "Remove from list" (S3; ADR 0039) hides the project from recents; the row stays so an
+    # external project's workspace and indexed edits keep their link. Reopening clears it.
+    hidden_at: Mapped[str | None] = mapped_column(String(40))
 
 
 class EditIndex(ControlBase):

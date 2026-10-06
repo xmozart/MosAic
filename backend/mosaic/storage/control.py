@@ -77,6 +77,7 @@ class ControlDB:
                 row.root_path, row.last_opened_at, row.name = str(root), now, name
                 row.placement, row.fs_class = placement, fs_class
                 row.folder_fingerprint = folder_fingerprint or row.folder_fingerprint
+                row.hidden_at = None
 
     def find_project(self, root: Path) -> ProjectRegistry | None:
         """The most recently opened project registered for this folder."""
@@ -102,9 +103,12 @@ class ControlDB:
             row = s.get(ProjectRegistry, project_id)
             return Path(row.root_path) if row else None
 
-    def projects(self, principal: Principal) -> list[ProjectRegistry]:
+    def projects(self, principal: Principal, *, hidden: bool = False) -> list[ProjectRegistry]:
+        """The principal's recents; ``hidden=True`` includes projects removed from the list."""
         with self.db.session() as s:
             q = select(ProjectRegistry).where(ProjectRegistry.user_id == principal.user_id)
+            if not hidden:
+                q = q.where(ProjectRegistry.hidden_at.is_(None))
             return list(s.scalars(q.order_by(ProjectRegistry.last_opened_at.desc())))
 
     def index_edit(self, principal: Principal, edit_id: str, project_id: str) -> None:

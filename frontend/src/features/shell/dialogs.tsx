@@ -33,13 +33,15 @@ export function OpenElsewhereDialog(p: {
 export function CostCeilingDialog(p: {
   open: boolean;
   limit: number; // dollars, display
+  spent?: number; // dollars spent so far; the new limit must exceed it too
   remaining?: string; // "About $2.40 more to finish."
   onRaise: (limit: number) => void;
   onKeepPaused: () => void;
 }) {
-  const [value, setValue] = useState(String(Math.ceil(p.limit * 2)));
+  const floor = Math.max(p.limit, p.spent ?? 0);
+  const [value, setValue] = useState(String(Math.max(1, Math.ceil(floor * 2))));
   const n = Number(value.replace(/[$,]/g, ""));
-  const valid = Number.isFinite(n) && n > p.limit;
+  const valid = Number.isFinite(n) && n > floor;
   return (
     <ConfirmDialog
       open={p.open}
@@ -53,7 +55,7 @@ export function CostCeilingDialog(p: {
             mono
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            error={value && !valid ? `Enter more than $${p.limit}.` : undefined}
+            error={value && !valid ? `Enter more than $${floor}.` : undefined}
           />
         </div>
       }

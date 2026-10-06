@@ -38,9 +38,14 @@ class OpenBody(BaseModel):
 
 
 class RelinkBody(BaseModel):
+    """Desktop: ``choose_folder`` (absolute). Server: ``root`` and ``path`` inside it, the
+    way the folder browser names folders (ADR 0035)."""
+
     model_config = ConfigDict(extra="forbid")
 
     choose_folder: str | None = None
+    root: int | None = None
+    path: str | None = None
 
 
 def _root(svc: Services, pid: str) -> Path:
@@ -91,7 +96,9 @@ def _same_project(pid: str, folder: Path, svc: Services) -> bool:
     d = read_descriptor(folder)
     if d is not None:
         return d.project_id == pid
-    row = next((r for r in svc.control.projects(svc.principal) if r.project_id == pid), None)
+    row = next(
+        (r for r in svc.control.projects(svc.principal, hidden=True) if r.project_id == pid), None
+    )
     return (
         row is not None
         and row.placement == Placement.EXTERNAL.value
@@ -112,8 +119,24 @@ def relink(
             "this project is open read-only (it is being edited on another computer)"
         )
     body = body or RelinkBody()
+    if body.root is not None and body.choose_folder:
+        raise HTTPException(422, "Send either a media root and path, or a folder path.")
     root = _root(svc, pid)
-    if body.choose_folder:
+    if body.root is not None:
+        if not server_mode():
+            raise HTTPException(422, "Use the folder's full path.")
+        try:
+            chosen = media_roots.within(media_roots.get(svc.control, body.root), body.path or "")
+        except media_roots.PathOutsideRootError as exc:
+            raise HTTPException(403, str(exc)) from None
+        except media_roots.PathRefusedError as exc:
+            raise HTTPException(404, str(exc)) from None
+        if not chosen.is_dir():
+            raise HTTPException(422, "That isn't a folder.")
+        if not _same_project(pid, chosen, svc):
+            raise HTTPException(422, "That folder doesn't hold this project's footage.")
+        root = chosen
+    elif body.choose_folder:
         if server_mode():  # a server opens folders inside its media roots only (§14)
             try:
                 _, chosen = media_roots.confine(svc.control, body.choose_folder)

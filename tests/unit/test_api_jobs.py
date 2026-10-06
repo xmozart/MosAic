@@ -126,3 +126,15 @@ def test_sse_without_a_project_streams_every_project() -> None:
         assert f'"job_id": {job}' in text
         assert f'"project_id": "{project}"' in text
         assert f'"kind": "{kind}"' in text
+
+
+def test_job_json_has_cost_and_limit() -> None:
+    from mosaic.jobs.model import JobSpec, TaskSpec
+
+    client, svc = _client()
+    job = svc.executor.submit(
+        svc.principal, JobSpec("P1", "analysis", cost_limit_usd=7.5, tasks=[TaskSpec("x", "s")])
+    )
+    body = client.get(f"/api/jobs/{job}").json()
+    assert body["cost_limit_usd"] == 7.5
+    assert body["cost_usd"] == 0

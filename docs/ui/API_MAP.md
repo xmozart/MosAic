@@ -17,7 +17,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/system/info` (mode: desktop/server, version, hardware probe with fingerprint, encoders, `workers` slots per resource class, `benchmark` or null, `rate_limits` per provider; ADR 0030) | S0, S22 |
 | POST | `/projects/{pid}/benchmark?force=` → `{job_id}`: measure this computer in the project's queue (ADR 0030) | S8, S22 |
 | GET/POST/DELETE | `/admin/media-roots` (server only; `{id, label, path, source: admin\|env}`; POST `{path, label?}` → 201, 422 for a relative or missing folder; ADR 0035) | S22 (admin) |
-| GET | `/fs/browse?root=&path=&cursor=` (server only; without `root`: the roots, no paths. With it: `{root, path, crumbs, here, items: [{name, path, videos, photos, has_project}], next_cursor}`; paths relative to the root; 403 outside it, 404 unknown; ADR 0035) | S4 |
+| GET | `/fs/browse?root=&path=&cursor=` (server only; without `root`: the roots, no paths. With it: `{root, path, crumbs, here, here: {counts, has_project}, items: [{name, path, counts: {videos, photos, folders, complete}|null, has_project}], next_cursor}`; counts are recursive, capped at 20,000 entries per folder, and `null` once the 2 s listing budget is spent; paths relative to the root; 403 outside it, 404 unknown; ADR 0035, 0039) | S4 |
 
 ## Settings & secrets
 
@@ -35,10 +35,10 @@ These are the REST endpoints and SSE events the screens need.
 | Method | Path | Used by |
 |---|---|---|
 | GET | `/projects` (recents from the control DB only: `{id, name, placement, fs_class, folder: {root, path}, missing: true\|false\|null, last_opened_at, card: {clips, photos, footage_seconds, first_date, last_date, cover: [sample ids], analyzed, latest_edit}, status: {state: scanning\|analyzing\|analyzed\|scanned\|not_analyzed, pct?, job_id?, mode?}}`; `missing: null` while a slow folder is still being checked; ADR 0038) | S3 |
-| POST | `/projects/preview` `{path}` (desktop) or `{root, path}` (server) → `{name, fs_class, reason, placement, counts: {videos, photos, complete}, project_id}` (no writes) | S4 |
+| POST | `/projects/preview` `{path}` (desktop) or `{root, path}` (server) → `{name, fs_class, reason, placement, counts: {videos, photos, folders, complete}, project_id}` (no writes; counts and folders only, nothing probed; ADR 0039) | S4 |
 | POST | `/projects` `{path \| root+path, name?, placement?}` → `{id, name, created, placement, scan_job}` (a scan-only job; an existing project is opened, `created: false`) | S4 |
 | POST | `/projects/{pid}/open` `{read_only?, take_over?}` (acquires the lease; `409` `{detail, holder: {host, since, until}}` if open elsewhere; ADR 0023) · `/close` (releases it) | S0, S3 |
-| POST | `/projects/{pid}/relink` `{choose_folder?}` → `{job_id, root, mode}` (re-scan with the last analysis mode; `409` if the folder is gone and none is chosen; `422` if the chosen folder is not this project's) | S0 |
+| POST | `/projects/{pid}/relink` `{choose_folder?}` (desktop) or `{root, path}` (server; 403 outside the root, 404 refused; 422 if both forms are sent) → `{job_id, root, mode}` (re-scan with the last analysis mode; `409` if the folder is gone and none is chosen; `422` if the chosen folder is not this project's) | S0 |
 | GET | `/projects/{pid}/inventory` → `{summary, cameras: [{key, label, kind, device_id, clips, photos, files, footage_seconds, badges, sample_id, clock}], days: [{date, by_camera}], attention: [{kind: unreadable\|limited\|cloud, count, reason, fix, bytes?}], notes: {chaptered_recordings, live_photos, bursts}}` (catalog reasons only) | S5 |
 | POST | `/projects/{pid}/cloud-files/download` → `{job_id}` (reads cloud-only files so the OS downloads them, then rescans) | S5 |
 | GET/PUT | `/projects/{pid}/devices` (clock offsets, LUT path; PUT `{devices: [{id, clock_offset_ms \| accept_suggestion \| lut_path \| clear_lut}]}` → `{devices, assets_updated, refresh_job, reanalysis_needed}`; LUTs ADR 0028) · GET `/projects/{pid}/devices/suggestions` (offset, verdict, evidence pairs; ADR 0027) | S6, S21 |
@@ -46,6 +46,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/projects/{pid}/summaries?level=day\|trip\|scene\|shot&after_ref=&limit=` (`day`: the trip plus each day; scene and shot are paged by ref, limit ≤ 1000) → `{items: [{level, ref, text, themes?, highlights, subjects?, span?}], next_after_ref}` (ADR 0021) | S10, S16 |
 | GET/PATCH | `/projects/{pid}/settings` (effective values with source) | S21 |
 | GET | `/projects/{pid}/storage` · POST `/storage/clear-cache` | S21 |
+| DELETE | `/projects/{pid}/recent` → 204 (hides the project from recents and releases its lease; nothing is deleted; opening the folder again brings it back; ADR 0039) | S3 |
 | DELETE | `/projects/{pid}/workspace` (removes MosAic data; originals untouched) | S21 |
 
 ## Analysis & jobs
@@ -54,7 +55,7 @@ These are the REST endpoints and SSE events the screens need.
 |---|---|---|
 | GET | `/projects/{pid}/analysis/estimate?mode=&scope=` (scope: `trip`, `days:2,3` or `selection:ID,…`; omitted = whole-project run). Returns videos, photos, footage seconds, segments, `l2_calls`, `l3_calls` [lo, hi], `cost_usd` [lo, hi] or null when a model has no price, `storage_bytes`, `wall_seconds` [lo, hi], `basis` (`benchmark` or `default`, ADR 0030), `days` (ADR 0020) | S8, S25 |
 | POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}`; scope `{kind: trip\|days\|selection, days?, segment_ids?}` deepens (mode `balanced` or `thorough`: adds L2 where missing, then L3) and returns `{job_id \| null, candidates, l2_assets, dropped}`; without scope the whole project is analyzed in the mode (`overrides` only with `custom`) | S8, S25 |
-| GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, cost) | S9, S0 |
+| GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, `cost_usd`, `cost_limit_usd`) | S9, S0 |
 | POST | `/jobs/{id}/pause` · `/resume` (optional body `{cost_limit_usd}`: raise the AI cost limit of a job paused at it; must exceed what the job has spent; ADR 0018) · `/cancel` · `/retry-failed` | S9, S20 |
 | GET | `/events?project=` (SSE; without `project`: every project, for the rail's activity ring) | all |
 

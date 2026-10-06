@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router";
 
 import { AuthGate } from "@/features/auth/AuthGate";
+import { HomeScreen } from "@/features/home/HomeScreen";
 import { AppShell, Placeholder } from "@/features/shell/AppShell";
 import { ProjectLayout } from "@/features/shell/ProjectLayout";
 
@@ -16,7 +17,7 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<AppShell />}>
-              <Route index element={<Placeholder title="Your trips" />} />
+              <Route index element={<HomeScreen />} />
               <Route path="exports" element={<Placeholder title="Exports" />} />
               <Route path="settings" element={<Placeholder title="Settings" />} />
               <Route path="p/:pid" element={<ProjectLayout />}>

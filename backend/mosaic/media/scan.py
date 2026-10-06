@@ -9,10 +9,12 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TypedDict
 
 from mosaic.core.paths import DESCRIPTOR_NAME, WORKSPACE_DIR
 
@@ -150,3 +152,54 @@ def fingerprint(path: Path, size: int) -> str:
             f.seek(max(size - FINGERPRINT_CHUNK, FINGERPRINT_CHUNK))
             h.update(f.read(FINGERPRINT_CHUNK))
     return f"{size}-{h.hexdigest()[:32]}"
+
+
+class FolderCounts(TypedDict):
+    videos: int
+    photos: int
+    folders: int
+    complete: bool
+
+
+def quick_counts(folder: Path, max_entries: int, deadline: float | None = None) -> FolderCounts:
+    """Videos, photos and folders under ``folder`` by extension, reading no file
+    contents and stopping after ``max_entries`` directory entries or at ``deadline``
+    (``time.monotonic()``; S4's folder browser and preview; ADR 0039). ``complete`` is
+    False when the walk stopped early. Hidden entries and MosAic's workspace are skipped;
+    symlinked folders are not followed."""
+    videos = photos = folders = seen = 0
+    complete = True
+    stack = [folder]
+    while stack:
+        if deadline is not None and time.monotonic() > deadline:
+            complete = False
+            break
+        here = stack.pop()
+        try:
+            with os.scandir(here) as it:
+                for e in it:
+                    seen += 1
+                    if seen > max_entries or (
+                        deadline is not None and seen % 256 == 0 and time.monotonic() > deadline
+                    ):
+                        complete = False
+                        break
+                    if e.name.startswith(".") or e.name == WORKSPACE_DIR:
+                        continue
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            folders += 1
+                            stack.append(Path(e.path))
+                        elif e.is_file(follow_symlinks=False):
+                            ext = os.path.splitext(e.name)[1].lower()
+                            if ext in VIDEO_EXT:
+                                videos += 1
+                            elif ext in PHOTO_EXT:
+                                photos += 1
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+        if not complete:
+            break
+    return FolderCounts(videos=videos, photos=photos, folders=folders, complete=complete)
