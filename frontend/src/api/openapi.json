@@ -3057,6 +3057,49 @@
               "title": "Show Rejected",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "shot_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "establishing_wide",
+                    "wide",
+                    "medium",
+                    "close_up",
+                    "detail",
+                    "aerial",
+                    "pov",
+                    "selfie",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shot Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_speech",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Speech"
+            }
           }
         ],
         "responses": {

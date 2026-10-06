@@ -54,7 +54,7 @@ def test_pages_cover_every_shown_clip_once_in_order(analyzed_session: Any) -> No
             for a in s.scalars(select(Asset))
             if a.kind in ("video", "photo", "live_photo") and a.status != "unsupported"
         }
-    for group in ("day", "camera"):
+    for group in ("day", "camera", "similar"):
         items, groups = _walk(client, url, group, 3, show_rejected=True)
         ids = [it["asset_id"] for it in items]
         assert len(ids) == len(set(ids)), "no clip twice across pages"
@@ -92,3 +92,19 @@ def test_bad_cursor_and_group_are_rejected(analyzed_session: Any) -> None:
     assert wrong.status_code == 422, "a day cursor does not fit camera order"
     assert client.get(url, params={"group": "nope"}).status_code == 422
     assert client.get(url, params={"limit": 0}).status_code == 422
+
+
+def test_similar_cursors_and_new_filters_over_http(analyzed_session: Any) -> None:
+    project, control = analyzed_session
+    client = _client(control)
+    url = f"/api/projects/{project.id}/library"
+    day_page = client.get(url, params={"group": "day", "limit": 1}).json()
+    bad = client.get(url, params={"group": "similar", "cursor": day_page["next_cursor"]})
+    assert bad.status_code == 422, "a day cursor does not page a similar grouping"
+    for params in ({"has_speech": True}, {"has_speech": False}, {"shot_type": "wide"}):
+        r = client.get(url, params=params)
+        assert r.status_code == 200, r.text
+    speech = client.get(url, params={"has_speech": True}).json()["items"]
+    assert speech, "the corpus has speech"
+    assert all(i["has_speech"] for i in speech)
+    assert client.get(url, params={"shot_type": "underwater"}).status_code == 422

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import and_, func, select, tuple_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from mosaic.storage.models_project import (
@@ -26,9 +26,11 @@ from mosaic.storage.models_project import (
     MediaFile,
     SampleFrame,
     Segment,
+    VisualObservation,
 )
 
-GROUPS = ("day", "camera")
+GROUPS = ("day", "camera", "similar")
+NO_GROUP = 2**62  # sorts clips without a similar group after every group
 SHOWN_KINDS = ("video", "photo", "live_photo")
 UNKNOWN_TIME = "~"  # sorts after every ISO time: undated clips come last
 MAX_LIMIT = 200
@@ -55,6 +57,8 @@ class Filters:
     include: str | None = None  # always | never
     kind: str | None = None  # video | photo
     show_rejected: bool = False
+    shot_type: str | None = None  # the vision observation's shot type of any moment
+    has_speech: bool | None = None
 
 
 def _prio(expr: Any) -> Any:
@@ -132,6 +136,16 @@ def filtered(q: Any, f: Filters, st: Any) -> Any:
         q = q.where(_day() == (UNKNOWN_TIME if f.day == "unknown" else f.day))
     if f.tag is not None:
         q = q.where(Asset.id.in_(select(ClipTag.asset_id).where(ClipTag.tag == f.tag)))
+    if f.has_speech is not None:
+        speaking = select(Segment.asset_id).where(Segment.has_speech.is_(True))
+        q = q.where(Asset.id.in_(speaking) if f.has_speech else Asset.id.not_in(speaking))
+    if f.shot_type is not None:
+        typed = (
+            select(Segment.asset_id)
+            .join(VisualObservation, VisualObservation.segment_id == Segment.id)
+            .where(func.json_extract(VisualObservation.data, "$.shot_type") == f.shot_type)
+        )
+        q = q.where(Asset.id.in_(typed))
     if f.kind == "video":
         q = q.where(Asset.kind == "video")
     elif f.kind == "photo":
@@ -172,8 +186,27 @@ def _device() -> ColumnElement[int]:
     return func.coalesce(Asset.device_id, 0)
 
 
+def _similar() -> ColumnElement[int]:
+    """The clip's first similarity group (``NO_GROUP`` when it has none)."""
+    first = (
+        select(func.min(Segment.similarity_group_id))
+        .where(Segment.asset_id == Asset.id)
+        .correlate(Asset)
+        .scalar_subquery()
+    )
+    return func.coalesce(first, NO_GROUP)
+
+
+def _group_key(group: str) -> ColumnElement[Any]:
+    return {"camera": _device, "similar": _similar}.get(group, _day)()
+
+
 def _keys(group: str) -> list[ColumnElement[Any]]:
-    return [_device(), _time()] if group == "camera" else [_time()]
+    if group == "camera":
+        return [_device(), _time()]
+    if group == "similar":
+        return [_similar(), _time()]
+    return [_time()]
 
 
 def encode_cursor(values: list[Any]) -> str:
@@ -192,7 +225,7 @@ def decode_cursor(cursor: str, group: str) -> list[Any]:
         not isinstance(values[-1], int)
     ):
         raise BadCursorError("invalid cursor")
-    if group == "camera" and not isinstance(values[0], int):
+    if group in ("camera", "similar") and not isinstance(values[0], int):
         raise BadCursorError("invalid cursor")
     return values
 
@@ -218,44 +251,139 @@ def shown(asset: Asset) -> bool:
 
 
 def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[str, Any]]:
+    """The groups of the (filtered) library with their totals: clips, photos and footage
+    seconds (display). Day groups carry their trip day number and the trip context's place."""
+    from mosaic.core.time import parse_rational
+    from mosaic.library.context import load as load_context
+
     f = f or Filters()
     st = status_table()
-    if group == "camera":
-        rows = session.execute(
-            filtered(
-                select(_device(), func.count(Asset.id), Device.label)
-                .select_from(Asset)
-                .outerjoin(Device, Device.id == Asset.device_id),
-                f,
-                st,
-            )
-            .group_by(_device())
-            .order_by(_device())
-        )
-        return [
-            {"key": str(dev), "label": label or "Unknown camera", "count": n}
-            for dev, n, label in rows
-        ]
-    out = []
-    numbers = day_numbers(session)
-    for day, n in session.execute(
-        filtered(select(_day(), func.count(Asset.id)).select_from(Asset), f, st)
-        .group_by(_day())
-        .order_by(_day())
+    key = _group_key(group)
+    totals: dict[Any, dict[str, Any]] = {}
+    for k, kind, tb, n, ticks in session.execute(
+        filtered(
+            select(
+                key, Asset.kind, Asset.tb, func.count(Asset.id), func.sum(Asset.duration_ticks)
+            ).select_from(Asset),
+            f,
+            st,
+        ).group_by(key, Asset.kind, Asset.tb)
     ):
+        t = totals.setdefault(k, {"count": 0, "clips": 0, "photos": 0, "seconds": 0.0})
+        t["count"] += n
+        if kind == "video":
+            t["clips"] += n
+            if ticks and tb:
+                t["seconds"] += float(ticks * parse_rational(tb))  # display only
+        else:
+            t["photos"] += n
+
+    def stats(k: Any) -> dict[str, Any]:
+        t = totals[k]
+        return {
+            "count": t["count"],
+            "clips": t["clips"],
+            "photos": t["photos"],
+            "footage_seconds": round(t["seconds"]),
+        }
+
+    if group == "camera":
+        labels = dict(session.execute(select(Device.id, Device.label)).all())
+        return [
+            {"key": str(dev), "label": labels.get(dev) or "Unknown camera", **stats(dev)}
+            for dev in sorted(totals)
+        ]
+    if group == "similar":
+        out = []
+        for i, k in enumerate(sorted(totals)):
+            single = k == NO_GROUP
+            out.append(
+                {
+                    "key": "none" if single else str(k),
+                    "label": "No similar clips" if single else f"Similar {i + 1}",
+                    **stats(k),
+                }
+            )
+        return out
+    numbers = day_numbers(session)
+    places = {d.date: d.place for d in load_context(session).days if d.place}
+    out = []
+    for day in sorted(totals):
         known = day != UNKNOWN_TIME
         out.append(
             {
                 "key": day if known else "unknown",
                 "label": f"Day {numbers[day]} · {day}" if known else "No date",
-                "count": n,
+                "day": numbers.get(day) if known else None,
+                "date": day if known else None,
+                "place": places.get(day) if known else None,
+                **stats(day),
             }
         )
     return out
 
 
+def _item_group(group: str, a: Asset, first_key: Any, time: str | None) -> str:
+    if group == "camera":
+        return str(a.device_id or 0)
+    if group == "similar":
+        return "none" if first_key == NO_GROUP else str(first_key)
+    return _day_key(time)
+
+
 def _day_key(time: str | None) -> str:
     return time[:10] if time else "unknown"
+
+
+_NO_FACTS = {"caption": None, "shot_type": None, "has_speech": False, "similar_count": 0}
+
+
+def _tile_facts(session: Session, ids: list[int]) -> dict[int, dict[str, Any]]:
+    """Per clip of a page: the caption and shot type of its best observed moment (the AI's
+    words), whether anyone speaks, and how many other clips look alike."""
+    out: dict[int, dict[str, Any]] = {i: dict(_NO_FACTS) for i in ids}
+    best: dict[int, tuple[Any, ...]] = {}
+    ai = aliased(Disposition)
+    for aid, quality, best_flag, data, ai_status in session.execute(
+        select(
+            Segment.asset_id, Segment.quality, Segment.group_best, VisualObservation.data, ai.status
+        )
+        .join(VisualObservation, VisualObservation.segment_id == Segment.id)
+        .outerjoin(ai, (ai.segment_id == Segment.id) & (ai.source == "ai"))
+        .where(Segment.asset_id.in_(ids))
+    ):
+        # A moment the analysis rejected never speaks for the clip (as S11's Why).
+        rank = (
+            ai_status != "REJECT",
+            {"high": 2, "medium": 1}.get(data.get("interest"), 0),
+            quality or 0.0,
+            best_flag,
+        )
+        if aid not in best or rank > best[aid][0]:
+            best[aid] = (rank, data)
+    for aid, (_, data) in best.items():
+        out[aid]["caption"] = data.get("description")
+        out[aid]["shot_type"] = data.get("shot_type")
+    for (aid,) in session.execute(
+        select(Segment.asset_id)
+        .where(Segment.asset_id.in_(ids), Segment.has_speech.is_(True))
+        .distinct()
+    ):
+        out[aid]["has_speech"] = True
+    other = aliased(Segment)
+    for aid, n in session.execute(
+        select(Segment.asset_id, func.count(func.distinct(other.asset_id)))
+        .join(
+            other,
+            (other.similarity_group_id == Segment.similarity_group_id)
+            & (other.asset_id != Segment.asset_id),
+        )
+        .join(Asset, Asset.id == other.asset_id)
+        .where(Segment.asset_id.in_(ids), Segment.similarity_group_id.is_not(None), _shown())
+        .group_by(Segment.asset_id)
+    ):
+        out[aid]["similar_count"] = n
+    return out
 
 
 def page(
@@ -322,6 +450,7 @@ def page(
             .group_by(first.c.asset_id)
         ).all()
     )
+    tile = _tile_facts(session, ids)
     decided = decisions.decisions(session, ids)
     clip_tags = decisions.tags(session, ids)
     items = []
@@ -336,7 +465,7 @@ def page(
                 "kind": a.kind,
                 "status": a.status,
                 "name": names.get(a.id),
-                "group": str(a.device_id or 0) if group == "camera" else _day_key(time),
+                "group": _item_group(group, a, row[1], time),
                 "capture_time": time,
                 "device_id": a.device_id,
                 "duration": (
@@ -351,6 +480,7 @@ def page(
                 "decided_by": ("ai" if by_ai else "user") if prio else None,
                 "decision": decisions.clip_json(dec, clip_tags.get(a.id, [])),
                 "sample_id": tiles.get(a.id),
+                **tile.get(a.id, _NO_FACTS),
             }
         )
     nk = len(keys)

@@ -2738,6 +2738,8 @@ export interface operations {
                 include?: ("always" | "never") | null;
                 kind?: ("video" | "photo") | null;
                 show_rejected?: boolean;
+                shot_type?: ("establishing_wide" | "wide" | "medium" | "close_up" | "detail" | "aerial" | "pov" | "selfie" | "other") | null;
+                has_speech?: boolean | null;
             };
             header?: never;
             path: {

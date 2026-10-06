@@ -174,9 +174,10 @@ def test_library_filters_and_tile_status(tmp_path: Path) -> None:
         ]
         only_rejected = browse.page(s, "day", None, 50, browse.Filters(status="REJECT"))
         assert [i["asset_id"] for i in only_rejected.items] == [ids["c"]]
-        assert only_rejected.groups == [
-            {"key": "2026-07-16", "label": "Day 2 · 2026-07-16", "count": 1}
-        ]
+        assert only_rejected.groups is not None
+        assert [(g["key"], g["day"], g["count"]) for g in only_rejected.groups] == [
+            ("2026-07-16", 2, 1)
+        ], "a filter keeps the trip's day numbers"
         starred = browse.page(s, "day", None, 50, browse.Filters(min_stars=4))
         assert [i["asset_id"] for i in starred.items] == [ids["b"]]
         assert starred.items[0]["decision"]["tags"] == ["zip"]

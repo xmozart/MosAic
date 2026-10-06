@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from mosaic.ai.prompts.vision.schema_v1 import ShotType
 from mosaic.app.deps import principal, services
 from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
@@ -36,6 +37,8 @@ def library(
     include: Literal["always", "never"] | None = None,
     kind: Literal["video", "photo"] | None = None,
     show_rejected: bool = False,
+    shot_type: ShotType | None = None,
+    has_speech: bool | None = None,
     svc: Services = Svc,
     me: Principal = Me,
 ) -> dict[str, Any]:
@@ -44,7 +47,9 @@ def library(
     narrow every count (ADR 0042)."""
     check(me, "library.read", pid)
     tag = tag.strip() if tag else None  # as tags are stored
-    f = browse.Filters(status, min_stars, camera, day, tag, include, kind, show_rejected)
+    f = browse.Filters(
+        status, min_stars, camera, day, tag, include, kind, show_rejected, shot_type, has_speech
+    )
     with _project(svc, me, pid) as project, project.db.session() as s:
         try:
             found = browse.page(s, group, cursor, limit, f)
