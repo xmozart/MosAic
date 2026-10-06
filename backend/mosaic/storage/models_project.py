@@ -389,6 +389,34 @@ class Disposition(ProjectBase):
     __table_args__ = (Index("ux_disposition_segment_source", "segment_id", "source", unique=True),)
 
 
+class ClipDecision(ProjectBase):
+    """The owner's decisions on a whole clip (S10, S11; ADR 0042). Hard constraints until
+    reset (invariant 10); a decision on one segment (``Disposition`` with source user) is
+    more specific and wins over the clip's.
+
+    - ``disposition``: USE, MAYBE or REJECT for the clip.
+    - ``stars``: 1–5.
+    - ``include``: ``always`` keeps the clip's best moment in every edit; ``never`` keeps
+      the clip out of every edit.
+    - ``live_motion``: a Live Photo is used with its motion (True) or as a still (False).
+    """
+
+    __tablename__ = "clip_decision"
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), primary_key=True)
+    disposition: Mapped[str | None] = mapped_column(String(8))
+    stars: Mapped[int | None] = mapped_column(Integer)
+    include: Mapped[str | None] = mapped_column(String(8))
+    note: Mapped[str | None] = mapped_column(Text)
+    live_motion: Mapped[bool | None] = mapped_column(Boolean)
+    updated_at: Mapped[str] = mapped_column(String(40))
+
+
+class ClipTag(ProjectBase):
+    __tablename__ = "clip_tag"
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), primary_key=True)
+    tag: Mapped[str] = mapped_column(String(60), primary_key=True, index=True)
+
+
 # ------------------------------------------------------------------------ editing
 
 

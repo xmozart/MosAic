@@ -86,3 +86,66 @@ def test_the_fallback_also_skips_rejected_clips(tmp_path: Path) -> None:
     cover, f = _cover(tmp_path, [("best", 0.9, "REJECT"), ("good", 0.7, None)])
     assert cover == [f["good"]]
     assert f["best"] not in cover
+
+
+def test_the_cover_skips_clips_the_owner_excluded(tmp_path: Path) -> None:
+    """A clip marked never include, or rejected as a whole, is never on the cover (ADR 0042)."""
+    from mosaic.library import decisions
+
+    control = ControlDB()
+    project = init_project(control, control.local_principal, tmp_path)
+    frames: dict[str, int] = {}
+    ids: dict[str, int] = {}
+    with project.write() as s:
+        prov = provenance.record(s, provenance.ProvenanceInfo(kind="test"))
+        for name, quality in (("best", 0.9), ("good", 0.7), ("ok", 0.5), ("fine", 0.4)):
+            a = Asset(
+                kind="video",
+                status="ok",
+                profile="generic",
+                group_key=name,
+                capture_time=T,
+                tb="1/90000",
+                duration_ticks=90000,
+                provenance_id=prov,
+                created_at=T,
+            )
+            s.add(a)
+            s.flush()
+            common: dict[str, Any] = {"asset_id": a.id, "provenance_id": prov}
+            shot = Shot(index=0, start_ticks=0, end_ticks=90000, method="adaptive", **common)
+            s.add(shot)
+            s.flush()
+            g = Segment(
+                shot_id=shot.id,
+                index=0,
+                start_ticks=0,
+                end_ticks=90000,
+                usable_start_ticks=0,
+                usable_end_ticks=90000,
+                quality=quality,
+                **common,
+            )
+            f = SampleFrame(
+                shot_id=shot.id, ticks=10, reason="scene", phash="0" * 16, kept=True, **common
+            )
+            s.add_all([g, f])
+            s.flush()
+            frames[name], ids[name] = f.id, a.id
+            s.add(
+                Disposition(
+                    asset_id=a.id,
+                    segment_id=g.id,
+                    anchor_start_ticks=0,
+                    anchor_end_ticks=90000,
+                    source="ai",
+                    status="USE",
+                    updated_at=T,
+                )
+            )
+        decisions.apply(s, [ids["best"]], {"include": "never"})
+        decisions.apply(s, [ids["good"]], {"disposition": "REJECT"})
+    with project.db.session() as s:
+        cover = project_cards.compute(s)["cover"]
+    project.close()
+    assert cover == [frames["ok"], frames["fine"]]

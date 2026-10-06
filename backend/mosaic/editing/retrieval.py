@@ -22,7 +22,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mosaic.core.time import parse_rational
-from mosaic.library.dispositions import effective, segment_facts
+from mosaic.library import decisions
+from mosaic.library.dispositions import segment_facts
 from mosaic.storage.models_project import (
     Asset,
     DeepReview,
@@ -227,7 +228,8 @@ def retrieve(
         if not segs:
             continue
         ids = [g.id for g in segs]
-        disp = effective(session, ids)
+        # The owner's decisions first: on the segment, then on the clip (ADR 0042).
+        disp = decisions.for_segments(session, asset, segs)
         obs = {
             o.segment_id: o.data
             for o in session.scalars(
@@ -243,8 +245,8 @@ def retrieve(
         for g in segs:
             counts["segments"] += 1
             d = disp.get(g.id)
-            status = d.status if d else "USE"
-            user_use = bool(d and d.source == "user" and d.status == "USE")
+            status = (d.status if d else None) or "USE"
+            user_use = bool(d and d.forced)
             if status == "REJECT":
                 counts["rejected"] += 1
                 continue

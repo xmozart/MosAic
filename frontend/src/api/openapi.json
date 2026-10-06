@@ -1,6 +1,143 @@
 {
   "components": {
     "schemas": {
+      "BulkChange": {
+        "additionalProperties": false,
+        "properties": {
+          "add_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Add Tags"
+          },
+          "asset_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Asset Ids",
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "enum": [
+                  "USE",
+                  "MAYBE",
+                  "REJECT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition"
+          },
+          "include": {
+            "anyOf": [
+              {
+                "enum": [
+                  "always",
+                  "never"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include"
+          },
+          "live_motion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Motion"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "remove_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remove Tags"
+          },
+          "stars": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stars"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "asset_ids"
+        ],
+        "title": "BulkChange",
+        "type": "object"
+      },
       "CreateBody": {
         "additionalProperties": false,
         "properties": {
@@ -45,6 +182,132 @@
           }
         },
         "title": "CreateBody",
+        "type": "object"
+      },
+      "DecisionChange": {
+        "additionalProperties": false,
+        "description": "A change to the owner's decisions on a clip. A field set to null resets it; a field\nleft out is unchanged (ADR 0042).",
+        "properties": {
+          "add_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Add Tags"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "enum": [
+                  "USE",
+                  "MAYBE",
+                  "REJECT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition"
+          },
+          "include": {
+            "anyOf": [
+              {
+                "enum": [
+                  "always",
+                  "never"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include"
+          },
+          "live_motion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Motion"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "remove_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remove Tags"
+          },
+          "stars": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stars"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "title": "DecisionChange",
         "type": "object"
       },
       "DeviceChange": {
@@ -990,7 +1253,7 @@
     },
     "/api/events": {
       "get": {
-        "description": "Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,\n``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done) and\n``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,\nS0), and ``lock.lost`` for any project this server lost.",
+        "description": "Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,\n``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done),\n``clip.updated`` (a library decision changed) and ``lock.lost``. Without ``project``:\nevery project's jobs (the rail's activity ring, S0), and ``lock.lost`` for any project\nthis server lost.",
         "operationId": "events_api_events_get",
         "parameters": [
           {
@@ -1929,6 +2192,67 @@
         "summary": "Post Benchmark"
       }
     },
+    "/api/projects/{pid}/clips/{aid}/decision": {
+      "patch": {
+        "description": "Sets the owner's decisions on one clip; returns them with the changed fields.",
+        "operationId": "patch_decision_api_projects__pid__clips__aid__decision_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "aid",
+            "required": true,
+            "schema": {
+              "title": "Aid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Patch Decision Api Projects  Pid  Clips  Aid  Decision Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Decision"
+      }
+    },
     "/api/projects/{pid}/close": {
       "post": {
         "operationId": "close_api_projects__pid__close_post",
@@ -2010,6 +2334,58 @@
           }
         },
         "summary": "Download Cloud Files"
+      }
+    },
+    "/api/projects/{pid}/decisions/bulk": {
+      "post": {
+        "description": "The same change on many clips (S10 BulkBar): ``{updated}``, the clips that changed.",
+        "operationId": "bulk_decisions_api_projects__pid__decisions_bulk_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Bulk Decisions Api Projects  Pid  Decisions Bulk Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Decisions"
       }
     },
     "/api/projects/{pid}/devices": {
@@ -2363,7 +2739,7 @@
     },
     "/api/projects/{pid}/library": {
       "get": {
-        "description": "One page of clips in day or camera order: ``{items, next_cursor, groups}``;\n``groups`` (key, label, count) only on the first page.",
+        "description": "One page of clips in day or camera order: ``{items, next_cursor, groups,\nrejected_hidden}``; ``groups`` and ``rejected_hidden`` on the first page only. Filters\nnarrow every count (ADR 0042).",
         "operationId": "library_api_projects__pid__library_get",
         "parameters": [
           {
@@ -2411,6 +2787,147 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "USE",
+                    "MAYBE",
+                    "REJECT",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_stars",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 5,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Stars"
+            }
+          },
+          {
+            "in": "query",
+            "name": "camera",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Camera"
+            }
+          },
+          {
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(\\d{4}-\\d{2}-\\d{2}|unknown)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Day"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "always",
+                    "never"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Include"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "video",
+                    "photo"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_rejected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show Rejected",
+              "type": "boolean"
             }
           }
         ],

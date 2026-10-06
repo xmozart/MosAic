@@ -69,7 +69,7 @@ SSE event types:
 | `job.stage` | Stage transition |
 | `job.state` | running / paused / paused_cost_limit / done / failed / cancelled |
 | `analysis.ready_to_browse` | `{job_id, project_id}`, once per analysis job and stream, when L0 and every per-asset L1 task are finished and one succeeded (L2 may still run; a reconnect may repeat it, so dedupe by `job_id`; ADR 0041) |
-| `clip.updated` | `{asset_id, fields}` |
+| `clip.updated` | `{project_id, asset_id, fields}` after a decision change; `asset_id: null` when more than 200 clips changed at once (refetch; ADR 0042) |
 | `edit.progress` | `{edit_id, step, beats_planned[]}` |
 | `edit.version_created` | — |
 | `render.progress` | — |
@@ -79,11 +79,11 @@ SSE event types:
 
 | Method | Path | Used by |
 |---|---|---|
-| GET | `/projects/{pid}/library?group=day\|camera\|similar&filters…&density=` (groups with paginated items). Built in M1 (ADR 0031): `group=day\|camera&cursor=&limit≤200` → `{items, next_cursor, groups}` with keyset pages (items: asset, kind, status, name, group, capture time, duration `{ticks, tb}`, segments, disposition counts, tile `sample_id`; `groups` on the first page); `similar`, filters and density come in M2 | S10 |
+| GET | `/projects/{pid}/library?group=day\|camera&cursor=&limit≤200&status=USE\|MAYBE\|REJECT\|none&min_stars=&camera=&day=&tag=&include=always\|never&kind=video\|photo&show_rejected=` → `{items, next_cursor, groups, rejected_hidden}` with keyset pages (ADR 0031, 0042). Items: asset, kind, status, name, group, capture time, duration `{ticks, tb}`, segments, disposition counts, `status_shown` (the tile chip: the best of the clip's segments, each by its own user decision, then the clip's, then the analysis), `decided_by` (`user` \| `ai`), `decision` (`{disposition, stars, include, note, live_motion, tags}`), tile `sample_id`. Clips shown as REJECT are hidden unless `show_rejected` or `status=REJECT`; `rejected_hidden` counts them. `groups` and `rejected_hidden` on the first page; filters narrow every count; day labels keep the trip's numbering. Density is a client choice | S10 |
 | GET | `/projects/{pid}/clips/{aid}` (detail: moments, quality, why, similar, tags, note, used_in) | S11 |
 | GET | `/projects/{pid}/clips/{aid}/transcript` | S11 |
-| PATCH | `/projects/{pid}/clips/{aid}/decision` `{disposition?, stars?, include?: always\|never\|none, tags?, note?, live_motion?}` | S10, S11 |
-| POST | `/projects/{pid}/decisions/bulk` `{asset_ids[], …}` | S10 |
+| PATCH | `/projects/{pid}/clips/{aid}/decision` `{disposition?: USE\|MAYBE\|REJECT, stars?: 1–5, include?: always\|never, note?, live_motion?, tags?, add_tags?, remove_tags?}`: a field set to null resets it, a field left out is unchanged → `{asset_id, changed, disposition, stars, include, note, live_motion, tags}` (hard constraints for editing: never = REJECT; always / USE keep the clip and force its best moment; a decision on one segment wins; ADR 0042) | S10, S11 |
+| POST | `/projects/{pid}/decisions/bulk` `{asset_ids[] ≤ 10,000, …the same fields}` → `{updated}` | S10 |
 | GET | `/projects/{pid}/search?q=&mode=all\|visual\|speech&limit=` (items: segment, asset, exact start/end, sample, status, score, `matched` reasons; `visual: ok\|unavailable\|off` drives S12's "analysis incomplete" banner) · `/search/suggestions` (the trip's own tags) (ADR 0029) | S12 |
 | GET | `/projects/{pid}/labeling-questions` · POST `/labeling-questions/{qid}/answer` | S24 |
 | GET | `/media/{pid}/proxy/{aid}` (HTTP range; 404 until a proxy exists) · `/media/{pid}/frame/{sample_id}` (JPEG) · `/media/{pid}/mosaic/{mosaic_id}` (the labelled contact sheet, JPEG; S9) · `/media/{pid}/waveform/{aid}` (`{silent, bucket: {ticks, tb}, count, peaks: base64 0–255}`, from the `media.waveform` stage) · `/media/{pid}/filmstrip/{aid}?n=&start_ticks=&end_ticks=` (`{tb, frames: [{sample_id, ticks}]}`) (ADR 0037) | all |

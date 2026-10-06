@@ -38,6 +38,120 @@ class BadCursorError(ValueError):
     pass
 
 
+PRIORITY = {"USE": 1, "MAYBE": 2, "REJECT": 3}
+STATUS_OF = {v: k for k, v in PRIORITY.items()}
+
+
+@dataclass(frozen=True)
+class Filters:
+    """S10 toolbar filters (ADR 0042). ``status`` filters by the clip's status as the tile
+    shows it; rejected clips are hidden unless asked for."""
+
+    status: str | None = None  # USE | MAYBE | REJECT | none (not analyzed)
+    min_stars: int | None = None
+    camera: int | None = None  # device id (0: no device)
+    day: str | None = None  # YYYY-MM-DD, or "unknown"
+    tag: str | None = None
+    include: str | None = None  # always | never
+    kind: str | None = None  # video | photo
+    show_rejected: bool = False
+
+
+def _prio(expr: Any) -> Any:
+    from sqlalchemy import case
+
+    return case(*((expr == k, v) for k, v in PRIORITY.items()), else_=None)
+
+
+def status_table() -> Any:
+    """Per asset, the tile's status and who set it, as one code: ``priority × 2``, plus 1
+    when the analysis set it (priority 1 USE, 2 MAYBE, 3 REJECT; NULL: nothing decided or
+    analysed). The minimum over the clip's segments is the best status, the owner's when
+    tied. Each segment takes the first of: the clip's never (REJECT), its own user
+    decision, the clip's always or disposition, the analysis (ADR 0042;
+    ``decisions.for_segments`` is the same rule)."""
+    from sqlalchemy import case
+
+    from mosaic.storage.models_project import ClipDecision
+
+    rule = case(
+        (ClipDecision.include == "always", 1),
+        else_=_prio(ClipDecision.disposition),
+    )
+    never = case((ClipDecision.include == "never", 3))
+    seg = (
+        select(
+            Disposition.asset_id.label("asset_id"),
+            Disposition.segment_id.label("segment_id"),
+            func.max(case((Disposition.source == "user", _prio(Disposition.status)))).label("u"),
+            func.max(case((Disposition.source == "ai", _prio(Disposition.status)))).label("a"),
+        )
+        .where(Disposition.segment_id.is_not(None))
+        .group_by(Disposition.segment_id, Disposition.asset_id)
+        .subquery()
+    )
+    clip = select(ClipDecision.asset_id, rule.label("r"), never.label("n")).subquery()
+    code = func.coalesce(clip.c.n * 2, seg.c.u * 2, clip.c.r * 2, seg.c.a * 2 + 1)
+    per_seg = (
+        select(seg.c.asset_id, func.min(code).label("c"))
+        .select_from(seg)
+        .outerjoin(clip, clip.c.asset_id == seg.c.asset_id)
+        .group_by(seg.c.asset_id)
+        .subquery()
+    )
+    # A clip without analysed segments shows its own decision.
+    c = func.coalesce(per_seg.c.c, func.coalesce(clip.c.n, clip.c.r) * 2)
+    return (
+        select(Asset.id.label("asset_id"), (c // 2).label("p"), (c % 2).label("ai"))
+        .select_from(Asset)
+        .outerjoin(per_seg, per_seg.c.asset_id == Asset.id)
+        .outerjoin(clip, clip.c.asset_id == Asset.id)
+        .subquery()
+    )
+
+
+def _filtered(q: Any, f: Filters, st: Any) -> Any:
+    from mosaic.storage.models_project import ClipDecision, ClipTag
+
+    q = q.where(_shown()).join(st, st.c.asset_id == Asset.id)
+    if f.status == "none":
+        q = q.where(st.c.p.is_(None))
+    elif f.status is not None:
+        q = q.where(st.c.p == PRIORITY[f.status])
+    elif not f.show_rejected:
+        q = q.where((st.c.p.is_(None)) | (st.c.p != PRIORITY["REJECT"]))
+    if f.min_stars is not None or f.include is not None:
+        q = q.join(ClipDecision, ClipDecision.asset_id == Asset.id)
+        if f.min_stars is not None:
+            q = q.where(ClipDecision.stars >= f.min_stars)
+        if f.include is not None:
+            q = q.where(ClipDecision.include == f.include)
+    if f.camera is not None:
+        q = q.where(_device() == f.camera)
+    if f.day is not None:
+        q = q.where(_day() == (UNKNOWN_TIME if f.day == "unknown" else f.day))
+    if f.tag is not None:
+        q = q.where(Asset.id.in_(select(ClipTag.asset_id).where(ClipTag.tag == f.tag)))
+    if f.kind == "video":
+        q = q.where(Asset.kind == "video")
+    elif f.kind == "photo":
+        q = q.where(Asset.kind.in_(("photo", "live_photo")))
+    return q
+
+
+def rejected_hidden(session: Session, f: Filters) -> int:
+    """Clips the default view hides as rejected ("Show rejected (n)")."""
+    if f.show_rejected or f.status is not None:
+        return 0
+    st = status_table()
+    q = _filtered(
+        select(func.count(Asset.id)).select_from(Asset),
+        Filters(**{**f.__dict__, "status": "REJECT"}),
+        st,
+    )
+    return session.scalar(q) or 0
+
+
 @dataclass(frozen=True)
 class Page:
     items: list[dict[str, Any]]
@@ -87,13 +201,18 @@ def _shown() -> ColumnElement[bool]:
     return and_(Asset.kind.in_(SHOWN_KINDS), Asset.status != "unsupported")
 
 
-def groups(session: Session, group: str) -> list[dict[str, Any]]:
+def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[str, Any]]:
+    f = f or Filters()
+    st = status_table()
     if group == "camera":
         rows = session.execute(
-            select(_device(), func.count(Asset.id), Device.label)
-            .select_from(Asset)
-            .outerjoin(Device, Device.id == Asset.device_id)
-            .where(_shown())
+            _filtered(
+                select(_device(), func.count(Asset.id), Device.label)
+                .select_from(Asset)
+                .outerjoin(Device, Device.id == Asset.device_id),
+                f,
+                st,
+            )
             .group_by(_device())
             .order_by(_device())
         )
@@ -102,16 +221,23 @@ def groups(session: Session, group: str) -> list[dict[str, Any]]:
             for dev, n, label in rows
         ]
     out = []
-    for i, (day, n) in enumerate(
-        session.execute(
-            select(_day(), func.count(Asset.id)).where(_shown()).group_by(_day()).order_by(_day())
+    # Day numbers count every day with clips, so a filter never renumbers the trip.
+    numbers = {
+        day: i + 1
+        for i, day in enumerate(
+            session.scalars(select(_day()).where(_shown()).group_by(_day()).order_by(_day()))
         )
+    }
+    for day, n in session.execute(
+        _filtered(select(_day(), func.count(Asset.id)).select_from(Asset), f, st)
+        .group_by(_day())
+        .order_by(_day())
     ):
         known = day != UNKNOWN_TIME
         out.append(
             {
                 "key": day if known else "unknown",
-                "label": f"Day {i + 1} · {day}" if known else "No date",
+                "label": f"Day {numbers[day]} · {day}" if known else "No date",
                 "count": n,
             }
         )
@@ -122,11 +248,17 @@ def _day_key(time: str | None) -> str:
     return time[:10] if time else "unknown"
 
 
-def page(session: Session, group: str, cursor: str | None, limit: int) -> Page:
+def page(
+    session: Session, group: str, cursor: str | None, limit: int, f: Filters | None = None
+) -> Page:
+    from mosaic.library import decisions
+
     if group not in GROUPS:
         raise BadCursorError(f"group must be one of {', '.join(GROUPS)}")
+    f = f or Filters()
     keys = _keys(group)
-    q = select(Asset, *keys).where(_shown())
+    st = status_table()
+    q = _filtered(select(Asset, *keys, st.c.p, st.c.ai).select_from(Asset), f, st)
     if cursor:
         after = decode_cursor(cursor, group)
         q = q.where(tuple_(*keys, Asset.id) > tuple_(*after))
@@ -180,10 +312,14 @@ def page(session: Session, group: str, cursor: str | None, limit: int) -> Page:
             .group_by(first.c.asset_id)
         ).all()
     )
+    decided = decisions.decisions(session, ids)
+    clip_tags = decisions.tags(session, ids)
     items = []
     for row in rows:
         a = row[0]
         time = a.capture_time
+        prio, by_ai = row[-2], row[-1]
+        dec = decided.get(a.id)
         items.append(
             {
                 "asset_id": a.id,
@@ -200,8 +336,13 @@ def page(session: Session, group: str, cursor: str | None, limit: int) -> Page:
                 ),
                 "segments": seg_counts.get(a.id, 0),
                 "dispositions": dispositions.get(a.id, {}),
+                # The tile's chip: the status shown and whether the owner set it.
+                "status_shown": STATUS_OF.get(prio) if prio else None,
+                "decided_by": ("ai" if by_ai else "user") if prio else None,
+                "decision": decisions.clip_json(dec, clip_tags.get(a.id, [])),
                 "sample_id": tiles.get(a.id),
             }
         )
-    next_cursor = encode_cursor([*rows[-1][1:], assets[-1].id]) if more and rows else None
-    return Page(items, next_cursor, groups(session, group) if cursor is None else None)
+    nk = len(keys)
+    next_cursor = encode_cursor([*rows[-1][1 : 1 + nk], assets[-1].id]) if more and rows else None
+    return Page(items, next_cursor, groups(session, group, f) if cursor is None else None)

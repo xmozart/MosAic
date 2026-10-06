@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 7 (Library S10, S11, S12); steps 1–6 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 7a2 (clip detail API); steps 1–6 and 7a1 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -46,6 +46,11 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 6a. Backend: project settings, estimates with Advanced overrides, progress view, contact-sheet image, `analysis.ready_to_browse`
   - [x] 6b. Screens S8, S9, S25
 - [ ] 7. Library: S10 (virtual grid, filters < 300 ms, hover-scrub, bulk, keyboard), S11 clip detail, decisions API, S12 search (acceptance 4, 5)
+  - [x] 7a1. Backend: clip decisions (stars, USE/MAYBE/REJECT, always/never, tags, note), decision PATCH and bulk, editing honours them, library filters, `clip.updated`
+  - [ ] 7a2. Backend: clip detail and transcript
+  - [ ] 7b. S10 Library
+  - [ ] 7c. S11 Clip detail
+  - [ ] 7d. S12 Search
 - [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
@@ -78,6 +83,8 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - Raising a paused job's cost limit is wired in the Activity popover (5c); S9 and S20 still need their own entry points.
 - `GET /jobs` and `/jobs/{id}` need a per-project permission check before multi-user work: job results can hold trip-context proposals (ADR 0040).
+- The S17 rejected report (step 8) must include clip-level rejections (ADR 0042).
+- A 5,000-clip filter timing test (M2 acceptance 4) belongs to step 11's acceptance suite.
 - Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
@@ -158,3 +165,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.5d · S5 Inventory (summary strip, camera cards with clock warnings, per-day timeline in camera series tokens, clock card, Needs attention with Show files / Ignore / Download now with inline progress, grouping notes, scanning skeletons), S6 Clock check dialog (evidence frames, stepper with +/− keys, Accept / Adjust / Leave, manual-only and all-consistent states), S7 Trip context (quick paste parsed by a job with highlighted results, editable days, people, must include / avoid chips, notes); `/inventory/files`; evidence frame ids; `cam-1…6` tokens (ADR 0040)
 - 2026-10-06 · M2.6a · Project settings with sources (`/projects/{pid}/settings`), preset runs and estimates carry the project's Advanced overrides (Custom on a preset base), `/analysis/progress` (plain-word steps with notes, live contact sheet, failures, clips done), `/media/{pid}/mosaic/{id}`, SSE `analysis.ready_to_browse` (ADR 0041)
 - 2026-10-06 · M2.6b · S8 Analysis setup (three modes with estimates from the scan, Advanced with sources saved as project settings on Analyze, local-only and loading states), S9 Analysis progress (overall card, plain-word stages with counts, live contact sheet, ready-to-browse banner and toast, paused / cost limit / cancelled / complete / failures states, details), S25 Deepen (scope, days with clip counts and places, target, estimate); inventory days carry clip counts (ADR 0041)
+- 2026-10-06 · M2.7a1 · Clip decisions (`clip_decision`, `clip_tag`; precedence segment user → clip include → clip disposition → analysis; a kept clip forces its best moment only), PATCH `/clips/{aid}/decision` and `/decisions/bulk`, editing retrieval and critic honour them, library filters with tile status in SQL and rejected hidden by default, SSE `clip.updated` through an in-process event hub, cover skips rejected clips (ADR 0042)

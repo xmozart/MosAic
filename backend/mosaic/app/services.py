@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import threading
 from dataclasses import dataclass, field
@@ -94,6 +95,38 @@ class Leases:
                 lease.release(folder, self.control.installation_id)
 
 
+class EventHub:
+    """In-process events for the SSE stream that do not come from jobs (``clip.updated``).
+    Each stream subscribes a bounded queue; a stream that falls behind loses old events,
+    never blocks a request (the screens refetch what they show)."""
+
+    MAX = 1000
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._queues: list[collections.deque[tuple[str, dict[str, object]]]] = []
+
+    def subscribe(self) -> collections.deque[tuple[str, dict[str, object]]]:
+        q: collections.deque[tuple[str, dict[str, object]]] = collections.deque(maxlen=self.MAX)
+        with self._lock:
+            self._queues.append(q)
+        return q
+
+    def unsubscribe(self, q: collections.deque[tuple[str, dict[str, object]]]) -> None:
+        with self._lock:
+            if q in self._queues:
+                self._queues.remove(q)
+
+    def publish(self, event: str, data: dict[str, object]) -> None:
+        with self._lock:
+            for q in self._queues:
+                if len(q) == q.maxlen:
+                    # Fallen behind: replace the backlog by one "refetch" marker.
+                    q.clear()
+                    q.append(("clip.updated", {**data, "asset_id": None, "fields": []}))
+                q.append((event, data))
+
+
 @dataclass
 class Services:
     control: ControlDB
@@ -101,10 +134,12 @@ class Services:
     executor: LocalExecutor
     leases: Leases = field(init=False)
     auth: Auth = field(init=False)
+    events: EventHub = field(init=False)
 
     def __post_init__(self) -> None:
         self.leases = Leases(self.control)
         self.auth = Auth(self.control)
+        self.events = EventHub()
 
     @classmethod
     def create(cls, control: ControlDB | None = None) -> Services:

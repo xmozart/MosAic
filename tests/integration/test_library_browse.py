@@ -23,12 +23,14 @@ def _client(control: Any) -> Any:
     return TestClient(app)
 
 
-def _walk(client: Any, url: str, group: str, limit: int) -> tuple[list[dict[str, Any]], Any]:
+def _walk(
+    client: Any, url: str, group: str, limit: int, **filters: Any
+) -> tuple[list[dict[str, Any]], Any]:
     items: list[dict[str, Any]] = []
     cursor = None
     first_groups = None
     while True:
-        params: dict[str, Any] = {"group": group, "limit": limit}
+        params: dict[str, Any] = {"group": group, "limit": limit, **filters}
         if cursor:
             params["cursor"] = cursor
         body = client.get(url, params=params).json()
@@ -53,7 +55,7 @@ def test_pages_cover_every_shown_clip_once_in_order(analyzed_session: Any) -> No
             if a.kind in ("video", "photo", "live_photo") and a.status != "unsupported"
         }
     for group in ("day", "camera"):
-        items, groups = _walk(client, url, group, 3)
+        items, groups = _walk(client, url, group, 3, show_rejected=True)
         ids = [it["asset_id"] for it in items]
         assert len(ids) == len(set(ids)), "no clip twice across pages"
         assert set(ids) == shown
@@ -61,7 +63,12 @@ def test_pages_cover_every_shown_clip_once_in_order(analyzed_session: Any) -> No
         keys = [g["key"] for g in groups]
         order = [it["group"] for it in items]
         assert order == sorted(order, key=keys.index), "items arrive group by group"
-    items, _ = _walk(client, url, "day", 100)
+    # By default, clips whose every moment is rejected are hidden, and counted (S10).
+    default, _ = _walk(client, url, "day", 100)
+    hidden = client.get(url).json()["rejected_hidden"]
+    assert len(default) + hidden == len(shown)
+    assert all(it["status_shown"] != "REJECT" for it in default)
+    items, _ = _walk(client, url, "day", 100, show_rejected=True)
     dated = [it["capture_time"] for it in items if it["capture_time"]]
     assert dated == sorted(dated)
     video = next(it for it in items if it["kind"] == "video" and it["segments"])

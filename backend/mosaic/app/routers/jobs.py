@@ -153,11 +153,20 @@ async def events(
     _me: Principal = Me,
 ) -> StreamingResponse:
     """Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,
-    ``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done) and
-    ``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,
-    S0), and ``lock.lost`` for any project this server lost."""
+    ``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done),
+    ``clip.updated`` (a library decision changed) and ``lock.lost``. Without ``project``:
+    every project's jobs (the rail's activity ring, S0), and ``lock.lost`` for any project
+    this server lost."""
 
     async def stream() -> AsyncIterator[str]:
+        hub = svc.events.subscribe()
+        try:
+            async for chunk in _stream(hub):
+                yield chunk
+        finally:  # the client went away, or the stream ended
+            svc.events.unsubscribe(hub)
+
+    async def _stream(hub: Any) -> AsyncIterator[str]:
         from mosaic.library.progress_view import (
             ready_to_browse,
             stage_levels,
@@ -220,6 +229,13 @@ async def events(
                 if (project is None or pid == project) and pid not in lost_sent:
                     lost_sent.add(pid)  # another computer took it over (ADR 0023)
                     yield _sse("lock.lost", {"project_id": pid})
+            while True:  # clip.updated and other non-job events
+                try:
+                    event, data = hub.popleft()
+                except IndexError:  # empty, or emptied by an overflow just now
+                    break
+                if project is None or data.get("project_id") == project:
+                    yield _sse(event, data)
             if until_idle and not active:
                 return
             await asyncio.sleep(0.5)

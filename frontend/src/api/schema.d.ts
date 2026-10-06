@@ -225,9 +225,10 @@ export interface paths {
         /**
          * Events
          * @description Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,
-         *     ``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done) and
-         *     ``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,
-         *     S0), and ``lock.lost`` for any project this server lost.
+         *     ``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done),
+         *     ``clip.updated`` (a library decision changed) and ``lock.lost``. Without ``project``:
+         *     every project's jobs (the rail's activity ring, S0), and ``lock.lost`` for any project
+         *     this server lost.
          */
         get: operations["events_api_events_get"];
         put?: never;
@@ -519,6 +520,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/clips/{aid}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Decision
+         * @description Sets the owner's decisions on one clip; returns them with the changed fields.
+         */
+        patch: operations["patch_decision_api_projects__pid__clips__aid__decision_patch"];
+        trace?: never;
+    };
     "/api/projects/{pid}/close": {
         parameters: {
             query?: never;
@@ -550,6 +571,26 @@ export interface paths {
          * @description Start downloading the project's cloud-only files, then rescan (a job).
          */
         post: operations["download_cloud_files_api_projects__pid__cloud_files_download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/decisions/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Decisions
+         * @description The same change on many clips (S10 BulkBar): ``{updated}``, the clips that changed.
+         */
+        post: operations["bulk_decisions_api_projects__pid__decisions_bulk_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -658,8 +699,9 @@ export interface paths {
         };
         /**
          * Library
-         * @description One page of clips in day or camera order: ``{items, next_cursor, groups}``;
-         *     ``groups`` (key, label, count) only on the first page.
+         * @description One page of clips in day or camera order: ``{items, next_cursor, groups,
+         *     rejected_hidden}``; ``groups`` and ``rejected_hidden`` on the first page only. Filters
+         *     narrow every count (ADR 0042).
          */
         get: operations["library_api_projects__pid__library_get"];
         put?: never;
@@ -978,6 +1020,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BulkChange */
+        BulkChange: {
+            /** Add Tags */
+            add_tags?: string[] | null;
+            /** Asset Ids */
+            asset_ids: number[];
+            /** Disposition */
+            disposition?: ("USE" | "MAYBE" | "REJECT") | null;
+            /** Include */
+            include?: ("always" | "never") | null;
+            /** Live Motion */
+            live_motion?: boolean | null;
+            /** Note */
+            note?: string | null;
+            /** Remove Tags */
+            remove_tags?: string[] | null;
+            /** Stars */
+            stars?: number | null;
+            /** Tags */
+            tags?: string[] | null;
+        };
         /** CreateBody */
         CreateBody: {
             /** Name */
@@ -990,6 +1053,29 @@ export interface components {
             placement?: components["schemas"]["Placement"] | null;
             /** Root */
             root?: number | null;
+        };
+        /**
+         * DecisionChange
+         * @description A change to the owner's decisions on a clip. A field set to null resets it; a field
+         *     left out is unchanged (ADR 0042).
+         */
+        DecisionChange: {
+            /** Add Tags */
+            add_tags?: string[] | null;
+            /** Disposition */
+            disposition?: ("USE" | "MAYBE" | "REJECT") | null;
+            /** Include */
+            include?: ("always" | "never") | null;
+            /** Live Motion */
+            live_motion?: boolean | null;
+            /** Note */
+            note?: string | null;
+            /** Remove Tags */
+            remove_tags?: string[] | null;
+            /** Stars */
+            stars?: number | null;
+            /** Tags */
+            tags?: string[] | null;
         };
         /** DeviceChange */
         DeviceChange: {
@@ -2139,6 +2225,44 @@ export interface operations {
             };
         };
     };
+    patch_decision_api_projects__pid__clips__aid__decision_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                aid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     close_api_projects__pid__close_post: {
         parameters: {
             query?: never;
@@ -2185,6 +2309,43 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_decisions_api_projects__pid__decisions_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2456,6 +2617,14 @@ export interface operations {
                 group?: string;
                 cursor?: string | null;
                 limit?: number;
+                status?: ("USE" | "MAYBE" | "REJECT" | "none") | null;
+                min_stars?: number | null;
+                camera?: number | null;
+                day?: string | null;
+                tag?: string | null;
+                include?: ("always" | "never") | null;
+                kind?: ("video" | "photo") | null;
+                show_rejected?: boolean;
             };
             header?: never;
             path: {

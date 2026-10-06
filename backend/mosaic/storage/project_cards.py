@@ -16,7 +16,14 @@ from mosaic.core.clock import now_iso
 from mosaic.core.time import parse_rational
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_control import ProjectRegistry
-from mosaic.storage.models_project import Asset, Disposition, Edit, SampleFrame, Segment
+from mosaic.storage.models_project import (
+    Asset,
+    ClipDecision,
+    Disposition,
+    Edit,
+    SampleFrame,
+    Segment,
+)
 
 COVER_FRAMES = 3  # S3: one large and two small best frames
 
@@ -27,10 +34,19 @@ def _cover(s: Session) -> list[int]:
     # Effective USE: a user decision overrides the analysis (invariant 10).
     user = aliased(Disposition)
     overridden = exists().where(user.segment_id == Disposition.segment_id, user.source == "user")
+    # Clips the owner rejected or excluded as a whole are never on the cover (ADR 0042).
+    clip_out = select(ClipDecision.asset_id).where(
+        (ClipDecision.include == "never")
+        | ((ClipDecision.disposition == "REJECT") & ClipDecision.include.is_(None))
+    )
     used = (
         select(Segment.asset_id, func.max(Segment.quality).label("q"))
         .join(Disposition, Disposition.segment_id == Segment.id)
-        .where(Disposition.status == "USE", (Disposition.source == "user") | ~overridden)
+        .where(
+            Disposition.status == "USE",
+            (Disposition.source == "user") | ~overridden,
+            Segment.asset_id.not_in(clip_out),
+        )
         .group_by(Segment.asset_id)
         .order_by(func.max(Segment.quality).desc())
         .limit(COVER_FRAMES)
@@ -48,8 +64,10 @@ def _cover(s: Session) -> list[int]:
         if sid is not None
     ]
     if len(ids) < COVER_FRAMES:
-        rejected = select(Disposition.asset_id).where(
-            Disposition.source == "user", Disposition.status == "REJECT"
+        rejected = (
+            select(Disposition.asset_id)
+            .where(Disposition.source == "user", Disposition.status == "REJECT")
+            .union(clip_out)
         )
         more = s.scalars(
             select(func.min(SampleFrame.id))

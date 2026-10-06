@@ -36,6 +36,7 @@ from mosaic.editing.request import (
 from mosaic.editing.retrieval import Candidate, retrieve
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
+from mosaic.library import decisions
 from mosaic.library.context import TripContext
 from mosaic.library.context import load as load_context
 from mosaic.storage import provenance
@@ -207,6 +208,18 @@ def clip_context(session: Session, c: Candidate) -> refiner.ClipContext:
     return refiner.ClipContext(words, sentences, motion, best)
 
 
+def _clip_kept(s: Session) -> set[int]:
+    """Segments of clips the owner keeps (clip USE or MAYBE, or always include): their AI
+    REJECT no longer counts."""
+    from mosaic.storage.models_project import ClipDecision, Segment
+
+    keeping = select(ClipDecision.asset_id).where(
+        (ClipDecision.include == "always")
+        | (ClipDecision.disposition.in_(("USE", "MAYBE")) & ClipDecision.include.is_(None))
+    )
+    return set(s.scalars(select(Segment.id).where(Segment.asset_id.in_(keeping))))
+
+
 def _inputs_digest(session: Session, cands: list[Candidate]) -> str:
     """Everything the candidates were derived from: observations and dispositions."""
     h = hashlib.sha256()
@@ -318,20 +331,24 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         )
         digest = _inputs_digest(s, cands)
         trip = load_context(s)
-        rejected = {
+        ai_rejected = {
             sid
             for sid in s.scalars(
                 select(Disposition.segment_id).where(
-                    Disposition.status == "REJECT", Disposition.segment_id.is_not(None)
+                    Disposition.status == "REJECT",
+                    Disposition.source == "ai",
+                    Disposition.segment_id.is_not(None),
                 )
             )
             if sid is not None
         }
-        users = {
-            d.segment_id: d.status
-            for d in s.scalars(select(Disposition).where(Disposition.source == "user"))
-        }
-    rejected = {sid for sid in rejected if users.get(sid, "REJECT") == "REJECT"}
+        overridden = set(
+            s.scalars(select(Disposition.segment_id).where(Disposition.source == "user"))
+        )
+        overridden |= _clip_kept(s)
+        # The owner's rejections (segment or clip), plus the analysis's where the owner
+        # decided nothing (invariant 10; ADR 0042).
+        rejected = decisions.user_rejected(s) | (ai_rejected - overridden)
     if not cands:
         raise PermanentError(
             "no usable clips: analyze the folder first (`mosaic analyze`), or every clip "
