@@ -128,6 +128,11 @@ def test_exif_time_edge_cases() -> None:
     assert _iso(b"2025:03:01 10:00:00\0", b"+02:00") == "2025-03-01T10:00:00+02:00"
     assert _iso(12345, None) is None
     assert _iso(None, None) is None
+    assert _iso("2025:03:01 10:00:00", "+01:00", "5") == "2025-03-01T10:00:00.500+01:00"
+    assert _iso("2025:03:01 10:00:00", None, "0000") == "2025-03-01T10:00:00"
+    assert _iso("2025:03:01 10:00:00", None, "12x") == "2025-03-01T10:00:00", "ignored"
+    once = _iso("2025:03:01 10:00:00", "+00:00", "0004")
+    assert once == "2025-03-01T10:00:00+00:00", "below a millisecond: dropped"
 
 
 def test_probe_does_not_decode_pixels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

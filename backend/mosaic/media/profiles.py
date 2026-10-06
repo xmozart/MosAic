@@ -137,7 +137,9 @@ def normalize_iso(value: str | None) -> str | None:
         dt = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return dt.isoformat(timespec="seconds")
+    # Milliseconds only when present (photo bursts); whole seconds otherwise, as before.
+    dt = dt.replace(microsecond=dt.microsecond // 1000 * 1000)
+    return dt.isoformat(timespec="milliseconds" if dt.microsecond else "seconds")
 
 
 def is_hfr(stream: StreamInfo | None) -> bool:

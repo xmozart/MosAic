@@ -35,6 +35,7 @@ _EXIF_IFD, _SUB_IFDS = 0x8769, 0x014A
 _JPEG_OFFSET, _JPEG_LENGTH = 0x0201, 0x0202
 _STRIP_OFFSETS, _STRIP_COUNTS, _COMPRESSION, _PHOTOMETRIC = 0x0111, 0x0117, 0x0103, 0x0106
 _DATE_ORIGINAL, _OFFSET_ORIGINAL, _MAKER_NOTE = 0x9003, 0x9011, 0x927C
+_SUBSEC_ORIGINAL = 0x9291
 _APPLE_CONTENT_ID = 0x0011
 
 _TYPE_SIZE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8, 13: 4}
@@ -260,19 +261,24 @@ def _orient(img: Image.Image, orientation: int) -> Image.Image:
     return img
 
 
-def _iso(date: Any, offset: Any) -> str | None:
-    """EXIF ``YYYY:MM:DD HH:MM:SS`` (+ ``±HH:MM``) as ISO 8601; None when malformed. A
-    time without an offset is local to the camera and stays naive (ADR 0025)."""
-    date, offset = _str(date), _str(offset)
+def _iso(date: Any, offset: Any, subsec: Any = None) -> str | None:
+    """EXIF ``YYYY:MM:DD HH:MM:SS`` (+ ``SubSecTimeOriginal``, + ``±HH:MM``) as ISO 8601;
+    None when malformed. Fractions are kept to the millisecond (bursts are under a second
+    apart). A time without an offset is the camera's local time and stays naive."""
+    date, offset, subsec = _str(date), _str(offset), _str(subsec)
     if not date or len(date) < 19:
         return None
     text = date[:10].replace(":", "-") + "T" + date[11:19]
+    if subsec and subsec.isdigit():
+        text += "." + subsec[:6].ljust(3, "0")
     if offset and len(offset) == 6 and offset[0] in "+-":
         text += offset
     try:
-        return datetime.fromisoformat(text).isoformat(timespec="seconds")
+        dt = datetime.fromisoformat(text)
     except ValueError:
         return None
+    dt = dt.replace(microsecond=dt.microsecond // 1000 * 1000)  # milliseconds, idempotent
+    return dt.isoformat(timespec="milliseconds" if dt.microsecond else "seconds")
 
 
 def apple_content_id(maker_note: bytes | None) -> str | None:
@@ -329,7 +335,7 @@ def photo_meta(path: Path) -> PhotoMeta:
         "heic" if ext in HEIF_EXT else (img.format or ext.lstrip(".")).lower(),
         _str(exif.get(_MAKE)),
         _str(exif.get(_MODEL)),
-        _iso(sub.get(_DATE_ORIGINAL), sub.get(_OFFSET_ORIGINAL)),
+        _iso(sub.get(_DATE_ORIGINAL), sub.get(_OFFSET_ORIGINAL), sub.get(_SUBSEC_ORIGINAL)),
         apple_content_id(note if isinstance(note, bytes) else None),
     )
 

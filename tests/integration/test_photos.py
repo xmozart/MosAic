@@ -78,6 +78,38 @@ def photos(
         shutil.copy(HEIC, root / "IMG_2000.HEIC")
         (root / "pano.insp").write_bytes(b"\xff\xd8\xff\xe0 insp")
         shutil.copy(corpus_dir / "A001_basic.mp4", root / "A001_basic.mp4")
+        # A burst: three nearly identical shots under a second apart, one camera. The
+        # middle one is the sharpest; it must be the recommended frame.
+        shots = (("10", "10", 1.5), ("10", "60", 0.0), ("11", "20", 1.5))
+        for i, (sec, sub, blur) in enumerate(shots):
+            jpeg(
+                root / f"burst_{i}.jpg",
+                seed=43,
+                size=(640, 480),
+                make="Apple",
+                model="iPhone 15 Pro",
+                taken=f"2025:03:01 12:00:{sec}",
+                offset="+00:00",
+                subsec=sub,
+                blur=blur,
+            )
+        # A moment: a photo taken while a video was recording, of the same scene.
+        gen = CorpusGenerator(root, ffmpeg_bin)
+        gen._video(
+            "harbour.mp4",
+            seconds=12,
+            seed=50,
+            scene_seconds=60,
+            metadata=(("creation_time", "2025-03-01T13:00:00.000000Z"),),
+        )
+        jpeg(
+            root / "harbour_photo.jpg",
+            seed=50,
+            size=(640, 360),
+            taken="2025:03:01 13:00:05",
+            offset="+00:00",
+            frame=(150, 1798),
+        )
         control = ControlDB()
         ConfigService(control).set_provider(control.local_principal, "all", "fake", "fake")
         project = init_project(control, control.local_principal, root)
@@ -179,3 +211,26 @@ def test_photo_vectors_stay_out_of_video_similarity(photos: Any) -> None:
         grouped = set(s.scalars(select(Segment.id).where(Segment.similarity_group_id.is_not(None))))
     assert "photo_segment" in kinds
     assert not grouped & photo_segs
+
+
+def test_bursts_and_moments(photos: Any) -> None:
+    from mosaic.storage.models_project import PhotoGroup, PhotoGroupMember
+
+    burst_assets = {_asset_of(photos, f"burst_{i}.jpg").id for i in range(3)}
+    harbour = _asset_of(photos, "harbour.mp4").id
+    snap = _asset_of(photos, "harbour_photo.jpg").id
+    with photos.db.session() as s:
+        seg_asset = {sid: aid for sid, aid in s.execute(select(Segment.id, Segment.asset_id))}
+        groups = {g.id: (g.kind, g.best_segment_id) for g in s.scalars(select(PhotoGroup))}
+        members: dict[int, set[int]] = {}
+        for m in s.scalars(select(PhotoGroupMember)):
+            members.setdefault(m.group_id, set()).add(seg_asset[m.segment_id])
+    bursts = [gid for gid, (kind, _) in groups.items() if kind == "burst"]
+    assert len(bursts) == 1
+    assert members[bursts[0]] == burst_assets
+    best = groups[bursts[0]][1]
+    assert best is not None
+    assert seg_asset[best] == _asset_of(photos, "burst_1.jpg").id, "the sharpest frame"
+    captures = [gid for gid, (kind, _) in groups.items() if kind == "capture"]
+    assert any(members[g] == {snap, harbour} for g in captures), (members, captures)
+    assert all(members[g] != burst_assets for g in captures)

@@ -492,3 +492,21 @@ class Summary(ProjectBase):
     key: Mapped[str] = mapped_column(String(128))  # everything the summary depends on
     context_digest: Mapped[str] = mapped_column(String(16))
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class PhotoGroup(ProjectBase):
+    """Photos that belong together (MEDIA_SUPPORT.md §3, ADR 0026): a ``burst`` (photos
+    under a second apart, nearly identical) with its recommended best frame, or a
+    ``capture`` (photos and the video segments filmed at the same time and place)."""
+
+    __tablename__ = "photo_group"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8))  # burst|capture
+    best_segment_id: Mapped[int | None] = mapped_column(Integer)
+    provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+
+
+class PhotoGroupMember(ProjectBase):
+    __tablename__ = "photo_group_member"
+    group_id: Mapped[int] = mapped_column(ForeignKey("photo_group.id"), primary_key=True)
+    segment_id: Mapped[int] = mapped_column(ForeignKey("segment.id"), primary_key=True, index=True)

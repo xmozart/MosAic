@@ -9,7 +9,7 @@ _(empty — the agent is working on M1)_
 ## Current
 
 - **Milestone:** M1
-- **Step:** M1 step 9 (photos); steps 1–8 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles).
+- **Step:** M1 step 10 (clock correction and colour); steps 1–9 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -39,7 +39,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - [x] 6. Storage placement split/external (macOS and Linux detection), artifact store relocation, DB snapshots via the backup API, cloud placeholders, read-only folders (acceptance 1, 2)
 - [x] 7. Project lifecycle: reopen, relink by fingerprint, new/missing/changed files, lease locks with read-only open (acceptance 3)
 - [x] 8. Camera profiles insta360, nikon, dji and the unsupported-reason catalog (acceptance 4: partial, see Q-3 and the M1.8 log line)
-- [ ] 9. Photos: HEIC/JPEG/NEF/DNG ingest, Live Photo pairing, bursts, photo+video moments, photos in mosaics and vision (licence-clean decoders)
+- [x] 9. Photos: HEIC/JPEG/NEF/DNG ingest, Live Photo pairing, bursts, photo+video moments, photos in mosaics and vision (licence-clean decoders)
 - [ ] 10. Clock correction (per-device offsets, CLI) and colour: per-profile hints, user LUTs for log sources
 - [ ] 11. Hybrid search: SigLIP text→image + FTS5, RRF; API and CLI
 - [ ] 12. Hardware probe and benchmark → estimates; worker pool resource classes and per-provider rate limits
@@ -107,3 +107,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M1.7 · Project lifecycle: scan relinks files by content fingerprint (moved folder: no re-probe, no re-analysis; renamed files keep their record), `POST /relink {choose_folder}`, project leases (`.lock`, holder/host/pid/expiry; read-only open; take-over; renewal; `lock.lost`), `POST /open`/`/close`, `mosaic lock` (ADR 0023; acceptance 3)
 - 2026-10-05 · M1.8 · Camera profiles insta360 (flat full; raw 360 analysis_only through a v360 forward view, lens pairs, LRV), dji (chapters by numbering + continuous time, LRF/SRT), nikon_z, GoPro timelapse flag, unsupported catalog with fixes; analysis_only kept out of edits; probe/2 reclassifies older projects; synthetic camera fixtures + real GoPro/iPhone classification (ADR 0024). Acceptance 4: partial — Insta360/DJI/Nikon video only synthetic (Q-3), no real GoPro chapter fixture, Live Photos with step 9
 - 2026-10-05 · M1.9a · Photos: JPEG/HEIC (pi-heif, decode-only LGPL)/NEF·DNG·ARW·CR2 embedded previews with a bounded TIFF walk, EXIF time with offset, Live Photos paired by Apple content identifier, photos as one-frame clips (photo.analyze, photo.segment with its own vector index) through embed, mosaics, vision and still-aware dispositions; kept out of edits and video similarity; mosaics track the key behind their rows (ADR 0025)
+- 2026-10-05 · M1.9b · Photo bursts (per camera, under 1 s apart, similar; best non-rejected frame) and photo + video captures (within 10 s and similar, merged per shared clip), sub-second photo capture times (photo-probe/2), `photo_group` tables, L1 `library.moments` stage (ADR 0026)

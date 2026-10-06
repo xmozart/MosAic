@@ -75,7 +75,7 @@ def _percentiles(
             continue
         if m.sample_id is not None:
             t = sample_ticks.get(m.sample_id, m.start_ticks)
-            if a <= t < b:
+            if a <= t < b or a == b == t:  # a photo's segment is its one frame
                 out.append(m.percentile)
         elif m.start_ticks < b and m.end_ticks > a:
             out.append(m.percentile)

@@ -36,8 +36,16 @@ def jpeg(
     offset: str | None = None,
     content_id: str | None = None,
     orientation: int | None = None,
+    subsec: str | None = None,
+    frame: tuple[int, int] | None = None,  # (index, scene_len): a corpus video's frame
+    blur: float = 0.0,
 ) -> Path:
-    img = Image.fromarray(render_frame(size[0], size[1], seed, 1, seed))
+    from PIL import ImageFilter
+
+    index, scene = frame or (seed, 1)
+    img = Image.fromarray(render_frame(size[0], size[1], index, scene, seed))
+    if blur:
+        img = img.filter(ImageFilter.GaussianBlur(blur))
     exif = Image.Exif()
     if make:
         exif[0x010F] = make
@@ -50,6 +58,8 @@ def jpeg(
         sub[0x9003] = taken
     if offset:
         sub[0x9011] = offset
+    if subsec:
+        sub[0x9291] = subsec
     if content_id:
         sub[0x927C] = apple_maker_note(content_id)
     img.save(path, exif=exif.tobytes(), quality=90)

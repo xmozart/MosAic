@@ -124,7 +124,7 @@ Other tables:
 - **Sampling and analysis:** `sample_frame`, `mosaic`, `mosaic_tile` (tile index ↔ sample_frame), `visual_observation`, `transcript_word`, `transcript_segment`, `audio_event`, `tech_metric`, `embedding`.
 - **Library:** `similarity_group`, `disposition` (USE/MAYBE/REJECT with reasons and source ai or user, anchored to its source range so user decisions survive re-segmentation, ADR 0013), `user_rating`, `user_note`, `user_tag`, `include_rule` (always/never), `lock`, `trip_context`, `summary` (shot, scene, day and trip levels).
 - **Labeling (S24):** `labeling_question` (kind: place, same_person or event; candidate asset ids; status), `person_link` (asset ids linked to a trip-context person label). This is a user-confirmed link only: no face embeddings or biometric data are stored.
-- **Photos:** `asset.live_motion_enabled` for Live Photos; `burst_group` with the best pick.
+- **Photos:** `asset.live_motion_enabled` for Live Photos; `photo_group` (kind `burst`, with `best_segment_id`, or `capture`: photos and video segments of one moment) and `photo_group_member` (ADR 0026).
 - **Editing:** `edit`, `edit_version`, `edit_draft_op`, `finding` (severity, timecode, text, suggested op, status: open, applied or ignored, applied_in_version), `render`, `provenance`.
 - **Control DB additions:** `saved_preset` (named edit-request templates per user), `local_model` (name, size, checksum, status).
 
@@ -195,7 +195,7 @@ AI qualitative scores use **ordinal scales**: `poor | fair | good | excellent`, 
 Stages per asset, all tasks:
 
 1. **probe.** Run ffprobe plus camera-profile parsers (`MEDIA_SUPPORT.md`) to produce MediaFile and Asset rows.
-2. **group.** Chapter grouping, Live Photo pairing, burst detection and sidecar association.
+2. **group.** Chapter grouping, Live Photo pairing and sidecar association. (Bursts and photo + video captures need embeddings and dispositions, so they are grouped later, in the L1 project stage `library.moments`; ADR 0026.)
 3. **proxy.** 720p H.264 8-bit SDR Rec.709 CFR, at the source rate halved until it is at most 30 fps (ADR 0007), one proxy per asset over its logical timeline. HDR and log sources are tone-mapped or have a LUT applied. Camera LRF/LRV files are associated and validated in every mode, but used as proxies only in Quick mode. This proxy is required because it is also the browser playback format.
 4. **shots.** Adaptive content detector (PySceneDetect's algorithm, ported to numpy; ADR 0008) on the proxy. Add forced subdivision for long static shots.
 5. **samples.** Scene-change frames and fixed-interval frames (ADR 0008), merged and deduplicated by perceptual hash and SigLIP embedding distance. Scene-change frames and user-marked frames are always retained.

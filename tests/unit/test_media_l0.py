@@ -174,6 +174,10 @@ def test_select_audio_prefers_stereo_aac() -> None:
 def test_normalize_iso() -> None:
     assert normalize_iso("2025-02-21T06:50:12.000000Z") == "2025-02-21T06:50:12+00:00"
     assert normalize_iso("garbage") is None
+    frac = normalize_iso("2025-02-21T06:50:12.250400Z")
+    assert frac == "2025-02-21T06:50:12.250+00:00"
+    assert normalize_iso(frac) == frac, "idempotent"
+    assert normalize_iso("2025-02-21T06:50:12.000400Z") == "2025-02-21T06:50:12+00:00"
 
 
 def test_scan_skips_workspace_hidden_and_symlinks(tmp_path: Path) -> None:

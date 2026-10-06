@@ -51,7 +51,7 @@ from mosaic.storage import provenance
 from mosaic.storage.models_project import Asset, AssetFile, MediaFile, MediaStream, Sidecar
 
 PROBE_VERSION = "probe/2"  # 2: Insta360, DJI and Nikon profiles (ADR 0024)
-PHOTO_PROBE_VERSION = "photo-probe/1"  # media/photo.py, not ffprobe (ADR 0025)
+PHOTO_PROBE_VERSION = "photo-probe/2"  # media/photo.py (ADR 0025); 2: sub-second times (0026)
 GROUP_VERSION = "group/2"
 PROXY_SIDECARS = (".lrf", ".lrv")
 PHOTO_KINDS = ("photo", "live_photo")

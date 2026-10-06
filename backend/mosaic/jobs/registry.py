@@ -31,6 +31,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.library.dispositions",
     "mosaic.editing.generate",
     "mosaic.library.context_task",
+    "mosaic.library.moments",
     "mosaic.library.summaries",
     "mosaic.library.review",
     "mosaic.render.tasks",

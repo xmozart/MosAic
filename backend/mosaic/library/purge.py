@@ -17,6 +17,8 @@ from mosaic.storage.models_project import (
     Disposition,
     Mosaic,
     MosaicTile,
+    PhotoGroup,
+    PhotoGroupMember,
     SampleFrame,
     Segment,
     SimilarityGroup,
@@ -44,6 +46,12 @@ def purge_segments(session: Session, asset_id: int) -> None:
             .values(best_segment_id=None)
         )
         session.execute(delete(DeepReview).where(DeepReview.segment_id.in_(seg_ids)))
+        session.execute(delete(PhotoGroupMember).where(PhotoGroupMember.segment_id.in_(seg_ids)))
+        session.execute(
+            update(PhotoGroup)
+            .where(PhotoGroup.best_segment_id.in_(seg_ids))
+            .values(best_segment_id=None)
+        )
         session.execute(
             delete(Disposition).where(
                 Disposition.segment_id.in_(seg_ids), Disposition.source != "user"

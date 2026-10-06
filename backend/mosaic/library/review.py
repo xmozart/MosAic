@@ -38,6 +38,7 @@ from mosaic.editing.retrieval import capture_dates, trip_day
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.model import ResourceClass, TaskSpec
 from mosaic.jobs.registry import SkipTask, task
+from mosaic.library import moments as _moments  # noqa: F401 - registers before L3
 from mosaic.library.context import load as load_context
 from mosaic.library.dispositions import effective
 from mosaic.library.summaries import SUMMARIES_STAGE, summaries_spec
