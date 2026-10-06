@@ -13,6 +13,7 @@ Generate `frontend/src/styles/tokens.css` from `tokens.json` with a build script
   --accent: #F2A541; --accent-fg: #1A1206; --accent-soft: #3A2A12;
   --use: #4CC38A; --maybe: #E6C35C; --reject: #F0575C; --user: #7AA2F7; --info: #6CB6D9;
   --scrim: rgba(0,0,0,0.55);
+  --on-media: #EDEDEC; --media-chip: rgba(10,11,13,0.62); --media-overlay: rgba(10,11,13,0.72);
 }
 [data-theme="light"] {
   --bg: #F7F6F3; --surface-1: #FFFFFF; --surface-2: #F0EFEB; --surface-3: #E6E4DF;
@@ -20,6 +21,7 @@ Generate `frontend/src/styles/tokens.css` from `tokens.json` with a build script
   --accent: #A86208; --accent-fg: #FFFFFF; --accent-soft: #F6E6CC;
   --use: #1B7F4F; --maybe: #8A6B0A; --reject: #C22A2F; --user: #3558C9; --info: #1F6F95;
   --scrim: rgba(0,0,0,0.45);
+  --on-media: #EDEDEC; --media-chip: rgba(10,11,13,0.62); --media-overlay: rgba(10,11,13,0.72);
 }
 ```
 
@@ -54,11 +56,15 @@ Map the shadcn/ui CSS variables onto these tokens:
 | body (base) | 14/20 | 400 | Geist |
 | small | 13/18 | 400 | Geist |
 | caption | 12/16 | 500 | Geist |
+| micro | 11/14 | 600 | Geist (badges and chips on tiles) |
+| tag | 10/12 | 600 | Geist (the "AI" tag, `+n` counts) |
 | timecode | 13/18 | 500 | Geist Mono, `font-variant-numeric: tabular-nums` |
 | timecode-sm | 11/14 | 500 | Geist Mono, tabular |
 
 - Letter-spacing −0.01em on headings and −0.02em on the wordmark.
 - Every timecode, duration, cost, size and filename uses Geist Mono.
+
+**Over footage** (ADR 0033): text and icons use `on-media`, badges `media-chip`, centred notices `media-overlay`, label gradients `scrim`. These do not change with the theme, because footage does not.
 
 ## 4. Spacing, radius, motion
 

@@ -19,6 +19,9 @@
   --user: #7AA2F7;
   --info: #6CB6D9;
   --scrim: rgba(0,0,0,0.55);
+  --on-media: #EDEDEC;
+  --media-chip: rgba(10,11,13,0.62);
+  --media-overlay: rgba(10,11,13,0.72);
   color-scheme: dark;
 }
 
@@ -40,6 +43,9 @@
   --user: #3558C9;
   --info: #1F6F95;
   --scrim: rgba(0,0,0,0.45);
+  --on-media: #EDEDEC;
+  --media-chip: rgba(10,11,13,0.62);
+  --media-overlay: rgba(10,11,13,0.72);
   color-scheme: light;
 }
 
@@ -62,6 +68,9 @@
     --user: #3558C9;
     --info: #1F6F95;
     --scrim: rgba(0,0,0,0.45);
+    --on-media: #EDEDEC;
+    --media-chip: rgba(10,11,13,0.62);
+    --media-overlay: rgba(10,11,13,0.72);
     color-scheme: light;
   }
 }
@@ -108,6 +117,12 @@
   --text-caption: 12px;
   --text-caption--line-height: 16px;
   --text-caption--font-weight: 500;
+  --text-micro: 11px;
+  --text-micro--line-height: 14px;
+  --text-micro--font-weight: 600;
+  --text-tag: 10px;
+  --text-tag--line-height: 12px;
+  --text-tag--font-weight: 600;
   --text-timecode: 13px;
   --text-timecode--line-height: 18px;
   --text-timecode--font-weight: 500;
@@ -136,6 +151,9 @@
   --color-user: var(--user);
   --color-info: var(--info);
   --color-scrim: var(--scrim);
+  --color-on-media: var(--on-media);
+  --color-media-chip: var(--media-chip);
+  --color-media-overlay: var(--media-overlay);
   --color-background: var(--bg);
   --color-foreground: var(--text);
   --color-card: var(--surface-1);

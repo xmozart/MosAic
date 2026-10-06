@@ -21,7 +21,7 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `DispositionChip` | `value`, `by`, `size` | AI: outlined + "AI" tag. User: filled + blue person badge. |
 | `DispositionControl` | `value`, `onChange` | Segmented USE/MAYBE/REJECT with U/M/R hints. |
 | `StarRating` | `value`, `onChange` | 1–5 keys; the accent color is reserved for filled stars. |
-| `IncludeToggle` | `always`, `never` | Always shown in `user` blue. |
+| `IncludeToggle` | `value: always\|never\|none`, `onChange` | Always shown in `user` blue. One value, because a clip cannot be both (L and X toggle it). |
 | `Player` | `src`, `usableRange?`, `markers?`, `range?` | Proxy playback through HTTP range requests. Shows the usable range highlighted and markers (moments, findings). Shortcuts: Space, J/K/L, ←/→ (one frame), Shift+←/→ (one second). |
 | `Filmstrip`, `Waveform` | `assetId`, `range` | Highlights the selection. |
 | `Transcript` | `words[]`, `currentTime` | Highlights the current word; clicking a word seeks; speaker labels. |
