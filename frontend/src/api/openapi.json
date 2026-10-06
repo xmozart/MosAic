@@ -2305,6 +2305,37 @@
       }
     },
     "/api/secrets/{ref}": {
+      "delete": {
+        "description": "Remove the key the user entered. A key the deployment provides (environment,\nDocker secret) is read-only and is used again afterwards (ADR 0036).",
+        "operationId": "delete_secret_api_secrets__ref__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Secret"
+      },
       "put": {
         "description": "``ref`` is the secret name, e.g. ``ai/anthropic``. Write-only.",
         "operationId": "put_secret_api_secrets__ref__put",

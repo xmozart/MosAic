@@ -177,13 +177,23 @@ def test_api_settings_providers_and_write_only_secrets(tmp_path: Path) -> None:
     assert s["eval.corpus_dir"]["source"] == "user"
     assert client.patch("/api/settings", json={"bogus": 1}).status_code == 422
     p = client.get("/api/providers").json()
-    assert p["vision"]["key"] == {"configured": False, "last4": None}
+    assert p["vision"]["key"] == {
+        "configured": False,
+        "last4": None,
+        "store": None,
+        "from_deployment": False,
+    }
     p = client.patch(
         "/api/providers", json={"planner": {"provider": "fake", "model": "fake-1"}}
     ).json()
     assert p["planner"]["provider"] == "fake"
     put = client.put("/api/secrets/ai/anthropic", json={"value": KEY})
-    assert put.json() == {"configured": True, "last4": "WXYZ"}
+    assert put.json() == {
+        "configured": True,
+        "last4": "WXYZ",
+        "store": "keychain",
+        "from_deployment": False,
+    }
     assert KEY not in client.get("/api/providers").text
     assert client.put("/api/secrets/db/password", json={"value": "x"}).status_code == 404
 

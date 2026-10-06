@@ -26,6 +26,7 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
 from mosaic.core.clock import now_iso
+from mosaic.core.runtime import server_mode
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_control import AdminAccount, AuthSession
 
@@ -42,10 +43,6 @@ LOCK_S = 30
 LOCK_MAX_S = 15 * 60
 
 _hasher = PasswordHasher()
-
-
-def server_mode() -> bool:
-    return os.environ.get("MOSAIC_MODE", "desktop").strip().lower() == "server"
 
 
 def cookie_secure() -> bool:
@@ -222,3 +219,6 @@ class Auth:
         if token:
             with self.control.db.session() as s:
                 s.execute(delete(AuthSession).where(AuthSession.token_hash == _digest(token)))
+
+
+__all__ = ["Auth", "AuthError", "Session", "Throttle", "server_mode"]

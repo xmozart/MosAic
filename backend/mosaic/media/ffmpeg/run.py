@@ -12,6 +12,7 @@ from pathlib import Path
 
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.command import FFmpegCommand, ProbeCommand
+from mosaic.storage.secrets import scrubbed_env
 
 log = logging.getLogger("mosaic.ffmpeg")
 
@@ -65,6 +66,7 @@ def run(
     started = time.monotonic()
     proc = subprocess.run(
         argv,
+        env=scrubbed_env(),
         input=data,
         capture_output=True,
         check=False,
@@ -95,7 +97,7 @@ def run_streaming_stdin(
     """
     argv = command.argv(_binary(binaries, command.tool))
     started = time.monotonic()
-    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stderr=subprocess.PIPE, env=scrubbed_env())
     stdin, stderr_pipe = proc.stdin, proc.stderr
     assert stdin is not None
     assert stderr_pipe is not None
@@ -129,7 +131,11 @@ def stream_stdout(
     argv = command.argv(_binary(binaries, command.tool))
     started = time.monotonic()
     proc = subprocess.Popen(
-        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        env=scrubbed_env(),
     )
     out, err_pipe = proc.stdout, proc.stderr
     assert out is not None

@@ -62,6 +62,32 @@ class KeyStatus:
     last4: str | None
     error: str | None = None
 
+    @property
+    def store(self) -> str | None:
+        """Where the key lives, for display: keychain, encrypted_file, environment, docker."""
+        if not self.ref:
+            return None
+        return {
+            "keyring": "keychain",
+            "file": "encrypted_file",
+            "env": "environment",
+            "docker": "docker",
+        }.get(self.ref.partition(":")[0])
+
+    @property
+    def from_deployment(self) -> bool:
+        """Provided by the server's configuration: read-only in the app."""
+        return self.store in ("environment", "docker")
+
+    def as_json(self) -> dict[str, object]:
+        # Never the reference itself or the value: configured, last 4, where it lives.
+        return {
+            "configured": self.configured,
+            "last4": self.last4,
+            "store": self.store,
+            "from_deployment": self.from_deployment,
+        }
+
 
 class NotConfiguredError(RuntimeError):
     """A required setting or key is missing; the message says which command fixes it."""
@@ -239,16 +265,21 @@ class ConfigService:
     # ------------------------------------------------------------------- secrets
 
     def secret_ref(self, principal: Principal, provider: str) -> str | None:
+        """The user's own key first (a decision overrides the deployment), else one the
+        deployment provides (``MOSAIC_SECRET_…`` or a Docker secret; ADR 0036)."""
         with self.control.db.session() as s:
             row = s.get(SecretRef, (principal.user_id, secret_name(provider)))
-            return row.ref if row else None
+            if row is not None:
+                return row.ref
+        return secrets.deployment_ref(secret_name(provider))
 
     def set_key(self, principal: Principal, provider: str, value: str) -> KeyStatus:
-        """Store a provider key in the OS keyring; the DB keeps only the reference."""
+        """Store a provider key (OS keyring on desktop, the encrypted file on a server);
+        the DB keeps only the reference."""
         check(principal, "secrets.write", provider)
         if KNOWN_PROVIDERS.get(provider) != "cloud":
             raise SettingError(f"provider {provider!r} does not use a key")
-        ref = secrets.keyring_ref(secret_name(provider))
+        ref = secrets.writable_ref(secret_name(provider))
         secrets.store(ref, value)
         with self.control.db.session() as s:
             s.merge(
@@ -263,9 +294,11 @@ class ConfigService:
 
     def reset_key(self, principal: Principal, provider: str) -> None:
         check(principal, "secrets.write", provider)
-        ref = self.secret_ref(principal, provider)
+        with self.control.db.session() as s:
+            row = s.get(SecretRef, (principal.user_id, secret_name(provider)))
+            ref = row.ref if row else None
         if ref is None:
-            return
+            return  # nothing stored by the user; a deployment key stays (read-only)
         secrets.delete(ref)
         with self.control.db.session() as s:
             s.execute(
@@ -314,8 +347,14 @@ class ConfigService:
             )
         value = secrets.load(ref)
         if value is None:
+            where = {
+                "keyring": "the keyring",
+                "file": "this server's key file",
+                "env": "the server's environment",
+                "docker": "the server's Docker secrets",
+            }.get(ref.partition(":")[0], "its store")
             raise NotConfiguredError(
-                f"not configured: the {provider} key is missing from the keyring; run "
-                f"`mosaic config ai set-key --provider {provider}`"
+                f"not configured: the {provider} key is missing from {where}; enter it in "
+                f"Settings or run `mosaic config ai set-key --provider {provider}`"
             )
         return value

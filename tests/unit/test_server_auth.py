@@ -257,3 +257,28 @@ def test_every_route_but_sign_in_needs_a_session(monkeypatch: pytest.MonkeyPatch
     for r in hidden:
         for method in r.methods:
             assert client.request(method, r.path).status_code == 401
+
+
+def test_every_api_route_depends_on_the_session_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Static guard (stronger than calling routes): each /api route but sign-in has
+    ``deps.principal`` somewhere in its dependency tree, so a forgotten ``Me`` fails here."""
+    from fastapi.dependencies.models import Dependant
+    from fastapi.routing import APIRoute
+
+    from mosaic.app.deps import principal
+
+    client, _ = _client(monkeypatch, "server")
+    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login"}
+
+    def uses_principal(d: Dependant) -> bool:
+        return any(sub.call is principal or uses_principal(sub) for sub in d.dependencies)
+
+    missing = [
+        f"{sorted(r.methods)} {r.path}"
+        for r in client.app.routes  # type: ignore[attr-defined]
+        if isinstance(r, APIRoute)
+        and r.path.startswith("/api")
+        and r.path not in public
+        and not uses_principal(r.dependant)
+    ]
+    assert missing == []

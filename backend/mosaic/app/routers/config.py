@@ -60,7 +60,7 @@ def _providers_json(cfg: ConfigService, me: Principal) -> dict[str, Any]:
         }
         if st.needs_key:
             ks = cfg.key_status(me, ch.provider)
-            entry["key"] = {"configured": ks.configured, "last4": ks.last4}
+            entry["key"] = ks.as_json()
         out[cap] = entry
     return out
 
@@ -103,7 +103,20 @@ def put_secret(
         ks = _config(svc).set_key(me, provider, body.value.strip())
     except (SettingError, secrets.SecretError) as exc:
         raise HTTPException(422, secrets.redact(str(exc), body.value)) from None
-    return {"configured": ks.configured, "last4": ks.last4}
+    return ks.as_json()
+
+
+@router.delete("/secrets/{ref:path}", status_code=204)
+def delete_secret(ref: str, svc: Services = Svc, me: Principal = Me) -> None:
+    """Remove the key the user entered. A key the deployment provides (environment,
+    Docker secret) is read-only and is used again afterwards (ADR 0036)."""
+    kind, _, provider = ref.partition("/")
+    if kind != "ai" or not provider:
+        raise HTTPException(404, "unknown secret")
+    try:
+        _config(svc).reset_key(me, provider)
+    except secrets.SecretError as exc:
+        raise HTTPException(422, str(exc)) from None
 
 
 @router.post("/secrets/{ref:path}/validate")

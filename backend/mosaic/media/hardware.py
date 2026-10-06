@@ -46,9 +46,15 @@ class Hardware:
 
 
 def _sysctl(name: str) -> str | None:
+    from mosaic.storage.secrets import scrubbed_env
+
     try:
         out = subprocess.run(
-            ["/usr/sbin/sysctl", "-n", name], capture_output=True, text=True, timeout=5
+            ["/usr/sbin/sysctl", "-n", name],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=scrubbed_env(),
         )
     except (OSError, subprocess.SubprocessError):
         return None

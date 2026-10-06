@@ -68,7 +68,10 @@ def run(
     timeout_s: float,
     drop_env: Sequence[str],
 ) -> CliRun:
-    env = {k: v for k, v in os.environ.items() if k not in drop_env}
+    from mosaic.storage.secrets import scrubbed_env
+
+    # The app gets neither its own API-key variables (drop_env) nor any MosAic secret.
+    env = {k: v for k, v in scrubbed_env().items() if k not in drop_env}
     # Own process group, so a timeout also stops the app's helper processes.
     group: dict[str, object] = (
         {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}

@@ -25,7 +25,8 @@ These are the REST endpoints and SSE events the screens need.
 |---|---|---|
 | GET/PATCH | `/settings` (returns `{key: {value, source}}` with source = default/user) | S22 |
 | GET/PATCH | `/providers` (capability → provider/model/mode, source default/user/inherited, ADR 0019) | S1, S22 |
-| PUT | `/secrets/{ref}` (write-only; returns `{configured, last4}`) | S1, S22 |
+| PUT | `/secrets/{ref}` (write-only; returns `{configured, last4, store: keychain\|encrypted_file\|environment\|docker, from_deployment}`; a server needs its master key to save, ADR 0036) | S1, S22 |
+| DELETE | `/secrets/{ref}` (removes the key the user entered; a deployment key is used again) | S22 |
 | POST | `/secrets/{ref}/validate` | S1, S22 |
 | GET | `/models/local` · POST `/models/local/{name}/download` (job) | S1 |
 
