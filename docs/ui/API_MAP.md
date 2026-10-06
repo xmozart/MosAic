@@ -74,7 +74,7 @@ SSE event types:
 
 | Method | Path | Used by |
 |---|---|---|
-| GET | `/projects/{pid}/library?group=day\|camera\|similar&filters…&density=` (groups with paginated items) | S10 |
+| GET | `/projects/{pid}/library?group=day\|camera\|similar&filters…&density=` (groups with paginated items). Built in M1 (ADR 0031): `group=day\|camera&cursor=&limit≤200` → `{items, next_cursor, groups}` with keyset pages (items: asset, kind, status, name, group, capture time, duration `{ticks, tb}`, segments, disposition counts, tile `sample_id`; `groups` on the first page); `similar`, filters and density come in M2 | S10 |
 | GET | `/projects/{pid}/clips/{aid}` (detail: moments, quality, why, similar, tags, note, used_in) | S11 |
 | GET | `/projects/{pid}/clips/{aid}/transcript` | S11 |
 | PATCH | `/projects/{pid}/clips/{aid}/decision` `{disposition?, stars?, include?: always\|never\|none, tags?, note?, live_motion?}` | S10, S11 |

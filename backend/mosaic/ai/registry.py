@@ -250,9 +250,16 @@ def _siglip(model: str) -> Any:
     return SiglipEmbedder(model)
 
 
+def _fake_embedder(model: str) -> Any:
+    from mosaic.ai.adapters.fake.embedder import FakeEmbedder
+
+    return FakeEmbedder(model)
+
+
 LOCAL_PROVIDERS: dict[tuple[str, str], Callable[[str], Any]] = {
     ("transcriber", "faster-whisper"): _whisper,
     ("embedder", "siglip-onnx"): _siglip,
+    ("embedder", "fake"): _fake_embedder,
 }
 
 

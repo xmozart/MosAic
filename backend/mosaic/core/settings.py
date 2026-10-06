@@ -30,7 +30,7 @@ LATER_CAPABILITIES = ("reviewer", "summarizer")
 # only if it supports image input and structured output (ADR 0003).
 PROVIDER_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "anthropic": CLOUD_CAPABILITIES,
-    "fake": CLOUD_CAPABILITIES,
+    "fake": (*CLOUD_CAPABILITIES, "embedder"),  # offline tests and the scale run
     "claude-cli": CLOUD_CAPABILITIES,  # installed apps, user's own sign-in (ADR 0014)
     "codex-cli": CLOUD_CAPABILITIES,
     "faster-whisper": ("transcriber",),

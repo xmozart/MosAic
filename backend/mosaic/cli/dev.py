@@ -80,3 +80,14 @@ def inspect(folder: Path) -> None:
                 f"{owner.rel_path if owner else '-'}: {sc.status} {sc.reason or ''}"
             )
     project.close()
+
+
+@cli.command("gen-long")
+@click.argument("out_dir", type=click.Path(file_okay=False, path_type=Path))
+@click.option("--hours", type=int, default=40, show_default=True)
+def gen_long(out_dir: Path, hours: int) -> None:
+    """Generate the long synthetic project (reused when it already matches)."""
+    from mosaic.devtools.longproject import LongSpec, generate
+
+    spec = generate(out_dir, locate(), LongSpec(hours=hours))
+    click.echo(f"{spec.clips} clips, {spec.hours} h in {out_dir}")

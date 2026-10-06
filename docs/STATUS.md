@@ -9,7 +9,7 @@ _(empty — the agent is working on M1)_
 ## Current
 
 - **Milestone:** M1
-- **Step:** M1 step 13 (40-hour scale test, acceptance 6); steps 1–12 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits).
+- **Step:** M1 step 14 (acceptance suite, `make eval`, report); steps 1–13 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -43,11 +43,12 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - [x] 10. Clock correction (per-device offsets, CLI) and colour: per-profile hints, user LUTs for log sources
 - [x] 11. Hybrid search: SigLIP text→image + FTS5, RRF; API and CLI
 - [x] 12. Hardware probe and benchmark → estimates; worker pool resource classes and per-provider rate limits
-- [ ] 13. Scale: the 40-hour synthetic project, bounded memory, list API < 300 ms (acceptance 6)
+- [x] 13. Scale: the 40-hour synthetic project, bounded memory, list API < 300 ms (acceptance 6)
 - [ ] 14. M1 acceptance suite, `make eval`, `docs/reports/M1.md`; then continue to M2
 
 ## Carry-forward notes
 
+- CPU worker slots are threads: Python-heavy per-frame work contends for the GIL (40-hour run: summed task time ≈ 5× wall on 5 slots). Consider process-based CPU slots with the M2 desktop packaging (ADR 0031).
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - A job paused at its cost limit needs a way to raise that job's `cost_limit_usd` before resuming (S9/S20, API `resume` parameter).
 
@@ -112,3 +113,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M1.10b · LUTs for log footage: per-device .cube LUT (validated, copied into the artifact store by content), lut3d first in proxies and before scaling in final renders, keys change only for LUT devices, devices API `lut_path`/`clear_lut` and `mosaic device --lut` (ADR 0028)
 - 2026-10-05 · M1.11 · Hybrid search: SigLIP text embeddings (same pinned weights), FTS5 index over descriptions/tags/transcripts rebuilt by `library.search_index` at the end of every chain, reciprocal rank fusion, search + suggestions API and `mosaic search` (ADR 0029)
 - 2026-10-05 · M1.12 · Hardware probe (cores, memory, working hardware encoders, fingerprint), `system.benchmark` (generated 4K clip through the real proxy builder, frame pass and embedder; stored per computer; first analysis on a machine runs it), benchmark-based wall-time estimates with `basis`, worker slots sized from the probe (`workers.*` overrides), per-provider AI rate limits (`ai.rate.*`), `mosaic hardware`, `/system/info`, `POST /projects/{pid}/benchmark` (ADR 0030); eval budgets were already job cost limits
+- 2026-10-05 · M1.13 · 40-hour synthetic project (`mosaic-dev gen-long`, lazily generated in .cache/long-40h), offline fake embedder, `GET /projects/{pid}/library` keyset pages by day or camera, acceptance 6: L0/L1 of 40 h in 922 s with a 500 MB worker peak, slowest list page 18.6 ms (ADR 0031)
