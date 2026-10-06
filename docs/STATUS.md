@@ -9,7 +9,7 @@ _(empty — the agent is working on M1)_
 ## Current
 
 - **Milestone:** M1
-- **Step:** M1 step 11 (hybrid search); steps 1–10 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs).
+- **Step:** M1 step 12 (hardware probe, benchmark, rate limits); steps 1–11 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -41,7 +41,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - [x] 8. Camera profiles insta360, nikon, dji and the unsupported-reason catalog (acceptance 4: partial, see Q-3 and the M1.8 log line)
 - [x] 9. Photos: HEIC/JPEG/NEF/DNG ingest, Live Photo pairing, bursts, photo+video moments, photos in mosaics and vision (licence-clean decoders)
 - [x] 10. Clock correction (per-device offsets, CLI) and colour: per-profile hints, user LUTs for log sources
-- [ ] 11. Hybrid search: SigLIP text→image + FTS5, RRF; API and CLI
+- [x] 11. Hybrid search: SigLIP text→image + FTS5, RRF; API and CLI
 - [ ] 12. Hardware probe and benchmark → estimates; worker pool resource classes and per-provider rate limits
 - [ ] 13. Scale: the 40-hour synthetic project, bounded memory, list API < 300 ms (acceptance 6)
 - [ ] 14. M1 acceptance suite, `make eval`, `docs/reports/M1.md`; then continue to M2
@@ -111,3 +111,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M1.9b · Photo bursts (per camera, under 1 s apart, similar; best non-rejected frame) and photo + video captures (within 10 s and similar, merged per shared clip), sub-second photo capture times (photo-probe/2), `photo_group` tables, L1 `library.moments` stage (ADR 0026)
 - 2026-10-05 · M1.10a · Devices and clock correction: device table, raw vs corrected capture times (offsets apply instantly, no re-analysis), L1 `library.clock` suggestions from cross-device evidence pairs, devices API and `mosaic clock` (ADR 0027)
 - 2026-10-05 · M1.10b · LUTs for log footage: per-device .cube LUT (validated, copied into the artifact store by content), lut3d first in proxies and before scaling in final renders, keys change only for LUT devices, devices API `lut_path`/`clear_lut` and `mosaic device --lut` (ADR 0028)
+- 2026-10-05 · M1.11 · Hybrid search: SigLIP text embeddings (same pinned weights), FTS5 index over descriptions/tags/transcripts rebuilt by `library.search_index` at the end of every chain, reciprocal rank fusion, search + suggestions API and `mosaic search` (ADR 0029)

@@ -34,6 +34,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.library.moments",
     "mosaic.library.devices",
     "mosaic.library.summaries",
+    "mosaic.library.search",
     "mosaic.library.review",
     "mosaic.render.tasks",
 )

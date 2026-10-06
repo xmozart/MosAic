@@ -648,6 +648,7 @@ dependencies = [
     { name = "scipy" },
     { name = "sqlalchemy" },
     { name = "sqlite-vec" },
+    { name = "tokenizers" },
     { name = "uvicorn" },
 ]
 
@@ -679,6 +680,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
+    { name = "tokenizers", specifier = ">=0.23" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
 

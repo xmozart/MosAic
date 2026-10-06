@@ -90,3 +90,13 @@ def delete_embeddings(session: Session, kind: str, owner_ids: list[int]) -> int:
             delete(session, name, ids)
     session.execute(sa_delete(Embedding).where(Embedding.id.in_([r[0] for r in rows])))
     return len(rows)
+
+
+def exists(session: Session, name: str) -> bool:
+    """A vector index table exists (nothing is indexed until a stage writes it)."""
+    return (
+        session.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :n"), {"n": name}
+        ).first()
+        is not None
+    )

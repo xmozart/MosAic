@@ -202,7 +202,12 @@ def test_quick_to_thorough_on_one_day_reuses_l0_l1(quick: tuple[Any, Any, int]) 
     # The summaries refresh after the reviews: here two newly dated days and the trip.
     assert new.count("summary") == 3
     kinds = {t.kind for t in JobStore(control.db).tasks(run.job)}
-    assert kinds == {"library.review", "library.dispositions", "library.summaries"}
+    assert kinds == {
+        "library.review",
+        "library.dispositions",
+        "library.search_index",  # new dispositions and reviews are searchable (ADR 0029)
+        "library.summaries",
+    }
     with project.db.session() as s:
         after = set(
             s.execute(select(Artifact.kind, Artifact.key).where(Artifact.kind.in_(L01_KINDS)))

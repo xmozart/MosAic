@@ -38,3 +38,8 @@ class Embedder(Protocol):
     def embed(self, images: Sequence[Image.Image]) -> npt.NDArray[np.float32]:
         """L2-normalized embeddings, shape (n, dim). Weights load on first use."""
         ...
+
+    def embed_text(self, texts: Sequence[str], local_only: bool = False) -> npt.NDArray[np.float32]:
+        """L2-normalized text embeddings in the same space as ``embed`` (search).
+        ``local_only`` never downloads weights (raises ``FileNotFoundError``)."""
+        ...

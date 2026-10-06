@@ -40,7 +40,7 @@ separate process only.
 |---|---|---|
 | Whisper `small` / `medium` / `large-v3` (CTranslate2 conversions `Systran/faster-whisper-small`, `-medium`, `-large-v3` at revision `edaa852ec7e1`, from OpenAI Whisper) | MIT | Local speech-to-text; downloaded on first use into the app-data `models/` folder. `small` for Quick and CI, `medium` for Balanced, `large-v3` for Thorough |
 | Silero VAD (ONNX, bundled in faster-whisper) | MIT | Voice activity detection |
-| SigLIP base patch16-224 (`google/siglip-base-patch16-224`, Apache-2.0; ONNX conversion `Xenova/siglip-base-patch16-224` at revision `4649052661e5`, which states no separate license and redistributes Google's weights) | Apache-2.0 | Local image embeddings (fp32 by default; int8-quantized in CI) |
+| SigLIP base patch16-224 (`google/siglip-base-patch16-224`, Apache-2.0; ONNX conversion `Xenova/siglip-base-patch16-224` at revision `4649052661e5`, which states no separate license and redistributes Google's weights) | Apache-2.0 | Local image embeddings (fp32 by default; int8-quantized in CI), and the text tower plus `tokenizer.json` of the same weights for search queries (ADR 0029) |
 
 ## Test fixtures
 

@@ -795,4 +795,40 @@ def device(folder: Path, luts: tuple[str, ...], clears: tuple[int, ...]) -> None
         click.echo(f"Run `mosaic analyze {folder}` to apply it to previews and analysis.")
 
 
+@cli.command(name="search")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("query")
+@click.option("--mode", type=click.Choice(["all", "visual", "speech"]), default="all")
+@click.option("--limit", type=int, default=20, show_default=True)
+def search_cmd(folder: Path, query: str, mode: str, limit: int) -> None:
+    """Search the library by what clips show or what was said."""
+    from mosaic.ai.registry import embedder
+    from mosaic.core.time import format_display, parse_rational
+    from mosaic.library import search as lib
+    from mosaic.storage.config import ConfigService
+
+    control = _control()
+    project = _open(control, folder, read_only=True)
+    try:
+        emb = (
+            embedder(ConfigService(control), control.local_principal) if mode != "speech" else None
+        )
+        with project.db.session() as s:
+            found = lib.search(s, emb, query, mode, limit)
+            items = lib.describe(s, found.hits)
+    finally:
+        project.close()
+        control.db.dispose()
+    if found.visual == "unavailable":
+        click.echo("(visual search unavailable until an analysis fetches the text model)")
+    if not items:
+        click.echo("No results.")
+    for it in items:
+        tb = parse_rational(it["start"]["tb"])
+        at = format_display(it["start"]["ticks"] * tb)
+        click.echo(f"seg_{it['segment_id']:06d}  ast_{it['asset_id']:04d} @ {at}  [{it['status']}]")
+        for m in it["matched"]:
+            click.echo(f"    {m}")
+
+
 cli.add_command(config_group)

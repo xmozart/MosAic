@@ -78,7 +78,7 @@ SSE event types:
 | GET | `/projects/{pid}/clips/{aid}/transcript` | S11 |
 | PATCH | `/projects/{pid}/clips/{aid}/decision` `{disposition?, stars?, include?: always\|never\|none, tags?, note?, live_motion?}` | S10, S11 |
 | POST | `/projects/{pid}/decisions/bulk` `{asset_ids[], …}` | S10 |
-| GET | `/projects/{pid}/search?q=&mode=all\|visual\|speech` (items with `matched` reasons) · `/search/suggestions` | S12 |
+| GET | `/projects/{pid}/search?q=&mode=all\|visual\|speech&limit=` (items: segment, asset, exact start/end, sample, status, score, `matched` reasons; `visual: ok\|unavailable\|off` drives S12's "analysis incomplete" banner) · `/search/suggestions` (the trip's own tags) (ADR 0029) | S12 |
 | GET | `/projects/{pid}/labeling-questions` · POST `/labeling-questions/{qid}/answer` | S24 |
 | GET | `/media/{pid}/proxy/{aid}` (HTTP range) · `/media/{pid}/frame/{sample_id}` · `/media/{pid}/waveform/{aid}` · `/media/{pid}/filmstrip/{aid}` | all |
 

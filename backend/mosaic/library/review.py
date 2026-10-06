@@ -42,6 +42,7 @@ from mosaic.library import devices as _devices  # noqa: F401 - registers before 
 from mosaic.library import moments as _moments  # noqa: F401 - registers before L3
 from mosaic.library.context import load as load_context
 from mosaic.library.dispositions import effective
+from mosaic.library.search import SEARCH_STAGE, search_index_spec
 from mosaic.library.summaries import SUMMARIES_STAGE, summaries_spec
 from mosaic.media import inventory
 from mosaic.media.ffmpeg.builders import still_frame
@@ -404,7 +405,10 @@ def review_tasks(plan: dict[int, list[int]]) -> list[TaskSpec]:
     ]
     tasks.append(_dispositions(deps=[*range(len(tasks))]))
     # Reviews change descriptions and interest: refresh the summaries that use them.
-    tasks.append(summaries_spec(deps=[len(tasks) - 1]))
+    disp = len(tasks) - 1
+    # Both end the chain and depend only on dispositions: neither blocks the other.
+    tasks.append(summaries_spec(deps=[disp]))
+    tasks.append(search_index_spec(deps=[disp]))  # descriptions changed too
     return tasks
 
 
@@ -485,7 +489,9 @@ def submit_deepen(
     if missing:
         tasks = l2_tasks(missing)
         if target == "balanced":
-            tasks.append(summaries_spec(deps=[len(tasks) - 1]))
+            disp = len(tasks) - 1
+            tasks.append(summaries_spec(deps=[disp]))
+            tasks.append(search_index_spec(deps=[disp]))
         if target == "thorough":
             tasks.append(
                 TaskSpec(
@@ -526,7 +532,8 @@ def deepen_stage(ctx: TaskContext) -> dict[str, Any]:
     with ctx.project.db.session() as s:
         plan, _ = plan_deepen(s, DeepenScope.from_params(ctx.params))
     if not plan:
-        ctx.spawn([summaries_spec()])  # nothing to review: summaries still end the chain
+        # Nothing to review: summaries and the search index still end the chain.
+        ctx.spawn([summaries_spec(), search_index_spec()])
         return {"candidates": 0, "assets": 0}
     ctx.spawn(review_tasks(plan))
     return {"candidates": sum(len(v) for v in plan.values()), "assets": len(plan)}
@@ -537,4 +544,7 @@ inventory.PROJECT_STAGES.append(
         "deep review", "analysis.deepen", ResourceClass.CPU, after=("dispositions",), level=3
     )
 )
+# The search index before summaries: it needs no AI, so an AI failure in summaries
+# never leaves search stale.
+inventory.PROJECT_STAGES.append(SEARCH_STAGE)
 inventory.PROJECT_STAGES.append(SUMMARIES_STAGE)
