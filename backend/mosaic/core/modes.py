@@ -34,6 +34,14 @@ class ModeConfig(BaseModel):
     stt_model: SttModel | None = None  # None: the transcriber's provider profile
     l2: bool = True
     l3: bool = False
+    # The preset a Custom run starts from (ADR 0041): its speed factor and the name the
+    # owner chose. Not a stage parameter, so no artifact key reads it.
+    base: Literal["quick", "balanced", "thorough"] | None = None
+
+    @property
+    def preset(self) -> str:
+        """The preset this run is, or is based on."""
+        return self.base or self.name
 
     @field_validator("sample_interval", "forced_max_shot", mode="before")
     @classmethod
@@ -90,10 +98,15 @@ class UnknownModeError(ValueError):
 
 
 def resolve(mode: str, overrides: dict[str, Any] | None = None) -> ModeConfig:
-    """A preset, or ``custom``: Balanced with explicit overrides (Advanced mode)."""
+    """A preset, or ``custom``: a preset (``base``, default Balanced) with explicit
+    overrides (S8 Advanced; ADR 0041)."""
     if mode == "custom":
-        base = PRESETS["balanced"].model_dump()
-        return ModeConfig.model_validate(base | (overrides or {}) | {"name": "custom"})
+        rest = dict(overrides or {})
+        base_name = rest.pop("base", "balanced")
+        if base_name not in PRESETS:
+            raise UnknownModeError(f"custom is based on one of {', '.join(PRESETS)}")
+        base = PRESETS[base_name].model_dump()
+        return ModeConfig.model_validate(base | rest | {"name": "custom", "base": base_name})
     if mode not in PRESETS:
         raise UnknownModeError(f"unknown analysis mode {mode!r}; choose one of {', '.join(MODES)}")
     if overrides:

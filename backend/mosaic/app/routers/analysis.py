@@ -8,6 +8,7 @@ is missing and, for target Thorough, L3 on the candidates, reusing everything el
 
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,11 +17,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from mosaic.app.deps import principal, services
 from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
-from mosaic.core.modes import MODES, ModeConfig, UnknownModeError, resolve
+from mosaic.core.modes import MODES, PRESETS, ModeConfig, UnknownModeError, resolve
 from mosaic.core.principal import Principal, check
 from mosaic.library import estimate
 from mosaic.library.review import TARGETS, DeepenScope, submit_deepen
 from mosaic.media.pipeline import needs_benchmark, submit_analysis
+from mosaic.storage import project_settings
 from mosaic.storage.config import ConfigService
 
 router = APIRouter(prefix="/api")
@@ -93,23 +95,62 @@ def _parse_scope(raw: str | None) -> Scope | None:
     raise HTTPException(422, "scope must be trip, days:N[,N…] or selection:ID[,ID…]")
 
 
+def _project_mode(s: Any, mode: str, overrides: dict[str, Any] | None) -> ModeConfig:
+    """A whole-project run in a preset: the preset with the project's Advanced overrides
+    (or, for an estimate of unsaved S8 edits, ``overrides`` given here; ADR 0041)."""
+    if mode == "custom":
+        return _mode(mode, overrides, None)
+    if mode not in PRESETS:
+        return _mode(mode, None, None)  # 422 with the list of modes
+    stored = project_settings.mode_overrides(s) if overrides is None else overrides
+    try:
+        return project_settings.run_config(mode, stored)
+    except (UnknownModeError, ValidationError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
+def _overrides_query(raw: str | None) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise HTTPException(422, "overrides must be a JSON object") from None
+    if not isinstance(data, dict):
+        raise HTTPException(422, "overrides must be a JSON object")
+    fields = dict(project_settings.ANALYSIS)
+    unknown = [k for k in data if k not in fields]
+    if unknown:
+        raise HTTPException(422, f"unknown analysis setting {unknown[0]!r}")
+    try:  # the same checks as PATCH /settings
+        return {fields[k]: project_settings.coerce(k, v) for k, v in data.items() if v is not None}
+    except project_settings.ProjectSettingError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
 @router.get("/projects/{pid}/analysis/estimate")
 def get_estimate(
     pid: str,
     mode: str = Query(..., description=f"one of {', '.join(MODES)}"),
     scope: str | None = None,
+    overrides: str | None = Query(
+        None, description="JSON of project analysis keys: estimate unsaved S8 edits"
+    ),
     svc: Services = Svc,
     me: Principal = Me,
 ) -> dict[str, Any]:
     check(me, "analysis.read", pid)
     sc = _parse_scope(scope)
-    config = _mode(mode, None, sc)
+    if sc is not None and overrides is not None:
+        raise HTTPException(422, "overrides apply to a whole-project run, not to deepening")
+    edits = _overrides_query(overrides)
     cfg = ConfigService(svc.control)
     with _project(svc, me, pid) as project, project.db.session() as s:
         if sc is None:
+            config = _project_mode(s, mode, edits)
             est = estimate.for_project(s, cfg, me, config)
         else:
-            est = estimate.for_deepen(s, cfg, me, sc.deepen(), config)
+            est = estimate.for_deepen(s, cfg, me, sc.deepen(), _mode(mode, None, sc))
     return est.as_json()
 
 
@@ -118,13 +159,20 @@ def post_run(pid: str, body: RunBody, svc: Services = Svc, me: Principal = Me) -
     check(me, "analysis.run", pid)
     config = _mode(body.mode, body.overrides, body.scope)
     with _project(svc, me, pid, write=True) as project:
+        cost_limit = body.cost_limit
+        with project.db.session() as s:
+            if cost_limit is None:  # the project's limit, else the app's (ADR 0041)
+                cost_limit = project_settings.stored(s).get("analysis.cost_limit_usd")
+            if body.scope is None and body.mode in PRESETS:
+                # A preset carries the project's Advanced overrides.
+                config = _project_mode(s, body.mode, None)
         if body.scope is None:
             job = submit_analysis(
                 svc.executor,
                 me,
                 project,
                 config,
-                body.cost_limit,
+                cost_limit,
                 benchmark=needs_benchmark(svc.control),
             )
             return {"job_id": job, "mode": config.model_dump(mode="json")}
@@ -134,7 +182,7 @@ def post_run(pid: str, body: RunBody, svc: Services = Svc, me: Principal = Me) -
             project,
             body.scope.deepen(),
             target=config.name,
-            cost_limit_usd=body.cost_limit,
+            cost_limit_usd=cost_limit,
         )
     return {
         "job_id": run.job,  # null: nothing to add in this scope
@@ -142,3 +190,67 @@ def post_run(pid: str, body: RunBody, svc: Services = Svc, me: Principal = Me) -
         "l2_assets": run.l2_assets,
         "dropped": run.dropped,
     }
+
+
+class SettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    values: dict[str, Any] = Field(max_length=32)
+
+
+@router.get("/projects/{pid}/settings")
+def get_project_settings(
+    pid: str, mode: str | None = None, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """Effective project settings with their source (project, user, default or mode).
+    ``mode`` shows the analysis parameters of that preset where the project sets none."""
+    check(me, "settings.read", pid)
+    if mode is not None and mode not in PRESETS:
+        raise HTTPException(422, f"mode must be one of {', '.join(PRESETS)}")
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        return {"settings": project_settings.effective(s, ConfigService(svc.control), me, mode)}
+
+
+@router.patch("/projects/{pid}/settings")
+def patch_project_settings(
+    pid: str, body: SettingsPatch, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """Sets project settings; a null value resets one to its app or mode value."""
+    check(me, "settings.write", pid)
+    with _project(svc, me, pid, write=True) as project:
+        try:
+            with project.write() as s:
+                project_settings.patch(s, body.values)
+        except project_settings.ProjectSettingError as exc:
+            raise HTTPException(422, str(exc)) from None
+        with project.db.session() as s:
+            return {"settings": project_settings.effective(s, ConfigService(svc.control), me)}
+
+
+@router.get("/projects/{pid}/analysis/progress")
+def get_progress(
+    pid: str, job: int | None = None, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """S9: the analysis (or deepening) job's steps in plain words, the live contact sheet,
+    failed clips and whether the library can be browsed (ADR 0041). Without ``job``: the
+    project's latest analysis or deepening job; 404 when it has none."""
+    from mosaic.library.progress_view import analysis_progress
+
+    check(me, "analysis.read", pid)
+    if job is None:
+        latest = [
+            j
+            for kind in ("analysis", "deepen")
+            for j in svc.store.jobs(pid, None, kind=kind, limit=1)
+        ]
+        row = max(latest, key=lambda j: j.id, default=None)
+    else:
+        row = svc.store.job(job)
+    if row is None or row.project_id != pid or row.kind not in ("analysis", "deepen"):
+        raise HTTPException(404, "no analysis job")
+    with (
+        _project(svc, me, pid) as project,
+        project.db.session() as s,
+        svc.control.db.session() as control,
+    ):
+        return analysis_progress(control, s, row)

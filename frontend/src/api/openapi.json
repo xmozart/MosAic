@@ -443,6 +443,22 @@
         "title": "SecretBody",
         "type": "object"
       },
+      "SettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "maxProperties": 32,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "SettingsPatch",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -974,7 +990,7 @@
     },
     "/api/events": {
       "get": {
-        "description": "Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and\n``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,\nS0), and ``lock.lost`` for any project this server lost.",
+        "description": "Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,\n``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done) and\n``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,\nS0), and ``lock.lost`` for any project this server lost.",
         "operationId": "events_api_events_get",
         "parameters": [
           {
@@ -1437,6 +1453,48 @@
         "summary": "Frame"
       }
     },
+    "/api/media/{pid}/mosaic/{mosaic_id}": {
+      "get": {
+        "description": "A labelled contact sheet as sent to the vision model (S9 live card).",
+        "operationId": "mosaic_api_media__pid__mosaic__mosaic_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mosaic_id",
+            "required": true,
+            "schema": {
+              "title": "Mosaic Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mosaic"
+      }
+    },
     "/api/media/{pid}/proxy/{aid}": {
       "get": {
         "operationId": "proxy_api_media__pid__proxy__aid__get",
@@ -1714,6 +1772,24 @@
               ],
               "title": "Scope"
             }
+          },
+          {
+            "description": "JSON of project analysis keys: estimate unsaved S8 edits",
+            "in": "query",
+            "name": "overrides",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON of project analysis keys: estimate unsaved S8 edits",
+              "title": "Overrides"
+            }
           }
         ],
         "responses": {
@@ -1741,6 +1817,64 @@
           }
         },
         "summary": "Get Estimate"
+      }
+    },
+    "/api/projects/{pid}/analysis/progress": {
+      "get": {
+        "description": "S9: the analysis (or deepening) job's steps in plain words, the live contact sheet,\nfailed clips and whether the library can be browsed (ADR 0041). Without ``job``: the\nproject's latest analysis or deepening job; 404 when it has none.",
+        "operationId": "get_progress_api_projects__pid__analysis_progress_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "job",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Progress Api Projects  Pid  Analysis Progress Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Progress"
       }
     },
     "/api/projects/{pid}/benchmark": {
@@ -2611,6 +2745,114 @@
           }
         },
         "summary": "Suggestions"
+      }
+    },
+    "/api/projects/{pid}/settings": {
+      "get": {
+        "description": "Effective project settings with their source (project, user, default or mode).\n``mode`` shows the analysis parameters of that preset where the project sets none.",
+        "operationId": "get_project_settings_api_projects__pid__settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Settings Api Projects  Pid  Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Settings"
+      },
+      "patch": {
+        "description": "Sets project settings; a null value resets one to its app or mode value.",
+        "operationId": "patch_project_settings_api_projects__pid__settings_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Patch Project Settings Api Projects  Pid  Settings Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Project Settings"
       }
     },
     "/api/projects/{pid}/summaries": {

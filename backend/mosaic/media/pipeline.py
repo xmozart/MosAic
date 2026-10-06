@@ -42,7 +42,11 @@ def submit_analysis(
         JobSpec(
             project_id=project.id,
             kind="analysis",
-            params={"mode": config.name, "mode_config": config.model_dump(mode="json")},
+            params={
+                "mode": config.name,
+                "preset": config.preset,
+                "mode_config": config.model_dump(mode="json"),
+            },
             cost_limit_usd=(
                 job_cost_limit(principal) if cost_limit_usd is None else cost_limit_usd
             ),

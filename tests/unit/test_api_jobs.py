@@ -138,3 +138,44 @@ def test_job_json_has_cost_and_limit() -> None:
     body = client.get(f"/api/jobs/{job}").json()
     assert body["cost_limit_usd"] == 7.5
     assert body["cost_usd"] == 0
+
+
+def test_sse_says_once_when_the_library_is_ready_to_browse() -> None:
+    """``analysis.ready_to_browse`` fires when L0 and per-asset L1 work is done, before L2
+    finishes, and only once (API_MAP; ADR 0041)."""
+    from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
+
+    client, svc = _client()
+    job = svc.executor.submit(
+        svc.principal,
+        JobSpec(
+            "P1",
+            "analysis",
+            tasks=[
+                TaskSpec("x", "scan"),
+                TaskSpec("x", "proxy", params={"asset_id": 1}),
+                TaskSpec(
+                    "x", "vision", resource_class=ResourceClass.AI_API, params={"asset_id": 1}
+                ),
+            ],
+        ),
+    )
+
+    def finish() -> None:
+        time.sleep(0.8)
+        for rc in ("cpu", "cpu"):
+            t = svc.store.lease("w", rc)
+            assert t is not None
+            svc.store.complete(t.id, "w")
+        time.sleep(2.0)  # several 0.5 s ticks see L1 done while L2 is still open
+        t = svc.store.lease("w", "ai_api")
+        assert t is not None
+        svc.store.complete(t.id, "w")
+
+    threading.Thread(target=finish).start()
+    with client.stream("GET", "/api/events", params={"project": "P1", "until_idle": True}) as r:
+        text = "".join(r.iter_text())
+    assert text.count("event: analysis.ready_to_browse") == 1
+    ready_at = text.index("event: analysis.ready_to_browse")
+    assert ready_at < text.index('"state": "done"'), "before the L2 work finished"
+    assert f'"job_id": {job}' in text[ready_at:]

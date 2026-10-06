@@ -135,7 +135,8 @@ def _status(svc: Services, pid: str, card: dict[str, Any] | None) -> dict[str, A
             }
     last = svc.store.jobs(pid, None, kind="analysis", limit=1)
     if card and card.get("analyzed") and last:
-        return {"state": "analyzed", "mode": (last[0].params or {}).get("mode")}
+        params = last[0].params or {}
+        return {"state": "analyzed", "mode": params.get("preset") or params.get("mode")}
     if card and card.get("clips", 0) + card.get("photos", 0) > 0:
         return {"state": "scanned"}
     return {"state": "not_analyzed"}

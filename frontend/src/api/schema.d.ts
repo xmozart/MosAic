@@ -224,7 +224,8 @@ export interface paths {
         };
         /**
          * Events
-         * @description Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and
+         * @description Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,
+         *     ``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done) and
          *     ``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,
          *     S0), and ``lock.lost`` for any project this server lost.
          */
@@ -347,6 +348,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media/{pid}/mosaic/{mosaic_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mosaic
+         * @description A labelled contact sheet as sent to the vision model (S9 live card).
+         */
+        get: operations["mosaic_api_media__pid__mosaic__mosaic_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media/{pid}/proxy/{aid}": {
         parameters: {
             query?: never;
@@ -448,6 +469,28 @@ export interface paths {
         };
         /** Get Estimate */
         get: operations["get_estimate_api_projects__pid__analysis_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/analysis/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Progress
+         * @description S9: the analysis (or deepening) job's steps in plain words, the live contact sheet,
+         *     failed clips and whether the library can be browsed (ADR 0041). Without ``job``: the
+         *     project's latest analysis or deepening job; 404 when it has none.
+         */
+        get: operations["get_progress_api_projects__pid__analysis_progress_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -736,6 +779,31 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Settings
+         * @description Effective project settings with their source (project, user, default or mode).
+         *     ``mode`` shows the analysis parameters of that preset where the project sets none.
+         */
+        get: operations["get_project_settings_api_projects__pid__settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Project Settings
+         * @description Sets project settings; a null value resets one to its app or mode value.
+         */
+        patch: operations["patch_project_settings_api_projects__pid__settings_patch"];
         trace?: never;
     };
     "/api/projects/{pid}/summaries": {
@@ -1073,6 +1141,13 @@ export interface components {
         SecretBody: {
             /** Value */
             value: string;
+        };
+        /** SettingsPatch */
+        SettingsPatch: {
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
         };
         /** ValidationError */
         ValidationError: {
@@ -1734,6 +1809,36 @@ export interface operations {
             };
         };
     };
+    mosaic_api_media__pid__mosaic__mosaic_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                mosaic_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     proxy_api_media__pid__proxy__aid__get: {
         parameters: {
             query?: never;
@@ -1931,6 +2036,43 @@ export interface operations {
                 /** @description one of quick, balanced, thorough, custom */
                 mode: string;
                 scope?: string | null;
+                /** @description JSON of project analysis keys: estimate unsaved S8 edits */
+                overrides?: string | null;
+            };
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_progress_api_projects__pid__analysis_progress_get: {
+        parameters: {
+            query?: {
+                job?: number | null;
             };
             header?: never;
             path: {
@@ -2528,6 +2670,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_settings_api_projects__pid__settings_get: {
+        parameters: {
+            query?: {
+                mode?: string | null;
+            };
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_settings_api_projects__pid__settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatch"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

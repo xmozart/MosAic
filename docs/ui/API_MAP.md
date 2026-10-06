@@ -45,7 +45,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET/PUT | `/projects/{pid}/devices` (clock offsets, LUT path; PUT `{devices: [{id, clock_offset_ms \| accept_suggestion \| lut_path \| clear_lut}]}` → `{devices, assets_updated, refresh_job, reanalysis_needed}`; LUTs ADR 0028) · GET `/projects/{pid}/devices/suggestions` (offset, verdict, evidence pairs with `device_sample` and `reference_sample` frame ids; suggestions need the analysis's embeddings; ADR 0027, 0040) | S6, S21 |
 | GET/PUT | `/projects/{pid}/trip-context` (PUT returns `summaries_job`: a context change re-runs summaries only) · POST `/trip-context/parse` `{text}` → `{job_id}`; the job's `result.proposal` (`GET /jobs/{id}`) is the proposed structure, saved only by a PUT (ADR 0040) | S7 |
 | GET | `/projects/{pid}/summaries?level=day\|trip\|scene\|shot&after_ref=&limit=` (`day`: the trip plus each day; scene and shot are paged by ref, limit ≤ 1000) → `{items: [{level, ref, text, themes?, highlights, subjects?, span?}], next_after_ref}` (ADR 0021) | S10, S16 |
-| GET/PATCH | `/projects/{pid}/settings` (effective values with source) | S21 |
+| GET/PATCH | `/projects/{pid}/settings?mode=` → `{settings: {key: {value, source}}}`, source `project` / `user` / `default` / `mode` (an analysis parameter the mode decides; `mode=` shows a preset's values). Keys: `analysis.mode`, `analysis.cost_limit_usd`, `ai.send_gps`, `analysis.sample_interval`, `analysis.tiles`, `analysis.forced_max_shot`, `analysis.proxy`, `analysis.stt_model`. PATCH `{values: {key: value \| null}}` (null resets; 422 invalid; ADR 0041) | S8, S21 |
 | GET | `/projects/{pid}/storage` · POST `/storage/clear-cache` | S21 |
 | DELETE | `/projects/{pid}/recent` → 204 (hides the project from recents and releases its lease; nothing is deleted; opening the folder again brings it back; ADR 0039) | S3 |
 | DELETE | `/projects/{pid}/workspace` (removes MosAic data; originals untouched) | S21 |
@@ -54,8 +54,9 @@ These are the REST endpoints and SSE events the screens need.
 
 | Method | Path | Used by |
 |---|---|---|
-| GET | `/projects/{pid}/analysis/estimate?mode=&scope=` (scope: `trip`, `days:2,3` or `selection:ID,…`; omitted = whole-project run). Returns videos, photos, footage seconds, segments, `l2_calls`, `l3_calls` [lo, hi], `cost_usd` [lo, hi] or null when a model has no price, `storage_bytes`, `wall_seconds` [lo, hi], `basis` (`benchmark` or `default`, ADR 0030), `days` (ADR 0020) | S8, S25 |
-| POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}`; scope `{kind: trip\|days\|selection, days?, segment_ids?}` deepens (mode `balanced` or `thorough`: adds L2 where missing, then L3) and returns `{job_id \| null, candidates, l2_assets, dropped}`; without scope the whole project is analyzed in the mode (`overrides` only with `custom`) | S8, S25 |
+| GET | `/projects/{pid}/analysis/estimate?mode=&scope=&overrides=` (a preset includes the project's Advanced overrides; `overrides` = JSON of `analysis.*` keys estimates unsaved S8 edits, whole-project only; scope: `trip`, `days:2,3` or `selection:ID,…`; omitted = whole-project run). Returns videos, photos, footage seconds, segments, `l2_calls`, `l3_calls` [lo, hi], `cost_usd` [lo, hi] or null when a model has no price, `storage_bytes`, `wall_seconds` [lo, hi], `basis` (`benchmark` or `default`, ADR 0030), `days` (ADR 0020) | S8, S25 |
+| POST | `/projects/{pid}/analysis-runs` `{mode, scope?, overrides?, cost_limit}`; scope `{kind: trip\|days\|selection, days?, segment_ids?}` deepens (mode `balanced` or `thorough`: adds L2 where missing, then L3) and returns `{job_id \| null, candidates, l2_assets, dropped}`; without scope the whole project is analyzed in the mode: a preset with the project's stored Advanced overrides runs as Custom based on that preset (`overrides` only with `custom`, optionally with `base`; ADR 0041) | S8, S25 |
+| GET | `/projects/{pid}/analysis/progress?job=` → `{job_id, kind, mode, steps: [{key, label, state, done, failed, total, pct, note}], ready_to_browse, live: {mosaic_id, tiles, cols, rows, description, file, day} \| null, failures: {count, items: [{asset_id, file, stage, reason}]}, clips: {done, total}}` (latest analysis or deepening job without `job`; reasons are short phrases, never tool output; ADR 0041) | S9 |
 | GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, `cost_usd`, `cost_limit_usd`) | S9, S0 |
 | POST | `/jobs/{id}/pause` · `/resume` (optional body `{cost_limit_usd}`: raise the AI cost limit of a job paused at it; must exceed what the job has spent; ADR 0018) · `/cancel` · `/retry-failed` | S9, S20 |
 | GET | `/events?project=` (SSE; without `project`: every project, for the rail's activity ring) | all |
@@ -67,7 +68,7 @@ SSE event types:
 | `job.progress` | `{job_id, project_id, kind, state, pct, stage, item, cost}` |
 | `job.stage` | Stage transition |
 | `job.state` | running / paused / paused_cost_limit / done / failed / cancelled |
-| `analysis.ready_to_browse` | Fired when L0 and L1 are complete |
+| `analysis.ready_to_browse` | `{job_id, project_id}`, once per analysis job and stream, when L0 and every per-asset L1 task are finished and one succeeded (L2 may still run; a reconnect may repeat it, so dedupe by `job_id`; ADR 0041) |
 | `clip.updated` | `{asset_id, fields}` |
 | `edit.progress` | `{edit_id, step, beats_planned[]}` |
 | `edit.version_created` | — |
@@ -85,7 +86,7 @@ SSE event types:
 | POST | `/projects/{pid}/decisions/bulk` `{asset_ids[], …}` | S10 |
 | GET | `/projects/{pid}/search?q=&mode=all\|visual\|speech&limit=` (items: segment, asset, exact start/end, sample, status, score, `matched` reasons; `visual: ok\|unavailable\|off` drives S12's "analysis incomplete" banner) · `/search/suggestions` (the trip's own tags) (ADR 0029) | S12 |
 | GET | `/projects/{pid}/labeling-questions` · POST `/labeling-questions/{qid}/answer` | S24 |
-| GET | `/media/{pid}/proxy/{aid}` (HTTP range; 404 until a proxy exists) · `/media/{pid}/frame/{sample_id}` (JPEG) · `/media/{pid}/waveform/{aid}` (`{silent, bucket: {ticks, tb}, count, peaks: base64 0–255}`, from the `media.waveform` stage) · `/media/{pid}/filmstrip/{aid}?n=&start_ticks=&end_ticks=` (`{tb, frames: [{sample_id, ticks}]}`) (ADR 0037) | all |
+| GET | `/media/{pid}/proxy/{aid}` (HTTP range; 404 until a proxy exists) · `/media/{pid}/frame/{sample_id}` (JPEG) · `/media/{pid}/mosaic/{mosaic_id}` (the labelled contact sheet, JPEG; S9) · `/media/{pid}/waveform/{aid}` (`{silent, bucket: {ticks, tb}, count, peaks: base64 0–255}`, from the `media.waveform` stage) · `/media/{pid}/filmstrip/{aid}?n=&start_ticks=&end_ticks=` (`{tb, frames: [{sample_id, ticks}]}`) (ADR 0037) | all |
 
 ## Edits
 

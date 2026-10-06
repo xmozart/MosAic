@@ -64,6 +64,7 @@ class Estimate:
     storage_bytes: int
     wall_seconds: tuple[int, int]
     days: int | None = None  # deepen: trip days in scope
+    preset: str | None = None  # the preset a custom run is based on (ADR 0041)
     basis: str = "default"  # wall time from "benchmark" (this computer) or "default"
 
     def as_json(self) -> dict[str, Any]:
@@ -200,6 +201,7 @@ def for_project(
     local, basis = _local_seconds(config, mode, footage, samples, videos)
     return Estimate(
         mode=mode.name,
+        preset=mode.preset,
         scope="project",
         videos=videos,
         photos=photos,
@@ -226,7 +228,7 @@ def _local_seconds(
     proxy_ms = bench.ms_per_minute(mode.proxy) if bench else None
     frame_ms = bench.ms_per_minute("analysis") if bench else None
     if bench is None or proxy_ms is None or frame_ms is None:
-        return footage * SPEED.get(mode.name, SPEED["balanced"]), "default"
+        return footage * SPEED.get(mode.preset, SPEED["balanced"]), "default"
     slots = configured_slots(config.control)
     parallel = max(1, videos)  # one asset's stages run in order
     encode = min(slots["gpu_encode"], parallel)

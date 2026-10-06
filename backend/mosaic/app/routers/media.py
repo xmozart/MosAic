@@ -25,7 +25,7 @@ from mosaic.jobs.registry import PermanentError
 from mosaic.media.proxy import load_proxy
 from mosaic.media.waveform import waveform_key
 from mosaic.storage.artifacts import ArtifactMissingError
-from mosaic.storage.models_project import Asset, SampleFrame
+from mosaic.storage.models_project import Asset, Mosaic, SampleFrame
 
 router = APIRouter(prefix="/api/media")
 Svc = Depends(services)
@@ -61,6 +61,20 @@ def frame(pid: str, sample_id: int, svc: Services = Svc, me: Principal = Me) -> 
         if not key or not project.artifacts.exists("frame", key):
             raise HTTPException(404, "No frame.")
         path = project.artifacts.path("frame", key)
+    return FileResponse(path, media_type="image/jpeg", headers=CACHE)
+
+
+@router.get("/{pid}/mosaic/{mosaic_id}", response_class=Response)
+def mosaic(pid: str, mosaic_id: int, svc: Services = Svc, me: Principal = Me) -> Response:
+    """A labelled contact sheet as sent to the vision model (S9 live card)."""
+    check(me, "media.read", pid)
+    with _project(svc, me, pid) as project:
+        with project.db.session() as s:
+            row = s.get(Mosaic, mosaic_id)
+            key = row.image_key if row else None
+        if not key or not project.artifacts.exists("mosaic", key):
+            raise HTTPException(404, "No contact sheet.")
+        path = project.artifacts.path("mosaic", key)
     return FileResponse(path, media_type="image/jpeg", headers=CACHE)
 
 

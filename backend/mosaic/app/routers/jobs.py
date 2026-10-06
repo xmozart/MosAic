@@ -152,13 +152,22 @@ async def events(
     svc: Services = Svc,
     _me: Principal = Me,
 ) -> StreamingResponse:
-    """Server-sent events: ``job.progress``, ``job.stage``, ``job.state`` and
+    """Server-sent events: ``job.progress``, ``job.stage``, ``job.state``,
+    ``analysis.ready_to_browse`` (once per analysis job, when L0 and L1 are done) and
     ``lock.lost``. Without ``project``: every project's jobs (the rail's activity ring,
     S0), and ``lock.lost`` for any project this server lost."""
 
     async def stream() -> AsyncIterator[str]:
+        from mosaic.library.progress_view import (
+            ready_to_browse,
+            stage_levels,
+            stage_status_counts,
+        )
+
         seen: dict[int, dict[str, Any]] = {}
         lost_sent: set[str] = set()
+        ready_sent: set[int] = set()
+        levels = stage_levels()
         yield ": connected\n\n"
         first = True
         while not await request.is_disconnected():
@@ -196,6 +205,15 @@ async def events(
                             "state": cur["state"],
                         },
                     )
+                if job.kind == "analysis" and job.id not in ready_sent:
+                    with svc.control.db.session() as cs:
+                        ready = ready_to_browse(stage_status_counts(cs, job.id), levels)
+                    if ready:
+                        ready_sent.add(job.id)
+                        yield _sse(
+                            "analysis.ready_to_browse",
+                            {"job_id": job.id, "project_id": job.project_id},
+                        )
                 seen[job.id] = cur
                 active += job.status not in {s.value for s in JOB_TERMINAL}
             for pid in sorted(svc.leases.lost):
