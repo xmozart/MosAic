@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -324,6 +325,16 @@ def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[
     return out
 
 
+def camera_json(a: Asset, labels: Mapping[int, str | None]) -> dict[str, str]:
+    """A tile's camera badge (S10, S12): the device's label, else the model, else the
+    profile; the kind from the profile (a still from a generic camera is a photo)."""
+    label = (labels.get(a.device_id) if a.device_id else None) or a.camera_model
+    kind = (
+        "photo" if a.kind != "video" and a.profile == "generic" else KIND.get(a.profile, "camera")
+    )
+    return {"label": label or a.profile.title(), "kind": kind}
+
+
 def _item_group(group: str, a: Asset, first_key: Any, time: str | None) -> str:
     if group == "camera":
         return str(a.device_id or 0)
@@ -503,12 +514,7 @@ def page(
                 "decided_by": ("ai" if by_ai else "user") if prio else None,
                 "decision": decisions.clip_json(dec, clip_tags.get(a.id, [])),
                 "sample_id": tiles.get(a.id),
-                "camera": {
-                    "label": device_labels.get(a.device_id) or a.camera_model or a.profile.title(),
-                    "kind": "photo"
-                    if a.kind != "video" and a.profile == "generic"
-                    else KIND.get(a.profile, "camera"),
-                },
+                "camera": camera_json(a, device_labels),
                 **tile.get(a.id, _NO_FACTS),
             }
         )

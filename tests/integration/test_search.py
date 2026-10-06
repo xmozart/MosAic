@@ -182,3 +182,33 @@ def test_offline_search_never_downloads_and_falls_back_to_text(
     assert all(c.get("local_files_only") is True for c in calls)
     assert found.visual == "unavailable"
     assert found.hits, "speech still matches"
+
+
+def test_results_show_the_decision_in_force_and_who_made_it(analyzed_session: Any) -> None:
+    """S12 tiles follow ADR 0042: a clip decision shows as the owner's, the AI's view is
+    kept beside it, and the tile has its name and camera."""
+    project, control = analyzed_session
+    client = _client(control)
+    base = f"/api/projects/{project.id}"
+    item = client.get(f"{base}/search", params={"q": "christmas", "mode": "speech"}).json()[
+        "items"
+    ][0]
+    assert item["name"] == "speech.mp4"
+    assert item["camera"]["label"]
+    assert item["decided_by"] in ("ai", None)
+    before_ai = item["ai_status"]
+    url = f"{base}/clips/{item['asset_id']}/decision"
+    try:
+        assert client.patch(url, json={"include": "never"}).status_code == 200
+        after = client.get(f"{base}/search", params={"q": "christmas", "mode": "speech"}).json()
+        hit = next(i for i in after["items"] if i["segment_id"] == item["segment_id"])
+        assert (hit["status"], hit["decided_by"]) == ("REJECT", "user")
+        assert hit["ai_status"] == before_ai
+        assert client.patch(url, json={"include": None, "disposition": "USE"}).status_code == 200
+        kept = client.get(f"{base}/search", params={"q": "christmas", "mode": "speech"}).json()
+        hit = next(i for i in kept["items"] if i["segment_id"] == item["segment_id"])
+        assert (hit["status"], hit["decided_by"]) == ("USE", "user"), (
+            "a clip-wide USE is the owner's"
+        )
+    finally:
+        client.patch(url, json={"include": None, "disposition": None})

@@ -74,9 +74,14 @@ def clip_never(d: ClipDecision | None) -> bool:
 
 def for_segments(s: Session, asset: Asset, segments: list[Segment]) -> dict[int, SegmentDecision]:
     """The decision in force for each of one clip's segments."""
-    ids = [g.id for g in segments]
-    rows = effective(s, ids)
-    clip = s.get(ClipDecision, asset.id)
+    return resolve(segments, effective(s, [g.id for g in segments]), s.get(ClipDecision, asset.id))
+
+
+def resolve(
+    segments: list[Segment], rows: dict[int, Disposition], clip: ClipDecision | None
+) -> dict[int, SegmentDecision]:
+    """``for_segments`` on preloaded rows (the segments' effective dispositions and the
+    clip's decision), for callers that batch many clips."""
     rule, never = clip_rule(clip), clip_never(clip)
     out: dict[int, SegmentDecision] = {}
     for g in segments:

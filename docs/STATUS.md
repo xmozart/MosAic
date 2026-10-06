@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 7d (S12 Search); steps 1–6, 7a–7c done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 8 (Edits basic, S17, S20); steps 1–7 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -45,13 +45,13 @@ Order: design foundation first (milestone rule), then the server pieces the brow
 - [x] 6. Journey II: S8 Analysis setup (mode cards, estimates), S9 progress over SSE (pause/resume/cancel/retry), S25 Deepen
   - [x] 6a. Backend: project settings, estimates with Advanced overrides, progress view, contact-sheet image, `analysis.ready_to_browse`
   - [x] 6b. Screens S8, S9, S25
-- [ ] 7. Library: S10 (virtual grid, filters < 300 ms, hover-scrub, bulk, keyboard), S11 clip detail, decisions API, S12 search (acceptance 4, 5)
+- [x] 7. Library: S10 (virtual grid, filters < 300 ms, hover-scrub, bulk, keyboard), S11 clip detail, decisions API, S12 search (acceptance 4, 5)
   - [x] 7a1. Backend: clip decisions (stars, USE/MAYBE/REJECT, always/never, tags, note), decision PATCH and bulk, editing honours them, library filters, `clip.updated`
   - [x] 7a2. Backend: clip detail and transcript
   - [x] 7b1. Backend for S10: tile captions, speech, similar count, shot-type and speech filters, similar grouping, group totals and places
   - [x] 7b2. S10 Library screen
   - [x] 7c. S11 Clip detail
-  - [ ] 7d. S12 Search
+  - [x] 7d. S12 Search
 - [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
@@ -85,7 +85,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Raising a paused job's cost limit is wired in the Activity popover (5c); S9 and S20 still need their own entry points.
 - `GET /jobs` and `/jobs/{id}` need a per-project permission check before multi-user work: job results can hold trip-context proposals (ADR 0040).
 - The S17 rejected report (step 8) must include clip-level rejections (ADR 0042).
-- A 5,000-clip filter timing test (M2 acceptance 4) belongs to step 11's acceptance suite.
+- A 5,000-clip filter timing test (M2 acceptance 4) belongs to step 11's acceptance suite. The 40-hour scale test's slowest library page rose from 19–63 ms (M1) to 103–151 ms with tile status and facts (budget 300 ms; one CI run failed it once): profile the per-request project open and the first page's three status scans in step 11.
 - Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
@@ -171,3 +171,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.7b1 · Library tiles carry the AI caption and shot type of the clip's most interesting moment, speech and similar count; shot-type and has-speech filters; `group=similar`; group totals (clips, photos, footage) with trip day, date and place (ADR 0044)
 - 2026-10-06 · M2.7b2 · S10 Library: toolbar (search, filter chips, status view, group, density), virtualized grid with group headers and day scrubber (≤ 60 tiles mounted), hover-scrub from sample frames, inspector in the fixed section order, BulkBar, keyboard model, optimistic decisions refetched on `clip.updated`, preliminary banner, show rejected, empty filter state; tiles carry camera and offline (ADR 0044)
 - 2026-10-06 · M2.7c · S11 Clip detail: player with usable range and moment markers, filmstrip, waveform, transcript that seeks within a frame, shared ClipFacts (decisions, AI-vs-you, Why, Moments, Quality, Similar, Tags, Note, Used in edits), photo (Live motion, burst), unsupported and 360 variants, [ / ] and decision keys (L is the player's while it has focus) (ADR 0043)
+- 2026-10-06 · M2.7d · S12 Search: results follow ADR 0042 (decision in force, who made it, the AI's view) with name, camera, stars; header with mode and the trip's own suggestions, matched reasons under each tile, no-results, searching and analysis-incomplete states; query and mode in the URL (ADR 0045)

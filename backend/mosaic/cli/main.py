@@ -891,7 +891,8 @@ def search_cmd(folder: Path, query: str, mode: str, limit: int) -> None:
     for it in items:
         tb = parse_rational(it["start"]["tb"])
         at = format_display(it["start"]["ticks"] * tb)
-        click.echo(f"seg_{it['segment_id']:06d}  ast_{it['asset_id']:04d} @ {at}  [{it['status']}]")
+        status = it["status"] or "-"  # "-": not analysed yet
+        click.echo(f"seg_{it['segment_id']:06d}  ast_{it['asset_id']:04d} @ {at}  [{status}]")
         for m in it["matched"]:
             click.echo(f"    {m}")
 

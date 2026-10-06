@@ -10,6 +10,7 @@ import { HomeScreen } from "@/features/home/HomeScreen";
 import { InventoryScreen } from "@/features/inventory/InventoryScreen";
 import { ClipDetailScreen } from "@/features/library/ClipDetailScreen";
 import { LibraryScreen } from "@/features/library/LibraryScreen";
+import { SearchScreen } from "@/features/search/SearchScreen";
 import { AppShell, Placeholder } from "@/features/shell/AppShell";
 import { ProjectIndex } from "@/features/shell/ProjectIndex";
 import { ProjectLayout } from "@/features/shell/ProjectLayout";
@@ -37,6 +38,7 @@ export function App() {
                 <Route path="deepen" element={<DeepenRoute />} />
                 <Route path="library" element={<LibraryScreen />} />
                 <Route path="clips/:aid" element={<ClipDetailScreen />} />
+                <Route path="search" element={<SearchScreen />} />
                 <Route path="*" element={<Placeholder title="Coming in this milestone" />} />
               </Route>
               <Route path="*" element={<Placeholder title="Not found" />} />

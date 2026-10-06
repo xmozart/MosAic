@@ -140,3 +140,16 @@ def test_offline_files_and_camera_kinds(tmp_path: Path) -> None:
     assert items[ids["c"]]["camera"]["label"] == "HERO12 Black"
     assert cameras == {"0": "Unknown camera"}, "no devices in this fixture: one camera group"
     project.close()
+
+
+def test_one_camera_badge_rule_for_library_and_search() -> None:
+    from mosaic.storage.models_project import Asset
+
+    still = Asset(kind="photo", profile="generic", camera_model=None, device_id=None)
+    clip = Asset(kind="video", profile="gopro", camera_model="HERO12 Black", device_id=3)
+    assert browse.camera_json(still, {}) == {"label": "Generic", "kind": "photo"}
+    assert browse.camera_json(clip, {3: "Leo's GoPro"}) == {
+        "label": "Leo's GoPro",
+        "kind": "actioncam",
+    }
+    assert browse.camera_json(clip, {3: None})["label"] == "HERO12 Black"

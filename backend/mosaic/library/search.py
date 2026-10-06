@@ -37,7 +37,10 @@ from mosaic.storage import provenance, sqlite_fts, sqlite_vec_index
 from mosaic.storage.models_project import (
     Asset,
     DeepReview,
+    Device,
+    Disposition,
     Embedding,
+    MediaFile,
     ProjectMeta,
     SampleFrame,
     Segment,
@@ -364,20 +367,53 @@ def suggestions(s: Session) -> list[str]:
 
 
 def describe(s: Session, hits: list[Hit]) -> list[dict[str, Any]]:
-    """API items: segment, asset, time range (exact), status, frame, reasons."""
+    """API items: the moment (segment, exact range, frame), what matched, and what its tile
+    shows: the decision in force and who made it (ADR 0042's precedence: the AI-vs-you
+    chip), the clip's name, kind, camera and stars. Batched over the hits' clips."""
+    from mosaic.library import browse, decisions
+
     ids = [h.segment_id for h in hits]
-    disp = effective(s, ids)
     segs = {g.id: g for g in s.scalars(select(Segment).where(Segment.id.in_(ids)))}
-    tbs = dict(
-        s.execute(select(Asset.id, Asset.tb).where(Asset.id.in_({h.asset_id for h in hits}))).all()
+    asset_ids = sorted({h.asset_id for h in hits})
+    assets = {a.id: a for a in s.scalars(select(Asset).where(Asset.id.in_(asset_ids)))}
+    names = dict(
+        s.execute(
+            select(MediaFile.asset_id, func.min(MediaFile.rel_path))
+            .where(MediaFile.asset_id.in_(asset_ids))
+            .group_by(MediaFile.asset_id)
+        ).all()
     )
+    labels = dict(
+        s.execute(
+            select(Device.id, Device.label).where(
+                Device.id.in_({a.device_id for a in assets.values() if a.device_id})
+            )
+        ).all()
+    )
+    clip = decisions.decisions(s, asset_ids)
+    rows = effective(s, ids)  # one query for every hit
+    ai = {
+        sid: st
+        for sid, st in s.execute(
+            select(Disposition.segment_id, Disposition.status).where(
+                Disposition.segment_id.in_(ids), Disposition.source == "ai"
+            )
+        )
+    }
+    ruled: dict[int, decisions.SegmentDecision] = {}
+    for aid in asset_ids:
+        mine = [segs[h.segment_id] for h in hits if h.asset_id == aid and h.segment_id in segs]
+        if mine:
+            ruled |= decisions.resolve(mine, rows, clip.get(aid))
     out = []
     for h in hits:
         g = segs.get(h.segment_id)
-        if g is None:
+        a = assets.get(h.asset_id)
+        if g is None or a is None:
             continue
-        tb = tbs.get(h.asset_id) or "1/1"
-        d = disp.get(h.segment_id)
+        tb = a.tb or "1/1"
+        d = ruled.get(h.segment_id)
+        dec = clip.get(a.id)
         out.append(
             {
                 "segment_id": h.segment_id,
@@ -385,9 +421,16 @@ def describe(s: Session, hits: list[Hit]) -> list[dict[str, Any]]:
                 "start": {"ticks": g.start_ticks, "tb": tb},
                 "end": {"ticks": g.end_ticks, "tb": tb},
                 "sample_id": h.sample_id,
-                "status": d.status if d else "USE",
+                "status": d.status if d else None,
+                "decided_by": (("ai" if d.source == "ai" else "user") if d and d.status else None),
+                "ai_status": ai.get(h.segment_id),
                 "score": round(h.score, 6),
                 "matched": h.matched,
+                "name": (names.get(a.id) or "").rsplit("/", 1)[-1] or None,
+                "kind": a.kind,
+                "camera": browse.camera_json(a, labels),
+                "stars": dec.stars if dec else None,
+                "has_speech": g.has_speech,
             }
         )
     return out

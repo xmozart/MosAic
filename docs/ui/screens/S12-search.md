@@ -7,7 +7,9 @@
 
 ## Layout
 
-The query stays in the toolbar search field. Header: "n results for …" with segmented All / Visual / Speech and suggestion chips.
+The query stays in the screen's search field, and in the URL (`?q=&mode=`).
+
+**Deviations (ADR 0045):** the Library toolbar's filter chips, Group, Density, "Deepen analysis…" and "Create edit" are not on this screen. Header: "n results for …" with segmented All / Visual / Speech and suggestion chips.
 
 Grid of tiles. Under each tile: **matched:** a reason (visual tags or a transcript snippet).
 
