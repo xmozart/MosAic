@@ -68,7 +68,7 @@ def run(
     timeout_s: float,
     drop_env: Sequence[str],
 ) -> CliRun:
-    from mosaic.storage.secrets import scrubbed_env
+    from mosaic.core.runtime import scrubbed_env
 
     # The app gets neither its own API-key variables (drop_env) nor any MosAic secret.
     env = {k: v for k, v in scrubbed_env().items() if k not in drop_env}

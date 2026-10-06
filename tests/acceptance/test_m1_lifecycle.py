@@ -29,6 +29,7 @@ pytestmark = [pytest.mark.acceptance, pytest.mark.models]
 FILES = ("A001_basic.mp4", "A002_basic.mp4", "GX010042.MP4", "GX020042.MP4", "speech.mp4")
 ANALYSIS = {
     "media.proxy",
+    "media.waveform",
     "media.visual",
     "audio.analyze",
     "library.embed",

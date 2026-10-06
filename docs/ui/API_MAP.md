@@ -83,7 +83,7 @@ SSE event types:
 | POST | `/projects/{pid}/decisions/bulk` `{asset_ids[], …}` | S10 |
 | GET | `/projects/{pid}/search?q=&mode=all\|visual\|speech&limit=` (items: segment, asset, exact start/end, sample, status, score, `matched` reasons; `visual: ok\|unavailable\|off` drives S12's "analysis incomplete" banner) · `/search/suggestions` (the trip's own tags) (ADR 0029) | S12 |
 | GET | `/projects/{pid}/labeling-questions` · POST `/labeling-questions/{qid}/answer` | S24 |
-| GET | `/media/{pid}/proxy/{aid}` (HTTP range) · `/media/{pid}/frame/{sample_id}` · `/media/{pid}/waveform/{aid}` · `/media/{pid}/filmstrip/{aid}` | all |
+| GET | `/media/{pid}/proxy/{aid}` (HTTP range; 404 until a proxy exists) · `/media/{pid}/frame/{sample_id}` (JPEG) · `/media/{pid}/waveform/{aid}` (`{silent, bucket: {ticks, tb}, count, peaks: base64 0–255}`, from the `media.waveform` stage) · `/media/{pid}/filmstrip/{aid}?n=&start_ticks=&end_ticks=` (`{tb, frames: [{sample_id, ticks}]}`) (ADR 0037) | all |
 
 ## Edits
 

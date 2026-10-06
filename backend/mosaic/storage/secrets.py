@@ -34,6 +34,8 @@ import keyring
 from keyring.backend import KeyringBackend
 from keyring.errors import KeyringError, PasswordDeleteError
 
+from mosaic.core.runtime import SECRET_ENV
+
 log = logging.getLogger(__name__)
 
 KEYRING_SERVICE = "mosaic"
@@ -50,8 +52,7 @@ def keyring_ref(name: str) -> str:
 SCHEMES = ("keyring", "env", "docker", "file")
 WRITABLE = ("keyring", "file")
 DOCKER_DIR = "/run/secrets"
-MASTER_ENV = "MOSAIC_MASTER_KEY"
-MASTER_FILE_ENV = "MOSAIC_MASTER_KEY_FILE"
+MASTER_ENV, MASTER_FILE_ENV = SECRET_ENV[0], SECRET_ENV[1]  # one definition (core.runtime)
 MIN_MASTER = 32
 _SAFE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
@@ -125,22 +126,8 @@ def _store_path() -> Path:
     return app_data_dir() / "secrets.enc.json"
 
 
-# Environment variables that hold secrets. Child processes that never need them (installed
-# AI apps, FFmpeg) don't get them (invariant 11); the worker does. Prefixes end with "_".
-SECRET_ENV = (MASTER_ENV, MASTER_FILE_ENV, "MOSAIC_SECRET_")
-
 _store_lock = threading.Lock()
 _fernets: dict[tuple[str, bytes], Any] = {}
-
-
-def secret_env(name: str) -> bool:
-    return any(name == e or (e.endswith("_") and name.startswith(e)) for e in SECRET_ENV)
-
-
-def scrubbed_env() -> dict[str, str]:
-    """This process's environment without MosAic's secrets, for child processes that never
-    need them (FFmpeg, probes, installed AI apps)."""
-    return {k: v for k, v in os.environ.items() if not secret_env(k)}
 
 
 def _fernet(salt: bytes) -> Any:
@@ -209,7 +196,12 @@ def _file_store(name: str, value: str) -> None:
             # Damaged: keep it aside (never deleted) and start a fresh store, so entering
             # the key again — as the message says — works.
             p = _store_path()
-            os.replace(p, p.with_name(f"{p.name}.damaged-{time.time_ns()}"))
+            try:
+                os.replace(p, p.with_name(f"{p.name}.damaged-{time.time_ns()}"))
+            except OSError as exc:
+                raise SecretError(
+                    f"the encrypted key file can't be replaced ({type(exc).__name__})"
+                ) from None
             log.warning("the encrypted key file was damaged; kept aside, starting a new one")
             data = _read_store()
         token = _fernet(base64.b64decode(data["salt"])).encrypt(value.encode())

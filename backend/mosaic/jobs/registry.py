@@ -19,6 +19,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.media.inventory",
     "mosaic.media.proxy",
     "mosaic.media.visual",
+    "mosaic.media.waveform",
     "mosaic.audio.analysis",
     "mosaic.media.telemetry",
     "mosaic.media.photo_stage",

@@ -46,7 +46,7 @@ class Hardware:
 
 
 def _sysctl(name: str) -> str | None:
-    from mosaic.storage.secrets import scrubbed_env
+    from mosaic.core.runtime import scrubbed_env
 
     try:
         out = subprocess.run(

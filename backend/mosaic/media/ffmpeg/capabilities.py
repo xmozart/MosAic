@@ -85,7 +85,7 @@ def locate(ffmpeg_dir: str | Path | None = None) -> FFmpegBinaries:
 
 
 def _run_text(argv: list[str]) -> str:
-    from mosaic.storage.secrets import scrubbed_env
+    from mosaic.core.runtime import scrubbed_env
 
     proc = subprocess.run(
         argv, capture_output=True, text=True, check=False, timeout=60, env=scrubbed_env()

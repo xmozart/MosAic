@@ -44,7 +44,7 @@ from mosaic.storage.models_project import (
     TranscriptSegment,
 )
 
-SEGMENT_VERSION = "segments/2"
+SEGMENT_VERSION = "segments/3"  # 3: a sentence that fits is never cut when no clean cut exists
 SPLIT_MIN = Fraction(3)  # a split never leaves a piece shorter than this
 MAX_SEG = Fraction(20)
 SPEECH_STRETCH = Fraction(10)  # a segment may run this much past MAX_SEG to finish a sentence
@@ -108,6 +108,8 @@ def split_shot(
                     cut = sentence[1]
                 elif sentence[0] - cur >= min_split:
                     cut = sentence[0]
+                elif b - cur <= max_len + stretch:
+                    break  # no clean cut, but the rest fits: keep the sentence whole
         if cut <= cur or cut >= b:
             break
         pieces.append((cur, cut))

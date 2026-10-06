@@ -6,7 +6,7 @@ from fractions import Fraction
 
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from PIL import Image
 
@@ -116,6 +116,9 @@ def test_siglip_preprocess() -> None:
     st.lists(st.tuples(st.integers(0, 200 * S), st.floats(0.01, 1.0)), max_size=12),
     st.lists(st.tuples(st.integers(0, 200 * S), st.integers(S // 2, 15 * S)), max_size=5),
 )
+# Found by Hypothesis in M2: a 20 s shot whose sentence (2–17 s) leaves no clean cut was
+# cut mid-sentence although the whole shot fits within the speech stretch.
+@example(a=0, length=1800001, cands=[], sentences=[(180002, 1350000)])
 def test_split_shot_properties(
     a: int, length: int, cands: list[tuple[int, float]], sentences: list[tuple[int, int]]
 ) -> None:

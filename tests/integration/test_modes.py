@@ -45,7 +45,17 @@ from tests.support.runner import run_job
 pytestmark = [pytest.mark.integration, pytest.mark.models]
 
 QUICK = PRESETS["quick"]
-L01_KINDS = ("probe", "proxy", "tickmap", "visual", "audio", "embed", "segments", "telemetry")
+L01_KINDS = (
+    "probe",
+    "proxy",
+    "tickmap",
+    "visual",
+    "audio",
+    "waveform",
+    "embed",
+    "segments",
+    "telemetry",
+)
 
 
 @pytest.fixture(scope="module")

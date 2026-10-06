@@ -10,9 +10,9 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from mosaic.core.runtime import scrubbed_env
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.command import FFmpegCommand, ProbeCommand
-from mosaic.storage.secrets import scrubbed_env
 
 log = logging.getLogger("mosaic.ffmpeg")
 
@@ -124,10 +124,16 @@ def run_streaming_stdin(
 
 
 def stream_stdout(
-    binaries: FFmpegBinaries, command: FFmpegCommand, chunk_size: int
+    binaries: FFmpegBinaries,
+    command: FFmpegCommand,
+    chunk_size: int,
+    *,
+    partial_tail: bool = False,
 ) -> Iterator[bytes]:
     """Yield stdout in fixed-size chunks (e.g. one raw frame each) without buffering the
-    whole output (invariant 13). Raises ``FFmpegError`` if the process fails."""
+    whole output (invariant 13). A short final read is dropped (half a video frame), unless
+    ``partial_tail`` (audio samples: the last part of a second still counts). Raises
+    ``FFmpegError`` if the process fails."""
     argv = command.argv(_binary(binaries, command.tool))
     started = time.monotonic()
     proc = subprocess.Popen(
@@ -152,6 +158,8 @@ def stream_stdout(
                 rest = out.read(chunk_size - len(buf))
                 buf += rest
                 if len(buf) < chunk_size:
+                    if partial_tail and buf:
+                        yield buf
                     break
             yield buf
     finally:
