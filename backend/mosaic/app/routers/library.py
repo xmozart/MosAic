@@ -12,7 +12,7 @@ from mosaic.app.deps import principal, services
 from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
-from mosaic.library import browse, decisions
+from mosaic.library import browse, clip_view, decisions
 
 router = APIRouter(prefix="/api")
 Svc = Depends(services)
@@ -129,3 +129,30 @@ def bulk_decisions(
     ids = list(dict.fromkeys(body.asset_ids))
     changed = _apply(svc, me, pid, ids, body.change())
     return {"updated": len(changed)}
+
+
+@router.get("/projects/{pid}/clips/{aid}")
+def get_clip(
+    pid: str, aid: int, show_rejected: bool = False, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """S11: the clip, its moments, the AI's reasons, quality, decisions, the edits that use
+    it, similar clips and its place in the library (``show_rejected`` as the grid has it)."""
+    check(me, "library.read", pid)
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        try:
+            return clip_view.clip_detail(s, aid, show_rejected)
+        except LookupError:
+            raise HTTPException(404, "no such clip") from None
+
+
+@router.get("/projects/{pid}/clips/{aid}/transcript")
+def get_transcript(
+    pid: str, aid: int, after: int | None = None, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """The clip's transcript in sentences with timed words, paged (``after``)."""
+    check(me, "library.read", pid)
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        try:
+            return clip_view.transcript(s, aid, after)
+        except LookupError:
+            raise HTTPException(404, "no such clip") from None

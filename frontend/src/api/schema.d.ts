@@ -520,6 +520,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/clips/{aid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Clip
+         * @description S11: the clip, its moments, the AI's reasons, quality, decisions, the edits that use
+         *     it, similar clips and its place in the library (``show_rejected`` as the grid has it).
+         */
+        get: operations["get_clip_api_projects__pid__clips__aid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/clips/{aid}/decision": {
         parameters: {
             query?: never;
@@ -538,6 +559,26 @@ export interface paths {
          * @description Sets the owner's decisions on one clip; returns them with the changed fields.
          */
         patch: operations["patch_decision_api_projects__pid__clips__aid__decision_patch"];
+        trace?: never;
+    };
+    "/api/projects/{pid}/clips/{aid}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Transcript
+         * @description The clip's transcript in sentences with timed words, paged (``after``).
+         */
+        get: operations["get_transcript_api_projects__pid__clips__aid__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/projects/{pid}/close": {
@@ -2225,6 +2266,42 @@ export interface operations {
             };
         };
     };
+    get_clip_api_projects__pid__clips__aid__get: {
+        parameters: {
+            query?: {
+                show_rejected?: boolean;
+            };
+            header?: never;
+            path: {
+                pid: string;
+                aid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     patch_decision_api_projects__pid__clips__aid__decision_patch: {
         parameters: {
             query?: never;
@@ -2240,6 +2317,42 @@ export interface operations {
                 "application/json": components["schemas"]["DecisionChange"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_transcript_api_projects__pid__clips__aid__transcript_get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+            };
+            header?: never;
+            path: {
+                pid: string;
+                aid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

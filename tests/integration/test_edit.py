@@ -12,30 +12,22 @@ from mosaic.ai.adapters.fake import adapter as fake
 from mosaic.core.timecheck import find_float_times
 from mosaic.editing.generate import export_path
 from mosaic.editing.request import EditRequest
-from mosaic.editing.service import create_edit, get_version, report, report_text, submit_generate
+from mosaic.editing.service import get_version, report, report_text
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_project import Disposition, EditVersion, Segment, Shot
 from mosaic.storage.projects import Project
+from tests.support.editing import generate
 from tests.support.runner import run_job
 
 pytestmark = [pytest.mark.integration, pytest.mark.models]
 
 
-def _generate(project: Project, control: ControlDB, request: EditRequest) -> int:
-    edit_id = create_edit(project, request, control, control.local_principal)
-    job = submit_generate(
-        LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id
-    )
-    assert run_job(control, job, timeout=600) == "done"
-    return edit_id
-
-
 @pytest.fixture(scope="module")
 def edited(analyzed_session: Any) -> tuple[Project, ControlDB, int]:
     project, control = analyzed_session
-    return project, control, _generate(project, control, EditRequest(duration_s=30))
+    return project, control, generate(project, control, EditRequest(duration_s=30))
 
 
 def test_edit_meets_every_blocking_metric(edited: tuple[Project, ControlDB, int]) -> None:
@@ -88,13 +80,13 @@ def test_export_and_db_have_no_float_times(edited: tuple[Project, ControlDB, int
 def test_identical_request_makes_zero_ai_calls(edited: tuple[Project, ControlDB, int]) -> None:
     project, control, edit_id = edited
     before = len(fake.CALLS)
-    again = _generate(project, control, EditRequest(duration_s=30))
+    again = generate(project, control, EditRequest(duration_s=30))
     assert again == edit_id
     assert len(fake.CALLS) == before, "identical inputs: no AI call of any kind"
     with project.db.session() as s:
         versions = list(s.scalars(select(EditVersion).where(EditVersion.edit_id == edit_id)))
     assert len(versions) == 1, "identical key: no new version"
-    take2 = _generate(project, control, EditRequest(duration_s=30, variant=1))
+    take2 = generate(project, control, EditRequest(duration_s=30, variant=1))
     assert take2 != edit_id
     assert len(fake.CALLS) == before + 2  # a fresh planner and selector take
 
@@ -117,7 +109,7 @@ def test_report_explains_every_event(edited: tuple[Project, ControlDB, int]) -> 
 
 def test_longer_edit_with_strict_chronology(analyzed_session: Any) -> None:
     project, control = analyzed_session
-    edit_id = _generate(
+    edit_id = generate(
         project, control, EditRequest(duration_s=60, chronology="strict", pace="energetic")
     )
     v = get_version(project, edit_id)
@@ -179,12 +171,12 @@ def test_trip_context_changes_the_edit_but_never_reruns_vision(
 
     project, control, _ = edited
     request = EditRequest(duration_s=25, story="adventure_highlights")
-    first = _generate(project, control, request)
+    first = generate(project, control, request)
     v1 = get_version(project, first)
     calls = list(fake.CALLS)
     with project.write() as s:
         save(s, TripContext(free_notes="An airshow; aircraft are the main subject."), "user")
-    again = _generate(project, control, request)
+    again = generate(project, control, request)
     assert again == first
     v2 = get_version(project, first)
     assert v2.version == v1.version + 1, "a context change makes a new version"

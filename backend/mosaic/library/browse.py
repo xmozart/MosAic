@@ -110,7 +110,7 @@ def status_table() -> Any:
     )
 
 
-def _filtered(q: Any, f: Filters, st: Any) -> Any:
+def filtered(q: Any, f: Filters, st: Any) -> Any:
     from mosaic.storage.models_project import ClipDecision, ClipTag
 
     q = q.where(_shown()).join(st, st.c.asset_id == Asset.id)
@@ -144,7 +144,7 @@ def rejected_hidden(session: Session, f: Filters) -> int:
     if f.show_rejected or f.status is not None:
         return 0
     st = status_table()
-    q = _filtered(
+    q = filtered(
         select(func.count(Asset.id)).select_from(Asset),
         Filters(**{**f.__dict__, "status": "REJECT"}),
         st,
@@ -201,12 +201,28 @@ def _shown() -> ColumnElement[bool]:
     return and_(Asset.kind.in_(SHOWN_KINDS), Asset.status != "unsupported")
 
 
+def day_numbers(session: Session) -> dict[str, int]:
+    """Trip day numbers as the library labels its day groups: every day with shown clips,
+    so a filter never renumbers the trip (S10, S11)."""
+    return {
+        day: i + 1
+        for i, day in enumerate(
+            session.scalars(select(_day()).where(_shown()).group_by(_day()).order_by(_day()))
+        )
+        if day != UNKNOWN_TIME
+    }
+
+
+def shown(asset: Asset) -> bool:
+    return asset.kind in SHOWN_KINDS and asset.status != "unsupported"
+
+
 def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[str, Any]]:
     f = f or Filters()
     st = status_table()
     if group == "camera":
         rows = session.execute(
-            _filtered(
+            filtered(
                 select(_device(), func.count(Asset.id), Device.label)
                 .select_from(Asset)
                 .outerjoin(Device, Device.id == Asset.device_id),
@@ -221,15 +237,9 @@ def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[
             for dev, n, label in rows
         ]
     out = []
-    # Day numbers count every day with clips, so a filter never renumbers the trip.
-    numbers = {
-        day: i + 1
-        for i, day in enumerate(
-            session.scalars(select(_day()).where(_shown()).group_by(_day()).order_by(_day()))
-        )
-    }
+    numbers = day_numbers(session)
     for day, n in session.execute(
-        _filtered(select(_day(), func.count(Asset.id)).select_from(Asset), f, st)
+        filtered(select(_day(), func.count(Asset.id)).select_from(Asset), f, st)
         .group_by(_day())
         .order_by(_day())
     ):
@@ -258,7 +268,7 @@ def page(
     f = f or Filters()
     keys = _keys(group)
     st = status_table()
-    q = _filtered(select(Asset, *keys, st.c.p, st.c.ai).select_from(Asset), f, st)
+    q = filtered(select(Asset, *keys, st.c.p, st.c.ai).select_from(Asset), f, st)
     if cursor:
         after = decode_cursor(cursor, group)
         q = q.where(tuple_(*keys, Asset.id) > tuple_(*after))

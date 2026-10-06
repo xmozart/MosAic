@@ -2192,6 +2192,67 @@
         "summary": "Post Benchmark"
       }
     },
+    "/api/projects/{pid}/clips/{aid}": {
+      "get": {
+        "description": "S11: the clip, its moments, the AI's reasons, quality, decisions, the edits that use\nit, similar clips and its place in the library (``show_rejected`` as the grid has it).",
+        "operationId": "get_clip_api_projects__pid__clips__aid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "aid",
+            "required": true,
+            "schema": {
+              "title": "Aid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_rejected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show Rejected",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Clip Api Projects  Pid  Clips  Aid  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Clip"
+      }
+    },
     "/api/projects/{pid}/clips/{aid}/decision": {
       "patch": {
         "description": "Sets the owner's decisions on one clip; returns them with the changed fields.",
@@ -2251,6 +2312,73 @@
           }
         },
         "summary": "Patch Decision"
+      }
+    },
+    "/api/projects/{pid}/clips/{aid}/transcript": {
+      "get": {
+        "description": "The clip's transcript in sentences with timed words, paged (``after``).",
+        "operationId": "get_transcript_api_projects__pid__clips__aid__transcript_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "aid",
+            "required": true,
+            "schema": {
+              "title": "Aid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Transcript Api Projects  Pid  Clips  Aid  Transcript Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Transcript"
       }
     },
     "/api/projects/{pid}/close": {
