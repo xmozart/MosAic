@@ -53,6 +53,7 @@ export const DETAIL: ClipDetail = {
   capture_time: "2026-07-15T10:38:00-06:00",
   duration: { ticks: 48 * 90000, tb: "1/90000" },
   rate: "30000/1001",
+  proxy_rate: "30000/1001",
   width: 3840,
   height: 2160,
   badges: ["Log", "4K 30"],
@@ -86,3 +87,50 @@ export const DETAIL: ClipDetail = {
   similar: [{ asset_id: 4, sample_id: 4 }],
   burst: null,
 };
+
+export const TRANSCRIPT = [
+  {
+    id: 1,
+    start: { ticks: 108000, tb: "1/90000" },
+    end: { ticks: 270000, tb: "1/90000" },
+    text: "It's right there! Look!",
+    words: [
+      { start: { ticks: 108000, tb: "1/90000" }, end: { ticks: 140000, tb: "1/90000" }, word: "It's" },
+      { start: { ticks: 140000, tb: "1/90000" }, end: { ticks: 171000, tb: "1/90000" }, word: "right" },
+      { start: { ticks: 171000, tb: "1/90000" }, end: { ticks: 220000, tb: "1/90000" }, word: "there!" },
+      { start: { ticks: 236250, tb: "1/90000" }, end: { ticks: 270000, tb: "1/90000" }, word: "Look!" },
+    ],
+  },
+];
+
+export const PHOTO: ClipDetail = {
+  ...DETAIL,
+  asset_id: 7,
+  kind: "live_photo",
+  name: "IMG_4907.HEIC",
+  duration: null,
+  rate: null,
+  badges: ["Live Photo"],
+  moments: [{ ...DETAIL.moments[0]!, sample_id: 7, description: null }],
+  burst: {
+    items: [1, 2, 3, 4, 5, 6].map((n) => ({ asset_id: 6 + n, sample_id: 6 + n, best: n === 3 })),
+  },
+};
+
+export const UNSUPPORTED: ClipDetail = {
+  ...DETAIL,
+  asset_id: 9,
+  kind: "unsupported",
+  status: "unsupported",
+  name: "DSC_0877.NEV",
+  reason: "This Nikon N-RAW clip can't be read by MosAic.",
+  fix: "Export it as MP4 or MOV from NX Studio (or your editor) into the same folder, then rescan.",
+  rate: null,
+  moments: [],
+  position: null,
+  status_shown: null,
+  decided_by: null,
+  ai_status: null,
+};
+
+export const THREE_SIXTY: ClipDetail = { ...DETAIL, asset_id: 10, name: "VID_20260717_101244.insv", analysis_only: true, badges: ["360"] };

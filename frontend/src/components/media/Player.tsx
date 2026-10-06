@@ -1,8 +1,8 @@
 import { Pause, Play } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { cn } from "@/lib/cn";
-import { fps, formatClock, seconds, type SourceTime } from "@/lib/time";
+import { fps, formatClock, frameIndex, seconds, type SourceTime } from "@/lib/time";
 
 export interface PlayerRange {
   start: SourceTime;
@@ -24,6 +24,16 @@ export interface PlayerProps {
   /** Play only this range: start there, stop at its end. */
   range?: PlayerRange;
   className?: string;
+  /** Called as playback moves (display seconds; e.g. to follow along in a transcript). */
+  onTime?: (seconds: number) => void;
+}
+
+export interface PlayerHandle {
+  /** Shows the frame that contains ``t`` (S11: a transcript click lands within a frame). */
+  seekTo: (t: SourceTime) => void;
+  toggle: () => void;
+  /** Gives the player keyboard focus (J/K/L, Space, arrows). */
+  focus: () => void;
 }
 
 const L_RATES = [1, 1.5, 2, 4];
@@ -33,8 +43,12 @@ const L_RATES = [1, 1.5, 2, 4];
  * video element. Keys: Space play/pause · J back 5 s · K pause · L play (again: faster)
  * · ←/→ one frame · Shift+←/→ one second.
  */
-export function Player({ src, poster, rate, usableRange, markers = [], range, className }: PlayerProps) {
+export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
+  { src, poster, rate, usableRange, markers = [], range, className, onTime },
+  ref,
+) {
   const video = useRef<HTMLVideoElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -68,6 +82,19 @@ export function Player({ src, poster, rate, usableRange, markers = [], range, cl
       void v.play();
     } else v.pause();
   };
+
+  useImperativeHandle(ref, () => ({
+    seekTo: (t) => {
+      // A quarter into the frame that contains t, so the decoder shows exactly that frame;
+      // never past the clip's last frame.
+      const v = video.current;
+      const end = v && Number.isFinite(v.duration) ? v.duration : Infinity;
+      const last = Number.isFinite(end) ? Math.max(0, Math.ceil(end / frame) - 1) : Infinity;
+      seek((Math.min(frameIndex(t, rate), last) + 0.25) * frame);
+    },
+    toggle,
+    focus: () => root.current?.focus({ preventScroll: true }),
+  }));
 
   const onKey = (e: KeyboardEvent) => {
     const v = video.current;
@@ -120,6 +147,7 @@ export function Player({ src, poster, rate, usableRange, markers = [], range, cl
 
   return (
     <div
+      ref={root}
       tabIndex={0}
       onKeyDown={onKey}
       aria-label="Player"
@@ -144,6 +172,7 @@ export function Player({ src, poster, rate, usableRange, markers = [], range, cl
             onTimeUpdate={(e) => {
               const t = e.currentTarget.currentTime;
               setTime(t);
+              onTime?.(t);
               if (range && t >= hi) e.currentTarget.pause();
             }}
           />
@@ -206,4 +235,4 @@ export function Player({ src, poster, rate, usableRange, markers = [], range, cl
       </div>
     </div>
   );
-}
+});

@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 7c (S11 Clip detail); steps 1–6, 7a, 7b done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 7d (S12 Search); steps 1–6, 7a–7c done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -50,7 +50,7 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 7a2. Backend: clip detail and transcript
   - [x] 7b1. Backend for S10: tile captions, speech, similar count, shot-type and speech filters, similar grouping, group totals and places
   - [x] 7b2. S10 Library screen
-  - [ ] 7c. S11 Clip detail
+  - [x] 7c. S11 Clip detail
   - [ ] 7d. S12 Search
 - [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
@@ -170,3 +170,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.7a2 · Clip detail `/clips/{aid}` (moments with exact times and who decided, Why from the analysis's own description and reasons, quality words against the trip, position in the day with prev/next, used in edits, similar, burst) and `/clips/{aid}/transcript` (timed words, no speaker names) (ADR 0043)
 - 2026-10-06 · M2.7b1 · Library tiles carry the AI caption and shot type of the clip's most interesting moment, speech and similar count; shot-type and has-speech filters; `group=similar`; group totals (clips, photos, footage) with trip day, date and place (ADR 0044)
 - 2026-10-06 · M2.7b2 · S10 Library: toolbar (search, filter chips, status view, group, density), virtualized grid with group headers and day scrubber (≤ 60 tiles mounted), hover-scrub from sample frames, inspector in the fixed section order, BulkBar, keyboard model, optimistic decisions refetched on `clip.updated`, preliminary banner, show rejected, empty filter state; tiles carry camera and offline (ADR 0044)
+- 2026-10-06 · M2.7c · S11 Clip detail: player with usable range and moment markers, filmstrip, waveform, transcript that seeks within a frame, shared ClipFacts (decisions, AI-vs-you, Why, Moments, Quality, Similar, Tags, Note, Used in edits), photo (Live motion, burst), unsupported and 360 variants, [ / ] and decision keys (L is the player's while it has focus) (ADR 0043)

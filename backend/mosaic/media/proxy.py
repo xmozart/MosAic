@@ -556,3 +556,14 @@ def proxy_task(ctx: TaskContext) -> dict[str, Any]:
 
 
 inventory.ASSET_STAGES.append(inventory.StageDef("proxy", "media.proxy", ResourceClass.GPU_ENCODE))
+
+
+def _missing_errors() -> tuple[type[BaseException], ...]:
+    from mosaic.jobs.registry import PermanentError
+    from mosaic.storage.artifacts import ArtifactMissingError
+
+    return (ArtifactMissingError, PermanentError, FileNotFoundError)
+
+
+# Why a proxy cannot be served: not made yet, or its files are gone.
+PROXY_MISSING = _missing_errors()

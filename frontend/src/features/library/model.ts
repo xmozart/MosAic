@@ -1,5 +1,6 @@
 import type { CameraKind, DecidedBy, Disposition } from "@/lib/domain";
-import { formatClock, seconds, type SourceTime } from "@/lib/time";
+import { formatDay } from "@/lib/format";
+import { formatClock, seconds, tenths, type SourceTime } from "@/lib/time";
 
 /** One clip of `GET /projects/{pid}/library` (API_MAP; ADR 0031, 0042, 0044). */
 export interface LibraryItem {
@@ -140,6 +141,7 @@ export interface ClipDetail {
   capture_time: string | null;
   duration: SourceTime | null;
   rate: string | null;
+  proxy_rate: string | null; // the served proxy's frame rate: the player steps by it
   width: number | null;
   height: number | null;
   badges: string[];
@@ -190,4 +192,29 @@ export function optimisticClip(c: ClipDetail, change: DecisionChange): ClipDetai
     change,
   );
   return { ...c, decision: tile.decision, status_shown: tile.status_shown, decided_by: tile.decided_by };
+}
+
+/** "0:02.9": a moment's time to a tenth of a second (display). */
+export const clock = tenths;
+
+/** "iPhone 16 Pro · Jul 16, 07:52 · Day 3 · 0:07". */
+export function factsLine(c: ClipDetail): string {
+  return [
+    c.camera,
+    c.capture_time ? `${formatDay(c.capture_time.slice(0, 10))}, ${c.capture_time.slice(11, 16)}` : null,
+    c.position?.day ? `Day ${c.position.day}` : null,
+    clipLength(c.duration),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The clip's usable range: from its first non-rejected moment's usable start to the last
+ * one's usable end (the player's green band). */
+export function usableRange(c: Pick<ClipDetail, "moments">): { start: SourceTime; end: SourceTime } | undefined {
+  const kept = c.moments.filter((m) => m.status !== "REJECT");
+  const list = kept.length ? kept : c.moments;
+  const first = list[0]?.usable_start;
+  const last = list.at(-1)?.usable_end;
+  return first && last ? { start: first, end: last } : undefined;
 }

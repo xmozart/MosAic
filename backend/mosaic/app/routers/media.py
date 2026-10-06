@@ -21,17 +21,15 @@ from mosaic.app.deps import principal, services
 from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
-from mosaic.jobs.registry import PermanentError
-from mosaic.media.proxy import load_proxy
+from mosaic.media.proxy import PROXY_MISSING, load_proxy
 from mosaic.media.waveform import waveform_key
-from mosaic.storage.artifacts import ArtifactMissingError
 from mosaic.storage.models_project import Asset, Mosaic, SampleFrame
 
 router = APIRouter(prefix="/api/media")
 Svc = Depends(services)
 Me = Depends(principal)
 # An asset without a finished proxy (or no such asset): "not yet", never a 500.
-_MISSING = (ArtifactMissingError, PermanentError, FileNotFoundError)
+_MISSING = PROXY_MISSING
 # Derived and keyed by content: safe to cache in this browser for a while.
 CACHE = {"Cache-Control": "private, max-age=3600"}
 

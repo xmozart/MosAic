@@ -22,9 +22,9 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `DispositionControl` | `value`, `onChange` | Segmented USE/MAYBE/REJECT with U/M/R hints. |
 | `StarRating` | `value`, `onChange` | 1–5 keys; the accent color is reserved for filled stars. |
 | `IncludeToggle` | `value: always\|never\|none`, `onChange` | Always shown in `user` blue. One value, because a clip cannot be both (L and X toggle it). |
-| `Player` | `src`, `usableRange?`, `markers?`, `range?` | Proxy playback through HTTP range requests. Shows the usable range highlighted and markers (moments, findings). Shortcuts: Space, J/K/L, ←/→ (one frame), Shift+←/→ (one second). |
+| `Player` | `src`, `rate` (the proxy's frame rate), `usableRange?`, `markers?`, `range?`, `onTime?`; handle `seekTo(SourceTime)` (to the frame that contains it), `toggle()`, `focus()` | Proxy playback through HTTP range requests. Shows the usable range highlighted and markers (moments, findings). Shortcuts: Space, J/K/L, ←/→ (one frame), Shift+←/→ (one second). |
 | `Filmstrip`, `Waveform` | `assetId`, `range` | Highlights the selection. |
-| `Transcript` | `words[]`, `currentTime` | Highlights the current word; clicking a word seeks; speaker labels. |
+| `Transcript` | `lines[]` (sentences with timed words), `now`, `language`, `onSeek` | Highlights the current word (`aria-current`); clicking a word or a line's timestamp seeks; each line's timestamp is its tab stop. No speaker labels (ADR 0043). |
 | `QualityRow` | `sharpness, steadiness, exposure, audio` | Ordinal words, never numbers. Tooltips explain each. |
 | `SimilarShots` | `groupId` | Shows a "Why this one is preferred" line under each alternative. |
 | `CameraBadge` | `kind: phone\|actioncam\|360\|drone\|camera\|photo` | Lucide icon plus short label. |

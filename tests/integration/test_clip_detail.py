@@ -53,6 +53,9 @@ def test_a_speech_clip_in_full(analyzed_session: Any) -> None:
     c = r.json()
     _no_floats(c)
     assert c["name"] == "speech.mp4"
+    assert c["proxy_rate"] is not None, "the player steps by the proxy's frames"
+    num, den = (int(x) for x in c["proxy_rate"].split("/"))
+    assert num / den <= 30.001
     assert c["kind"] == "video"
     assert c["moments"], "a clip with segments has moments"
     first = c["moments"][0]
@@ -127,6 +130,7 @@ def test_states_no_speech_unsupported_and_photo(analyzed_session: Any) -> None:
     assert photo is not None, "the corpus has a portrait photo"
     p = client.get(f"{base}/{photo}").json()
     assert p["kind"] in ("photo", "live_photo")
+    assert p["proxy_rate"] is None, "photos have no proxy to step through"
     assert p["duration"] is None or isinstance(p["duration"]["ticks"], int)
     if not bursts:
         assert p["burst"] is None, "a single photo has no burst strip"

@@ -14,6 +14,7 @@ from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
 from mosaic.library import browse, clip_view, decisions
+from mosaic.storage.projects import Project
 
 router = APIRouter(prefix="/api")
 Svc = Depends(services)
@@ -143,11 +144,26 @@ def get_clip(
     """S11: the clip, its moments, the AI's reasons, quality, decisions, the edits that use
     it, similar clips and its place in the library (``show_rejected`` as the grid has it)."""
     check(me, "library.read", pid)
-    with _project(svc, me, pid) as project, project.db.session() as s:
-        try:
-            return clip_view.clip_detail(s, aid, show_rejected)
-        except LookupError:
-            raise HTTPException(404, "no such clip") from None
+    with _project(svc, me, pid) as project:
+        with project.db.session() as s:
+            try:
+                out = clip_view.clip_detail(s, aid, show_rejected)
+            except LookupError:
+                raise HTTPException(404, "no such clip") from None
+        out["proxy_rate"] = _proxy_rate(project, aid) if out["kind"] == "video" else None
+    return out
+
+
+def _proxy_rate(project: Project, aid: int) -> str | None:
+    """The served proxy's frame rate (the player steps and seeks by its frames): from its
+    tick map, so a camera preview's own rate counts too. None until a proxy exists."""
+    from mosaic.media.proxy import PROXY_MISSING, load_proxy
+
+    try:
+        rate = load_proxy(project, aid).rate
+    except PROXY_MISSING:
+        return None
+    return f"{rate.numerator}/{rate.denominator}"
 
 
 @router.get("/projects/{pid}/clips/{aid}/transcript")

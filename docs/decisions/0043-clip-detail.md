@@ -43,6 +43,22 @@ The mockup labels transcript lines with speaker names ("Leo:", "Anna:") and writ
 - **Reasons on a USE moment are caveats**, such as "Shaky". The client labels them as such.
 - **Transcript paging** is keyed by sentence id. The audio stage writes sentences in time order, so id order is time order.
 
+## Screen (step 7c)
+
+- **Layout.** The left column holds the player, filmstrip (12 frames), waveform and transcript. The right column (380 px) holds `ClipFacts`, the S10 inspector's decision sections, shared so S10 and S11 never differ.
+  - Photos show the frame, the Live Photo motion switch (`live_motion`), the camera and time line, and the burst strip with its best pick outlined.
+  - Unsupported files show the catalog reason and fix instead of the player. S11b's "How to export" action is left out: the fix text already says how, and there is no per-camera guide page to link to.
+  - A 360 clip plays its forward view under the info banner.
+- **Transcript seek.** A click on a word seeks the player to the frame that contains the word's start time, which meets S11's "within 1 frame".
+  - `Player.seekTo` lands a quarter into that frame, so the decoder shows it.
+  - The frame is computed in exact integers from the word's ticks and the **proxy's** frame rate. The clip detail's `proxy_rate`, from the proxy's tick map, gives a 59.94 or 120 fps source its 29.97 or 30 fps proxy grid. Frame steps follow the same rate.
+  - The proxy starts at the clip's logical time 0 (chapters joined, start offset removed), so no offset applies.
+  - After a seek from the transcript or a moment, focus returns to the player, so L and Space play from there.
+  - The word playing now is highlighted and marked `aria-current`.
+- **Keys.** **[** and **]** move to the previous and next clip in the library's order. U, M, R, 1–5, 0, L and X decide, as in S10.
+  - S11 also gives J/K/L to the player, which clashes with L for always include. **When the player has focus, L belongs to the player**; elsewhere on the screen L means always include.
+  - A video opens with the player focused, so J/K/L, Space and the arrows work at once. X, U, M and R still decide from the player.
+
 ## Consequences
 
 - If speaker identification is ever added, it needs its own ADR and must respect invariant 16.

@@ -37,3 +37,20 @@ export function formatClock(s: number): string {
   const ss = String(sec).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
+
+/** "0:01.2": seconds and tenths from one rounded value (display). */
+export function tenths(t: SourceTime): string {
+  const total = Math.floor(seconds(t) * 10 + 1e-6);
+  return `${formatClock(Math.floor(total / 10))}.${total % 10}`;
+}
+
+/** The index of the proxy frame that contains ``t``, in exact integers: frames at
+ * ``rate`` from the clip's logical time 0, where the proxy starts (ADR 0043). */
+export function frameIndex(t: SourceTime, rate: string): number {
+  const [tn, td] = parseRational(t.tb);
+  const [rn, rd] = parseRational(rate);
+  const product = t.ticks * tn * rn;
+  if (Number.isSafeInteger(product) && Number.isSafeInteger(td * rd)) return Math.floor(product / (td * rd));
+  // Very fine time bases on very long clips: exact in BigInt.
+  return Number((BigInt(t.ticks) * BigInt(tn) * BigInt(rn)) / (BigInt(td) * BigInt(rd)));
+}
