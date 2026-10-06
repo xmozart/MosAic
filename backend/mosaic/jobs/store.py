@@ -522,6 +522,18 @@ class JobStore:
                 q = q.where(Job.id < cursor)
             return list(s.scalars(q.order_by(Job.id.desc()).limit(limit)))
 
+    def edit_jobs(self, project_id: str, edit_ids: list[int], active: bool) -> dict[int, Job]:
+        """The newest edit job of each of these edits (``active``: unfinished ones only)."""
+        eid = Job.params["edit_id"].as_integer()
+        q = select(Job).where(Job.project_id == project_id, Job.kind == "edit", eid.in_(edit_ids))
+        if active:
+            q = q.where(Job.status.notin_([x.value for x in JOB_TERMINAL]))
+        out: dict[int, Job] = {}
+        with self.db.session() as s:
+            for j in s.scalars(q.order_by(Job.id.desc())):
+                out.setdefault(int(j.params["edit_id"]), j)
+        return out
+
     def stage_counts(self, job_id: int) -> dict[str, dict[str, int]]:
         with self.db.session() as s:
             rows = s.execute(

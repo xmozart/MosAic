@@ -110,6 +110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/edits/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimate Edit
+         * @description S14's estimate: time and AI cost of creating this edit now (ADR 0047). Reads only.
+         */
+        post: operations["estimate_edit_api_edits_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/edits/{eid}": {
         parameters: {
             query?: never;
@@ -680,7 +700,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Edits */
+        /**
+         * List Edits
+         * @description S13's edit cards (ADR 0047): status, cover, format, versions, preliminary.
+         */
         get: operations["list_edits_api_projects__pid__edits_get"];
         put?: never;
         /** Create And Generate */
@@ -770,6 +793,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Presets */
+        get: operations["list_presets_api_projects__pid__presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/presets/{preset}/collage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preset Collage
+         * @description Frames of the owner's own clips that suit the story (S14 StoryPresetCard).
+         */
+        get: operations["preset_collage_api_projects__pid__presets__preset__collage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/recent": {
         parameters: {
             query?: never;
@@ -820,10 +880,51 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Renders */
+        /**
+         * List Renders
+         * @description S20's rows: label, status with percent, size, time, error (ADR 0047).
+         */
         get: operations["list_renders_api_projects__pid__renders_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/renders/{rid}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Render File
+         * @description The rendered video, with Range requests (S17's player; S20 Open and Download).
+         */
+        get: operations["render_file_api_projects__pid__renders__rid__file_get"];
+        put?: never;
+        post?: never;
+        /** Delete Render File */
+        delete: operations["delete_render_file_api_projects__pid__renders__rid__file_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/renders/{rid}/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render Action */
+        post: operations["render_action_api_projects__pid__renders__rid___action__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1141,6 +1242,15 @@ export interface components {
         DevicesBody: {
             /** Devices */
             devices: components["schemas"]["DeviceChange"][];
+        };
+        /** EstimateBody */
+        EstimateBody: {
+            /** Project Id */
+            project_id: string;
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
         };
         /**
          * FolderRef
@@ -1488,6 +1598,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    estimate_edit_api_edits_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EstimateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2584,7 +2729,10 @@ export interface operations {
     };
     list_edits_api_projects__pid__edits_get: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: number | null;
+                limit?: number;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -2808,6 +2956,73 @@ export interface operations {
             };
         };
     };
+    list_presets_api_projects__pid__presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preset_collage_api_projects__pid__presets__preset__collage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                preset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     remove_recent_api_projects__pid__recent_delete: {
         parameters: {
             query?: never;
@@ -2876,7 +3091,10 @@ export interface operations {
     };
     list_renders_api_projects__pid__renders_get: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: number | null;
+                limit?: number;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -2887,6 +3105,107 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    render_file_api_projects__pid__renders__rid__file_get: {
+        parameters: {
+            query?: {
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                pid: string;
+                rid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_render_file_api_projects__pid__renders__rid__file_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                rid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    render_action_api_projects__pid__renders__rid___action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                rid: number;
+                action: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

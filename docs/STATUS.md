@@ -53,6 +53,10 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 7c. S11 Clip detail
   - [x] 7d. S12 Search
 - [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
+  - [x] 8a. Backend: destination (aspect, resolution, framing), edit cards, story presets and collages, edit estimate, render rows and actions, render file, report rejections per ADR 0042
+  - [ ] 8b. S13 Edits and S14 wizard steps 1, 2, 6
+  - [ ] 8c. S17 player and selection/rejection report
+  - [ ] 8d. S20 Exports
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
 - [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
@@ -84,8 +88,8 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - Raising a paused job's cost limit is wired in the Activity popover (5c); S9 and S20 still need their own entry points.
 - `GET /jobs` and `/jobs/{id}` need a per-project permission check before multi-user work: job results can hold trip-context proposals (ADR 0040).
-- The S17 rejected report (step 8) must include clip-level rejections (ADR 0042).
 - A 5,000-clip filter timing test (M2 acceptance 4) belongs to step 11's acceptance suite. The 40-hour scale test's slowest library page rose from 19–63 ms (M1) to 103–151 ms with tile status and facts (budget 300 ms; one CI run failed it once): profile the per-request project open and the first page's three status scans in step 11.
+- `POST /edits/estimate` runs the edit's full retrieval in the request (no AI call; ADR 0047) and S14 calls it on every change: debounce it in 8b and add a timing budget on the 40-hour fixture to step 11's acceptance suite.
 - Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
@@ -172,3 +176,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.7b2 · S10 Library: toolbar (search, filter chips, status view, group, density), virtualized grid with group headers and day scrubber (≤ 60 tiles mounted), hover-scrub from sample frames, inspector in the fixed section order, BulkBar, keyboard model, optimistic decisions refetched on `clip.updated`, preliminary banner, show rejected, empty filter state; tiles carry camera and offline (ADR 0044)
 - 2026-10-06 · M2.7c · S11 Clip detail: player with usable range and moment markers, filmstrip, waveform, transcript that seeks within a frame, shared ClipFacts (decisions, AI-vs-you, Why, Moments, Quality, Similar, Tags, Note, Used in edits), photo (Live motion, burst), unsupported and 360 variants, [ / ] and decision keys (L is the player's while it has focus) (ADR 0043)
 - 2026-10-06 · M2.7d · S12 Search: results follow ADR 0042 (decision in force, who made it, the AI's view) with name, camera, stars; header with mode and the trip's own suggestions, matched reasons under each tile, no-results, searching and analysis-incomplete states; query and mode in the URL (ADR 0045)
+- 2026-10-06 · M2.8a · Edits backend: aspect and resolution are render-only (not in the edit key; crop for non-native shapes, ADR 0046); S13 edit cards with status, cover and preliminary flag; 16 story presets with collages from the owner's clips; edit estimate (plan reuse = $0); render rows, cancel, re-render, delete file, Range-served render file; report rejections include whole-clip decisions (ADR 0047)

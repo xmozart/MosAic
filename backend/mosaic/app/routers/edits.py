@@ -1,4 +1,4 @@
-"""Edit endpoints (docs/ui/API_MAP.md "Edits", M0 subset): create, generate, read, report.
+"""Edit and render endpoints (docs/ui/API_MAP.md "Edits", "Renders"; M2 basic, ADR 0047).
 
 ``{eid}`` is the edit's ULID, resolved to its project through the control DB's edit
 index. Generation runs as a job (invariant 8): handlers only create or query.
@@ -10,15 +10,20 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, ValidationError
 from sqlalchemy import select
 
+from mosaic.ai.registry import embedder
 from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
+from mosaic.editing import estimate as edit_estimate
+from mosaic.editing import presets
+from mosaic.editing.cards import PAGE, edit_cards, render_rows
 from mosaic.editing.generate import version_json
-from mosaic.editing.request import EditRequest
+from mosaic.editing.request import STORY_PRESETS, EditRequest
 from mosaic.editing.service import (
     EditNotFoundError,
     create_edit,
@@ -28,6 +33,7 @@ from mosaic.editing.service import (
     resolve_edit,
     submit_generate,
 )
+from mosaic.storage.config import ConfigService
 from mosaic.storage.models_project import Edit, EditVersion
 from mosaic.storage.projects import (
     NotAProjectError,
@@ -92,19 +98,72 @@ def _edit_json(e: Edit, latest: int | None) -> dict[str, Any]:
 
 
 @router.get("/projects/{pid}/edits")
-def list_edits(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+def list_edits(
+    pid: str,
+    cursor: int | None = None,
+    limit: int = Query(PAGE, ge=1, le=200),
+    svc: Services = Svc,
+    me: Principal = Me,
+) -> dict[str, Any]:
+    """S13's edit cards (ADR 0047): status, cover, format, versions, preliminary."""
     check(me, "edits.read", pid)
     with _project(svc, me, pid) as project, project.db.session() as s:
-        items = []
-        for e in s.scalars(select(Edit).order_by(Edit.id.desc())):
-            latest = s.scalar(
-                select(EditVersion.version)
-                .where(EditVersion.edit_id == e.id)
-                .order_by(EditVersion.version.desc())
-                .limit(1)
-            )
-            items.append(_edit_json(e, latest))
-    return {"items": items, "next_cursor": None}
+        return edit_cards(s, svc.store, project.id, cursor, limit)
+
+
+@router.get("/projects/{pid}/presets")
+def list_presets(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    check(me, "edits.read", pid)
+    if svc.control.project_root(pid) is None:
+        raise HTTPException(404, "unknown project")
+    return {"items": presets.cards()}
+
+
+@router.get("/projects/{pid}/presets/{preset}/collage")
+def preset_collage(
+    pid: str, preset: str, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """Frames of the owner's own clips that suit the story (S14 StoryPresetCard)."""
+    check(me, "edits.read", pid)
+    if preset not in STORY_PRESETS:
+        raise HTTPException(404, "unknown story preset")
+    emb = embedder(ConfigService(svc.control), me)
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        return {"preset": preset, "frames": presets.collage(s, emb, preset)}
+
+
+class EstimateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str
+    request: dict[str, Any]
+
+
+@router.post("/edits/estimate")
+def estimate_edit(body: EstimateBody, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """S14's estimate: time and AI cost of creating this edit now (ADR 0047). Reads only."""
+    check(me, "edits.read", body.project_id)
+    request = _request(body.request)
+    running = svc.store.jobs(body.project_id, True, kind="analysis", limit=1)
+    progress = svc.store.progress(running[0].id) if running else None
+    with _project(svc, me, body.project_id) as project, project.db.session() as s:
+        return edit_estimate.for_request(
+            s,
+            ConfigService(svc.control),
+            me,
+            project.id,
+            request,
+            progress.pct if progress else (0 if running else None),
+        )
+
+
+def _request(raw: dict[str, Any]) -> EditRequest:
+    try:
+        return EditRequest.model_validate(raw)
+    except ValidationError as exc:
+        raise HTTPException(
+            422, [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()]
+        ) from None
 
 
 @router.post("/projects/{pid}/edits", status_code=202)
@@ -112,12 +171,7 @@ def create_and_generate(
     pid: str, body: dict[str, Any], svc: Services = Svc, me: Principal = Me
 ) -> dict[str, Any]:
     check(me, "edits.write", pid)
-    try:
-        request = EditRequest.model_validate(body.get("request", body))
-    except ValidationError as exc:
-        raise HTTPException(
-            422, [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()]
-        ) from None
+    request = _request(body.get("request", body))
     with _project(svc, me, pid, write=True) as project:
         edit_id = create_edit(project, request, svc.control, me, body.get("name"))
         job_id = submit_generate(svc.executor, me, project, edit_id)
@@ -245,31 +299,79 @@ def start_render(body: RenderBody, svc: Services = Svc, me: Principal = Me) -> d
 
 
 @router.get("/projects/{pid}/renders")
-def list_renders(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
-    from mosaic.render.tasks import output_path
-    from mosaic.storage.models_project import Render
-
+def list_renders(
+    pid: str,
+    cursor: int | None = None,
+    limit: int = Query(PAGE, ge=1, le=200),
+    svc: Services = Svc,
+    me: Principal = Me,
+) -> dict[str, Any]:
+    """S20's rows: label, status with percent, size, time, error (ADR 0047)."""
     check(me, "renders.read", pid)
     with _project(svc, me, pid) as project, project.db.session() as s:
-        items = []
-        for r in s.scalars(select(Render).order_by(Render.id.desc())):
-            e = s.get(Edit, r.edit_id)
-            status = r.status
-            if status == "pending" and r.job_id is not None:
-                job = svc.store.job(r.job_id)
-                if job is not None and job.status in ("failed", "cancelled"):
-                    status = job.status  # the job ended without a result
-            items.append(
-                {
-                    "render_id": r.id,
-                    "edit_id": e.uid if e else None,
-                    "version": r.version,
-                    "kind": r.profile.get("kind"),
-                    "status": status,
-                    "job_id": r.job_id,
-                    "path": str(output_path(project.workspace, r)) if r.path else None,
-                    "metrics": r.metrics,
-                    "created_at": r.created_at,
-                }
-            )
-    return {"items": items, "next_cursor": None}
+        return render_rows(s, svc.store, project.workspace, cursor, limit)
+
+
+# Render ids are numbered per project, so render actions live under the project.
+
+
+@router.post("/projects/{pid}/renders/{rid}/{action}", status_code=202)
+def render_action(
+    pid: str, rid: int, action: str, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    from mosaic.render import service as rs
+
+    check(me, "renders.write", pid)
+    if action not in ("cancel", "rerender"):
+        raise HTTPException(404, "unknown action")
+    with _project(svc, me, pid, write=True) as project:
+        try:
+            if action == "cancel":
+                rs.cancel_render(svc.executor, svc.store, me, project, rid)
+                return {"render_id": rid}
+            new = rs.rerender(project, svc.store, rid)
+            return {"render_id": new, "job_id": rs.submit_render(svc.executor, me, project, new)}
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except rs.RenderStateError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+
+@router.delete("/projects/{pid}/renders/{rid}/file")
+def delete_render_file(
+    pid: str, rid: int, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    from mosaic.render import service as rs
+
+    check(me, "renders.write", pid)
+    with _project(svc, me, pid, write=True) as project:
+        try:
+            rs.delete_file(project, rid)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except rs.RenderStateError as exc:
+            raise HTTPException(409, str(exc)) from None
+    return {"render_id": rid, "status": "deleted"}
+
+
+@router.get("/projects/{pid}/renders/{rid}/file", response_class=Response)
+def render_file(
+    pid: str, rid: int, download: bool = False, svc: Services = Svc, me: Principal = Me
+) -> Response:
+    """The rendered video, with Range requests (S17's player; S20 Open and Download)."""
+    from mosaic.render.service import get_render
+    from mosaic.render.tasks import output_path
+
+    check(me, "renders.read", pid)
+    with _project(svc, me, pid) as project:
+        r = get_render(project, rid)
+        path = output_path(project.workspace, r) if r is not None and r.path else None
+    if r is None or path is None or not path.is_file():
+        raise HTTPException(404, "No rendered file.")
+    media = "video/quicktime" if path.suffix == ".mov" else "video/mp4"
+    return FileResponse(
+        path,
+        media_type=media,
+        filename=path.name if download else None,
+        content_disposition_type="attachment" if download else "inline",
+    )

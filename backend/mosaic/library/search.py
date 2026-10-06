@@ -313,13 +313,13 @@ def search(
     for gid, score in fuse(rankings).items():
         hits[gid].score = score
     out = sorted(hits.values(), key=lambda h: (-h.score, h.segment_id))[:limit]
-    _fill(s, [h for h in out if not h.asset_id or h.sample_id is None])
+    fill_frames(s, [h for h in out if not h.asset_id or h.sample_id is None])
     for h in out:
         h.matched = list(dict.fromkeys(h.matched))[:3]
     return Results(out, visual_state)
 
 
-def _fill(s: Session, hits: list[Hit]) -> None:
+def fill_frames(s: Session, hits: list[Hit]) -> None:
     """Asset and the first kept frame for text-only hits, in two queries."""
     if not hits:
         return

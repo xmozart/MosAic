@@ -378,6 +378,26 @@
         "title": "DevicesBody",
         "type": "object"
       },
+      "EstimateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          }
+        },
+        "required": [
+          "project_id",
+          "request"
+        ],
+        "title": "EstimateBody",
+        "type": "object"
+      },
       "FolderRef": {
         "additionalProperties": false,
         "description": "Desktop: ``path`` (absolute). Server: ``root`` (a media root id) and ``path``\ninside it.",
@@ -967,6 +987,47 @@
           }
         },
         "summary": "Status"
+      }
+    },
+    "/api/edits/estimate": {
+      "post": {
+        "description": "S14's estimate: time and AI cost of creating this edit now (ADR 0047). Reads only.",
+        "operationId": "estimate_edit_api_edits_estimate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Estimate Edit Api Edits Estimate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Estimate Edit"
       }
     },
     "/api/edits/{eid}": {
@@ -2649,6 +2710,7 @@
     },
     "/api/projects/{pid}/edits": {
       "get": {
+        "description": "S13's edit cards (ADR 0047): status, cover, format, versions, preliminary.",
         "operationId": "list_edits_api_projects__pid__edits_get",
         "parameters": [
           {
@@ -2658,6 +2720,34 @@
             "schema": {
               "title": "Pid",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],
@@ -3187,6 +3277,98 @@
         "summary": "Open "
       }
     },
+    "/api/projects/{pid}/presets": {
+      "get": {
+        "operationId": "list_presets_api_projects__pid__presets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Presets Api Projects  Pid  Presets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Presets"
+      }
+    },
+    "/api/projects/{pid}/presets/{preset}/collage": {
+      "get": {
+        "description": "Frames of the owner's own clips that suit the story (S14 StoryPresetCard).",
+        "operationId": "preset_collage_api_projects__pid__presets__preset__collage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "preset",
+            "required": true,
+            "schema": {
+              "title": "Preset",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Preset Collage Api Projects  Pid  Presets  Preset  Collage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preset Collage"
+      }
+    },
     "/api/projects/{pid}/recent": {
       "delete": {
         "description": "S3 \"Remove from list\": hides the project from recents (ADR 0039). Nothing is deleted:\nthe footage, the project's data and its registry row stay, so opening the folder again\nbrings it back with its analysis, external placement included.",
@@ -3281,6 +3463,7 @@
     },
     "/api/projects/{pid}/renders": {
       "get": {
+        "description": "S20's rows: label, status with percent, size, time, error (ADR 0047).",
         "operationId": "list_renders_api_projects__pid__renders_get",
         "parameters": [
           {
@@ -3290,6 +3473,34 @@
             "schema": {
               "title": "Pid",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],
@@ -3318,6 +3529,165 @@
           }
         },
         "summary": "List Renders"
+      }
+    },
+    "/api/projects/{pid}/renders/{rid}/file": {
+      "delete": {
+        "operationId": "delete_render_file_api_projects__pid__renders__rid__file_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Render File Api Projects  Pid  Renders  Rid  File Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Render File"
+      },
+      "get": {
+        "description": "The rendered video, with Range requests (S17's player; S20 Open and Download).",
+        "operationId": "render_file_api_projects__pid__renders__rid__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Download",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Render File"
+      }
+    },
+    "/api/projects/{pid}/renders/{rid}/{action}": {
+      "post": {
+        "operationId": "render_action_api_projects__pid__renders__rid___action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Render Action Api Projects  Pid  Renders  Rid   Action  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Render Action"
       }
     },
     "/api/projects/{pid}/search": {

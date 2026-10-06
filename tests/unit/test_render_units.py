@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -154,3 +155,85 @@ def test_conform_shift_and_end_fallback() -> None:
     tail = pieces(1_800_000, 1_810_000, TB, _files(), Fraction(1, 30))
     assert len(tail) == 1
     assert tail[0].end - tail[0].start == Fraction(1, 30)
+
+
+def test_destination_sizes_framing_and_the_edit_key() -> None:
+    """ADR 0046: the edit's aspect and resolution shape the render, not the edit."""
+    from mosaic.editing.request import EditRequest
+    from mosaic.render.plan import dominant_shape, frame_size, framing, profile
+
+    assert frame_size("16:9", 720) == (1280, 720)
+    assert frame_size("16:9", 1080) == (1920, 1080)
+    assert frame_size("9:16", 1080) == (1080, 1920)
+    assert frame_size("4:5", 1080) == (1080, 1350)
+    assert frame_size("1:1", 720) == (720, 720)
+    assert frame_size("2.39:1", 1080) == (2582, 1080)
+    # The long side is capped at 4096 px, so every H.264 encoder can take the frame.
+    assert frame_size("2.39:1", 2160) == (4096, 1714)
+    assert frame_size("9:16", 2160) == (2160, 3840)
+    assert frame_size("16:9", 2160) == (3840, 2160)
+    for aspect in ("16:9", "9:16", "4:5", "1:1", "2.39:1"):
+        w, h = frame_size(aspect, 2160)
+        assert max(w, h) <= 4096
+        assert (w // 16 + (w % 16 > 0)) * (h // 16 + (h % 16 > 0)) <= 36864, "level 5.2"
+    # The defaults keep M0/M1 renders exactly as they were.
+    assert (profile("preview", ["h264_videotoolbox"]).width, profile("preview", ["x"]).height) == (
+        1280,
+        720,
+    )
+    final = profile("final", ["x"], aspect="9:16", resolution="4k")
+    assert (final.width, final.height, final.bitrate) == (2160, 3840, "45M")
+    assert framing(1920, 1080, 1920, 1080) == "crop"
+    assert framing(1920, 1200, 1920, 1080) == "crop", "16:10 into 16:9: within 25 %"
+    assert framing(1440, 1080, 1920, 1080) == "fit", "4:3 into 16:9 keeps its bars"
+    assert framing(1080, 1920, 1920, 1080) == "fit", "portrait in landscape stays whole"
+    assert framing(1080, 1920, 1080, 1920) == "crop"
+    assert framing(None, None, 1920, 1080) == "fit"
+    # A reel from landscape footage is not that footage's shape: every clip is cropped
+    # (PRODUCT.md §4: centre crop in v1), a portrait clip included.
+    landscape = Fraction(16, 9)
+    reel = profile("preview", ["x"], aspect="9:16", native=landscape)
+    assert reel.fill == "crop"
+    assert framing(1920, 1080, reel.width, reel.height, reel.fill) == "crop"
+    assert profile("preview", ["x"], native=landscape).fill == "auto"
+    assert profile("preview", ["x"], native=Fraction(8, 5)).fill == "auto", "16:10: within 25 %"
+    assert profile("preview", ["x"], native=Fraction(4, 3)).fill == "crop", "4:3 footage"
+    assert profile("preview", ["x"], aspect="1:1").fill == "auto", "unknown footage"
+    assert dominant_shape([(1920, 1080, 100), (1080, 1920, 60), (None, None, 500)]) == landscape
+    assert dominant_shape([(1080, 1920, 100), (1920, 1080, 60)]) == Fraction(9, 16)
+    assert dominant_shape([(None, None, 5)]) is None
+    a = EditRequest(duration_s=60)
+    b = EditRequest(duration_s=60, aspect="9:16", resolution="4k")
+    assert a.key_dump() == b.key_dump(), "changing the shape re-renders, never re-plans"
+    assert a.key_dump() != EditRequest(duration_s=90).key_dump()
+
+
+def test_crop_framing_fills_the_frame() -> None:
+    from mosaic.media.ffmpeg import render as rb
+
+    spec = rb.ChunkSpec(
+        pieces=[],
+        video_index=0,
+        audio_index=None,
+        audio_enabled=False,
+        gain_db=0,
+        fade_in=Fraction(0),
+        fade_out=Fraction(0),
+        width=1080,
+        height=1920,
+        rate=Fraction(30),
+        frames=30,
+        samples=48000,
+        hdr=None,
+        full_range=False,
+        encoder="ffv1",
+        bitrate="1M",
+        out=Path("x.mov"),
+        framing="crop",
+    )
+    chain = rb._video_chain(spec, "[0:v]")
+    assert "force_original_aspect_ratio=increase" in chain
+    assert "crop=w=1080:h=1920" in chain
+    assert ",pad=" not in chain, "no bars: the frame is filled"
+    fit = rb._video_chain(replace(spec, framing="fit"), "[0:v]")
+    assert "pad=w=1080:h=1920" in fit

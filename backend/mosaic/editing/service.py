@@ -5,8 +5,7 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Any
 
-from sqlalchemy import exists, func, select
-from sqlalchemy.orm import aliased
+from sqlalchemy import func, select
 
 from mosaic.core.clock import now_iso
 from mosaic.core.ids import new_ulid
@@ -15,13 +14,15 @@ from mosaic.core.time import format_display, parse_rational
 from mosaic.editing.request import EditRequest
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
+from mosaic.library import decisions
+from mosaic.library.clip_view import reason_words
+from mosaic.library.dispositions import effective
 from mosaic.media.pipeline import job_cost_limit
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_project import (
     Asset,
     AssetFile,
     DeepReview,
-    Disposition,
     Edit,
     EditVersion,
     MediaFile,
@@ -180,41 +181,41 @@ def report(
                     "composition": (obs or {}).get("composition"),
                 }
             )
-        # Effective REJECTs only: a user decision overrides the analysis (invariant 10).
-        user = aliased(Disposition)
-        overridden = exists().where(
-            user.segment_id == Disposition.segment_id, user.source == "user"
-        )
-        effective_reject = (Disposition.status == "REJECT") & (
-            (Disposition.source == "user") | ~overridden
-        )
-        rejected_rows = list(
-            s.execute(
-                select(Disposition, Segment.asset_id)
-                .join(Segment, Segment.id == Disposition.segment_id)
-                .where(effective_reject)
-                .order_by(Disposition.segment_id)
-                .offset(rejected_offset)
-                .limit(REJECTED_PAGE)
+        # The decisions in force (ADR 0042): the owner's, segment or whole clip, override
+        # the analysis (invariant 10).
+        q = decisions.rejected_segments()
+        rejected_rows = list(s.execute(q.offset(rejected_offset).limit(REJECTED_PAGE)))
+        rejected_total = s.scalar(select(func.count()).select_from(q.order_by(None).subquery()))
+        ids = [sid for sid, _, _ in rejected_rows]
+        rows = effective(s, ids)
+        starts = {
+            g: t
+            for g, t in s.execute(
+                select(Segment.id, Segment.start_ticks).where(Segment.id.in_(ids))
             )
-        )
-        rejected_total = s.scalar(
-            select(func.count(Disposition.id))
-            .join(Segment, Segment.id == Disposition.segment_id)
-            .where(effective_reject)
-        )
-        page_assets = {aid for _, aid in rejected_rows}
-        assets = {a.id: a for a in s.scalars(select(Asset).where(Asset.id.in_(page_assets)))}
-    rejected = [
-        {
-            "segment_id": f"seg_{d.segment_id:06d}",
-            "asset_id": f"ast_{aid:04d}",
-            "source": d.source,
-            "reasons": d.reasons,
-            "camera": (assets[aid].camera_model or assets[aid].profile) if aid in assets else None,
         }
-        for d, aid in rejected_rows
-    ]
+        page_assets = {aid for _, aid, _ in rejected_rows}
+        assets = {a.id: a for a in s.scalars(select(Asset).where(Asset.id.in_(page_assets)))}
+        rejected = []
+        for sid, aid, source in rejected_rows:
+            d = rows.get(sid)
+            if source == "clip":
+                reasons: list[Any] = [{"code": "clip_rejected"}]
+            else:
+                reasons = list(d.reasons) if d is not None else []
+            a = assets.get(aid)
+            rejected.append(
+                {
+                    "segment_id": f"seg_{sid:06d}",
+                    "asset_id": f"ast_{aid:04d}",
+                    "source": "user" if source == "clip" else source,
+                    "whole_clip": source == "clip",
+                    "reasons": reasons,
+                    "words": reason_words(reasons),
+                    "source_file": _source_file(s, aid, starts.get(sid, 0)),
+                    "camera": (a.camera_model or a.profile) if a else None,
+                }
+            )
     unused_selections = [
         {"selection_ref": ref, **sel} for ref, sel in selections.items() if not sel.get("used")
     ]

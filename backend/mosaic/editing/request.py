@@ -12,6 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from mosaic.core.time import Rounding, format_rational, parse_rational, round_fraction
 
 Chronology = Literal["strict", "mostly", "thematic", "story"]
+# The output's shape and the final render's size (PRODUCT.md §4 Destination; ADR 0046).
+Aspect = Literal["16:9", "9:16", "4:5", "1:1", "2.39:1"]
+Resolution = Literal["720p", "1080p", "1440p", "4k"]
+# Fields that change only how an edit is rendered, never which shots it picks: they are
+# not part of the edit's key, so changing them re-renders without re-planning.
+RENDER_ONLY = frozenset({"aspect", "resolution"})
 Pace = Literal["very_slow", "slow", "balanced", "energetic", "fast", "very_fast"]
 
 STORY_PRESETS: dict[str, str] = {
@@ -77,6 +83,12 @@ class EditRequest(BaseModel):
     instructions: str = Field(default="", max_length=2000)
     fps: str | None = None  # rational; None = dominant source rate
     variant: int = Field(default=0, ge=0)
+    aspect: Aspect = "16:9"
+    resolution: Resolution = "1080p"  # the final render's short side; previews are 720p
+
+    def key_dump(self) -> dict[str, object]:
+        """What the edit's key hashes: everything but the render-only fields."""
+        return self.model_dump(mode="json", exclude=set(RENDER_ONLY))
 
     @field_validator("story")
     @classmethod

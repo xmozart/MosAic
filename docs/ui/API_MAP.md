@@ -92,9 +92,9 @@ SSE event types:
 
 | Method | Path | Used by |
 |---|---|---|
-| GET/POST | `/projects/{pid}/edits` | S13, S14 |
-| GET | `/projects/{pid}/presets` · `/presets/{id}/collage` | S14 |
-| POST | `/edits/estimate` `{request}` | S14 |
+| GET/POST | `/projects/{pid}/edits` (GET: S13 cards with status, cover, versions, preliminary; ADR 0047) | S13, S14 |
+| GET | `/projects/{pid}/presets` (16 story presets, 7 featured) · `/projects/{pid}/presets/{id}/collage` → `{frames: [sample_id]}` (ADR 0047) | S14 |
+| POST | `/edits/estimate` `{project_id, request}` (time, cost, plan reuse, enough footage; ADR 0047) | S14 |
 | POST | `/edits/{eid}/generate` (job; emits `edit.progress`) | S14, S15 |
 | GET | `/edits/{eid}` (current draft, beats, events, facts) | S16, S17 |
 | POST | `/edits/{eid}/draft/ops` `{op}` (reorder, lock, replace, remove, trim, faster/slower) · `/draft/undo` · `/draft/redo` | S16 |
@@ -105,15 +105,16 @@ SSE event types:
 | GET | `/edits/{eid}/findings` · POST `/findings/{fid}/apply` · `/ignore` · `/findings/apply-all` | S17 |
 | POST | `/edits/{eid}/preview` (render job) | S16, S17 |
 | POST | `/edits/{eid}/revert` `{version}` | S18 |
-| GET | `/edits/{eid}/report?version=` (selection/rejection report and metrics) | S17, CLI `mosaic report` |
+| GET | `/edits/{eid}/report?version=&rejected_offset=` (selection/rejection report and metrics; rejected list follows ADR 0042, clip-level included) | S17, CLI `mosaic report` |
 
 ## Renders
 
 | Method | Path | Used by |
 |---|---|---|
 | POST | `/renders` `{edit_id, version, preset, resolution, fps, loudness, include[], dest}` | S19 |
-| GET | `/projects/{pid}/renders` · POST `/renders/{rid}/cancel` · `/rerender` · DELETE `/renders/{rid}/file` | S20 |
-| POST | `/renders/{rid}/reveal` (desktop only) | S20 |
+| GET | `/projects/{pid}/renders` · POST `/projects/{pid}/renders/{rid}/cancel` · `/rerender` · DELETE `/projects/{pid}/renders/{rid}/file` (render ids are per project; ADR 0047) | S20 |
+| GET | `/projects/{pid}/renders/{rid}/file` (Range; `?download=true`) | S17, S20 |
+| POST | `/projects/{pid}/renders/{rid}/reveal` (desktop only; not in M2) | S20 |
 
 ## Diagnostics
 

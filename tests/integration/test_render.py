@@ -212,7 +212,120 @@ def test_render_api(edit: tuple[Project, ControlDB, int, int]) -> None:
     items = client.get(f"/api/projects/{project.id}/renders").json()["items"]
     mine = next(i for i in items if i["render_id"] == started.json()["render_id"])
     assert mine["status"] == "done"
-    assert "-preview-r" in mine["path"]
-    assert mine["path"].endswith(".mp4")
+    assert "-preview-r" in mine["file"]
+    assert mine["file"].endswith(".mp4")
+    assert mine["label"] == "Preview · 720p"
+    assert mine["size_bytes"] > 0
+    assert mine["seconds"] is not None
+    rid = mine["render_id"]
+    base = f"/api/projects/{project.id}/renders/{rid}"
+    # The S17 player seeks with Range requests.
+    part = client.get(f"{base}/file", headers={"Range": "bytes=0-99"})
+    assert part.status_code == 206
+    assert len(part.content) == 100
+    assert part.headers["content-type"] == "video/mp4"
+    got = client.get(f"{base}/file?download=true")
+    assert "attachment" in got.headers["content-disposition"]
+    assert client.post(f"{base}/cancel").status_code == 409, "a finished render"
+    assert client.post(f"{base}/explode").status_code == 404
+    again = client.post(f"{base}/rerender")
+    assert again.status_code == 202
+    assert run_job(control, again.json()["job_id"], timeout=900) == "done"
+    assert client.delete(f"{base}/file").status_code == 200
+    assert client.get(f"{base}/file").status_code == 404
+    rows = client.get(f"/api/projects/{project.id}/renders").json()["items"]
+    assert next(i for i in rows if i["render_id"] == rid)["status"] == "deleted"
+    assert next(i for i in rows if i["render_id"] == again.json()["render_id"])["status"] == "done"
+    assert client.delete(f"{base}/file").status_code == 409
+    assert client.get(f"/api/projects/{project.id}/renders/99999/file").status_code == 404
+    # A queued render (no worker runs here) is cancelled, its job too.
+    queued = client.post(f"/api/edits/{uid}/preview").json()
+    row = next(
+        i
+        for i in client.get(f"/api/projects/{project.id}/renders").json()["items"]
+        if i["render_id"] == queued["render_id"]
+    )
+    assert row["status"] == "queued"
+    cancel = f"/api/projects/{project.id}/renders/{queued['render_id']}/cancel"
+    assert client.post(cancel).status_code == 202
+    assert client.get(f"/api/jobs/{queued['job_id']}").json()["state"] == "cancelled"
+    rows = client.get(f"/api/projects/{project.id}/renders").json()["items"]
+    assert next(i for i in rows if i["render_id"] == queued["render_id"])["status"] == "cancelled"
+    assert client.post(cancel).status_code == 409
     assert client.post("/api/renders", json={"edit_id": uid, "version": "x"}).status_code == 422
     assert client.post("/api/renders", json={"edit_id": "nope"}).status_code == 404
+
+
+def test_a_vertical_edit_renders_vertical_with_the_same_plan(
+    edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0046: aspect is render-only. The 9:16 edit plans exactly like the 16:9 one (no
+    new AI call), and its preview is 720 × 1280, frame-exact."""
+    from mosaic.ai.adapters.fake import adapter as fake
+
+    project, control, edit_id, version = edit
+    before = len(fake.CALLS)
+    vertical = create_edit(
+        project,
+        EditRequest(duration_s=45, chronology="strict", aspect="9:16"),
+        control,
+        control.local_principal,
+    )
+    job = submit_generate(
+        LocalExecutor(JobStore(control.db)), control.local_principal, project, vertical
+    )
+    assert run_job(control, job, timeout=600) == "done"
+    assert len(fake.CALLS) == before, "the same plan: no AI call"
+    v = get_version(project, vertical)
+    landscape = get_version(project, edit_id, version)
+    assert v.timeline["tracks"] == landscape.timeline["tracks"]
+    rid = _render(project, control, vertical, v.version, "preview", lossless=False)
+    r = get_render(project, rid)
+    assert r is not None
+    path = output_path(project.workspace, r)
+    from mosaic.media.ffmpeg.builders import ffprobe_json
+
+    streams = json.loads(run(ffmpeg_bin, ffprobe_json(path)).stdout)["streams"]
+    video = next(st for st in streams if st["codec_type"] == "video")
+    assert (video["width"], video["height"]) == (720, 1280)
+    assert _frames(ffmpeg_bin, path) == v.timeline["duration"]["frames"]
+
+
+@pytest.mark.parametrize("when", ["before", "while_assembling"])
+def test_a_cancelled_render_keeps_no_file(
+    edit: tuple[Project, ControlDB, int, int], monkeypatch: pytest.MonkeyPatch, when: str
+) -> None:
+    """ADR 0047: a render cancelled from S20 before or while it is assembled ends with no
+    output file and stays cancelled (the race between Cancel and the assembler)."""
+    from mosaic.render import tasks
+    from mosaic.storage.models_project import Render
+
+    project, control, edit_id, version = edit
+    rid = create_render(project, edit_id, version, "preview")
+
+    def cancel() -> None:
+        with project.write() as s:
+            row = s.get(Render, rid)
+            assert row is not None
+            row.status = "cancelled"
+
+    if when == "before":
+        cancel()
+    else:
+        measure = tasks.parse_ebur128  # runs after the concat wrote the file
+
+        def cancel_then_measure(text: str) -> Any:
+            cancel()
+            return measure(text)
+
+        monkeypatch.setattr(tasks, "parse_ebur128", cancel_then_measure)
+    job = submit_render(LocalExecutor(JobStore(control.db)), control.local_principal, project, rid)
+    assert run_job(control, job, timeout=900) == "done"
+    r = get_render(project, rid)
+    assert r is not None
+    assert r.status == "cancelled"
+    assert r.path is None
+    out = output_path(project.workspace, r)
+    assert not out.exists()
+    assert not out.with_suffix(".concat.txt").exists()
+    assert [p for p in out.parent.glob(f"*r{rid:04d}*")] == []

@@ -31,7 +31,15 @@ from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
 from mosaic.media.ffmpeg.run import run
 from mosaic.media.proxy import load_proxy
 from mosaic.media.tools import media_tools
-from mosaic.render.plan import RENDER_VERSION, Profile, SourceFile, chunk_key, pieces, samples_for
+from mosaic.render.plan import (
+    RENDER_VERSION,
+    Profile,
+    SourceFile,
+    chunk_key,
+    framing,
+    pieces,
+    samples_for,
+)
 from mosaic.storage import provenance
 from mosaic.storage.models_project import (
     Asset,
@@ -60,7 +68,15 @@ def _render(ctx: TaskContext) -> tuple[Render, EditVersion]:
 
 def _profile(r: Render) -> Profile:
     p = r.profile
-    return Profile(p["kind"], p["width"], p["height"], p["encoder"], p["bitrate"], p["lossless"])
+    return Profile(
+        p["kind"],
+        p["width"],
+        p["height"],
+        p["encoder"],
+        p["bitrate"],
+        p["lossless"],
+        p.get("fill", "auto"),
+    )
 
 
 def _event(v: EditVersion, index: int) -> dict[str, Any]:
@@ -166,6 +182,9 @@ def _spec(
         fade_out=Fraction(int(audio["fade_out_frames"])) / rate,
         width=prof.width,
         height=prof.height,
+        framing=framing(
+            asset.display_width, asset.display_height, prof.width, prof.height, prof.fill
+        ),
         rate=rate,
         frames=frames,
         samples=samples_for(frames, rate),
@@ -315,6 +334,8 @@ def output_path(workspace: Path, r: Render) -> Path:
 def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     binaries, _ = media_tools()
     r, v = _render(ctx)
+    if r.status == "cancelled":  # cancelled from S20 while its chunks ran
+        return {"render_id": r.id, "cancelled": True}
     events = v.timeline["tracks"][0]["events"]
     paths = []
     for index in range(len(events)):
@@ -357,6 +378,9 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     with ctx.write() as s:
         row = s.get(Render, r.id)
         assert row is not None
+        if row.status == "cancelled":  # cancelled while assembling: no file is kept
+            out.unlink(missing_ok=True)
+            return {"render_id": r.id, "cancelled": True}
         row.status = "done"
         row.path = str(out.relative_to(ctx.project.workspace))
         row.metrics = metrics

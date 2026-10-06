@@ -355,6 +355,12 @@ def test_the_sql_tile_status_matches_for_segments(
         assert asset is not None
         analysed = [g for g in (s.get(Segment, i) for i in segs[: len(ai)]) if g]
         ref = decisions.for_segments(s, asset, analysed)
+        every = decisions.for_segments(
+            s, asset, [g for g in (s.get(Segment, i) for i in segs) if g]
+        )
+        sql_rejected = {
+            (sid, src) for sid, a, src in s.execute(decisions.rejected_segments()) if a == aid
+        }
         tile = next(
             i
             for i in browse.page(s, "day", None, 50, browse.Filters(show_rejected=True)).items
@@ -367,6 +373,8 @@ def test_the_sql_tile_status_matches_for_segments(
     )
     assert tile["status_shown"] == {1: "USE", 2: "MAYBE", 3: "REJECT"}[best]
     assert tile["decided_by"] == ("user" if owners else "ai")
+    # The report's rejected list is the same rule in SQL, unanalysed segments included.
+    assert sql_rejected == {(sid, d.source) for sid, d in every.items() if d.status == "REJECT"}
 
 
 _SHARED: tuple[Project, dict[str, Any]] | None = None

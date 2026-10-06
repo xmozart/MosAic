@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+from collections.abc import Mapping
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -24,11 +26,13 @@ from mosaic.ai.prompts.selector.schema_v2 import Output as SelectOut
 from mosaic.ai.registry import task_check_ready, task_choice
 from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
+from mosaic.core.settings import ProviderChoice
 from mosaic.core.time import parse_rational
 from mosaic.editing import critic, refiner, solver
 from mosaic.editing.request import (
     STORY_PRESETS,
     EditRequest,
+    PaceFrames,
     dominant_rate,
     pace_frames,
     target_frames,
@@ -58,6 +62,61 @@ EDIT_VERSION = "edit/1"  # solver + refiner + critic algorithm version
 PLANNER = ("planner", 2)  # v2: trip context (M1)
 SELECTOR = ("selector", 2)
 POOL_FACTOR = 3
+PLANNER_MAX_TOKENS = 8000
+SELECTOR_MAX_TOKENS = 16000
+
+
+CAPABILITIES = ("planner", "selector")
+
+
+@dataclass(frozen=True)
+class EditInputs:
+    """What an edit is planned from, before any AI call: the timeline rate, pace, the
+    retrieved candidates and a digest of everything they were derived from."""
+
+    rate: str
+    pace: PaceFrames
+    cands: list[Candidate]
+    counts: dict[str, int]
+    digest: str
+    trip: TripContext
+
+
+def edit_inputs(s: Session, req: EditRequest) -> EditInputs:
+    rate = req.fps or dominant_rate(
+        (r, d, tb)
+        for r, d, tb in s.execute(
+            select(Asset.rate, Asset.duration_ticks, Asset.tb).where(Asset.kind == "video")
+        )
+    )
+    pace = pace_frames(req.pace, rate)
+    cands, counts = retrieve(s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s))
+    return EditInputs(rate, pace, cands, counts, _inputs_digest(s, cands), load_context(s))
+
+
+def analysing(ctx: TaskContext) -> bool:
+    """An analysis job of the project is active (S13's "Preliminary"; ADR 0047)."""
+    return bool(ctx.store.jobs(ctx.project.id, True, kind="analysis", limit=1))
+
+
+def edit_key(
+    project_id: str, req: EditRequest, inp: EditInputs, choices: Mapping[str, ProviderChoice]
+) -> str:
+    """The edit's artifact key (invariant 9): equal keys mean the same plan and, through
+    the AI cache, no AI call. Render-only fields are not part of it (ADR 0046)."""
+    return artifact_key(
+        "edit",
+        project_id=project_id,
+        inputs={
+            "request": req.key_dump(),
+            "candidates": inp.digest,
+            "rate": inp.rate,
+            "trip_context": inp.trip.digest(),
+        },
+        config={cap: [ch.provider, ch.model] for cap, ch in choices.items()}
+        | {"prompts": [list(PLANNER), list(SELECTOR)]},
+        version=EDIT_VERSION,
+    )
 
 
 # ------------------------------------------------------------------ contexts
@@ -317,20 +376,10 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         if edit is None:
             raise PermanentError(f"edit {edit_id} not found")
         req = EditRequest.model_validate(edit.request)
-        rate = req.fps or dominant_rate(
-            (r, d, tb)
-            for r, d, tb in s.execute(
-                select(Asset.rate, Asset.duration_ticks, Asset.tb).where(Asset.kind == "video")
-            )
-        )
-        pace = pace_frames(req.pace, rate)
+        inp = edit_inputs(s, req)
+        rate, pace, cands, counts, trip = inp.rate, inp.pace, inp.cands, inp.counts, inp.trip
         target = target_frames(req.duration_s, rate)
         tolerance = target * req.tolerance_pct // 100
-        cands, counts = retrieve(
-            s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s)
-        )
-        digest = _inputs_digest(s, cands)
-        trip = load_context(s)
         ai_rejected = {
             sid
             for sid in s.scalars(
@@ -359,20 +408,8 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         task_check_ready(ctx, "selector")
     except NotConfiguredError as exc:
         raise PermanentError(str(exc)) from None
-    choices = {cap: task_choice(ctx, cap) for cap in ("planner", "selector")}
-    key = artifact_key(
-        "edit",
-        project_id=ctx.project.id,
-        inputs={
-            "request": req.model_dump(mode="json"),
-            "candidates": digest,
-            "rate": rate,
-            "trip_context": trip.digest(),
-        },
-        config={cap: [ch.provider, ch.model] for cap, ch in choices.items()}
-        | {"prompts": [list(PLANNER), list(SELECTOR)]},
-        version=EDIT_VERSION,
-    )
+    choices = {cap: task_choice(ctx, cap) for cap in CAPABILITIES}
+    key = edit_key(ctx.project.id, req, inp, choices)
     with ctx.project.db.session() as s:
         latest = s.scalar(
             select(EditVersion)
@@ -389,6 +426,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             return {"edit_id": edit_id, "version": latest.version, "reused": True}
 
     by_ref = {c.ref: c for c in cands}
+    preliminary = analysing(ctx)  # also checked at the end: either makes it preliminary
     client = AIClient(ctx)
     ctx.set_stage("planning")
     pctx = planner_context(req, cands, trip)
@@ -396,7 +434,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         "planner",
         *PLANNER,
         pctx,
-        max_tokens=8000,
+        max_tokens=PLANNER_MAX_TOKENS,
         variant=req.variant,
         validate=lambda a: check_plan(a, set(by_ref)),
     )
@@ -409,7 +447,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         "selector",
         *SELECTOR,
         sctx,
-        max_tokens=16000,
+        max_tokens=SELECTOR_MAX_TOKENS,
         variant=req.variant,
         validate=lambda a: check_selection(a, plan, set(by_ref)),
     )
@@ -497,6 +535,8 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         [b.beat_id for b in plan.beats],
     )
     metrics["retrieval"] = counts
+    # Made while the library was still being analysed.
+    metrics["preliminary"] = preliminary or analysing(ctx)
     metrics["solver"] = solver.describe(fit) | {"notes": notes}
     metrics["ai"] = {
         "planner": {

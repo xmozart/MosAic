@@ -16,13 +16,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mosaic.core.keys import artifact_key
 from mosaic.core.time import Rounding, parse_rational, round_fraction
 from mosaic.media.ffmpeg.render import AUDIO_RATE, SEEK_MARGIN, Piece
 
-RENDER_VERSION = "render/2"  # MOV chunks, phase-exact nearest-frame conform
+Fill = Literal["auto", "crop"]
+Framing = Literal["fit", "crop"]
+RENDER_VERSION = "render/3"  # aspect framing: crop near the target shape, else fit (ADR 0046)
+ASPECTS = {
+    "16:9": Fraction(16, 9),
+    "9:16": Fraction(9, 16),
+    "4:5": Fraction(4, 5),
+    "1:1": Fraction(1),
+    "2.39:1": Fraction(239, 100),
+}
+SHORT_SIDE = {"720p": 720, "1080p": 1080, "1440p": 1440, "4k": 2160}
+PREVIEW_SHORT_SIDE = 720
+MAX_LONG_SIDE = 4096  # H.264 level 5.2 and NVENC's widest frame
+CROP_WITHIN = Fraction(5, 4)  # a clip within 25 % of the target's shape fills it by cropping
 
 
 @dataclass(frozen=True)
@@ -33,6 +46,9 @@ class Profile:
     encoder: str
     bitrate: str
     lossless: bool = False
+    # "crop": the edit's shape is not its footage's (a 9:16 reel from landscape clips):
+    # every clip fills the frame by a centre crop. "auto": ``framing`` decides per clip.
+    fill: Fill = "auto"
 
     @property
     def container(self) -> str:
@@ -46,18 +62,87 @@ class Profile:
             "encoder": self.encoder,
             "bitrate": self.bitrate,
             "lossless": self.lossless,
+            "fill": self.fill,
         }
 
 
-def profile(kind: str, encoders: list[str], lossless: bool = False) -> Profile:
-    """Preview 720p from proxies; final 1080p SDR from originals (M0 defaults). The encoder
-    is the first available of VideoToolbox → NVENC → openh264; FFV1 for lossless tests."""
+def frame_size(aspect: str, short_side: int) -> tuple[int, int]:
+    """Width and height (even) of ``aspect`` with ``short_side`` pixels on its short side:
+    16:9 at 1080 → 1920×1080, 9:16 → 1080×1920, 4:5 → 1080×1350. The long side is capped
+    at ``MAX_LONG_SIDE`` (the short side shrinks to keep the shape): 2.39:1 at 4K is
+    4096×1714, within what every H.264 encoder takes (level 5.2, NVENC's 4096 px)."""
+    ratio = ASPECTS[aspect]
+
+    def even(x: Fraction) -> int:
+        return 2 * round(x / 2)
+
+    long_side = short_side * (ratio if ratio >= 1 else 1 / ratio)
+    if long_side > MAX_LONG_SIDE:
+        long_side, short = (
+            Fraction(MAX_LONG_SIDE),
+            MAX_LONG_SIDE / (ratio if ratio >= 1 else 1 / ratio),
+        )
+    else:
+        short = Fraction(short_side)
+    if ratio >= 1:
+        return even(long_side), even(short)
+    return even(short), even(long_side)
+
+
+def profile(
+    kind: str,
+    encoders: list[str],
+    lossless: bool = False,
+    aspect: str = "16:9",
+    resolution: str = "1080p",
+    native: Fraction | None = None,
+) -> Profile:
+    """Preview 720p from proxies; final at ``resolution`` (default 1080p) SDR from
+    originals, both in the edit's ``aspect`` (ADR 0046). ``native`` is the shape of the
+    edit's footage (``dominant_shape``): an aspect far from it crops every clip. The
+    encoder is the first available of VideoToolbox → NVENC → openh264; FFV1 for lossless
+    tests."""
     if not lossless and not encoders:
         raise RuntimeError("no H.264 encoder available in this FFmpeg build")
     enc = "ffv1" if lossless else encoders[0]
+    fill: Fill = "crop" if native is not None and not _close(native, ASPECTS[aspect]) else "auto"
     if kind == "preview":
-        return Profile("preview", 1280, 720, enc, "5M", lossless)
-    return Profile("final", 1920, 1080, enc, "14M", lossless)
+        w, h = frame_size(aspect, PREVIEW_SHORT_SIDE)
+        return Profile("preview", w, h, enc, "5M", lossless, fill)
+    w, h = frame_size(aspect, SHORT_SIDE[resolution])
+    bitrate = {"720p": "8M", "1080p": "14M", "1440p": "24M", "4k": "45M"}[resolution]
+    return Profile("final", w, h, enc, bitrate, lossless, fill)
+
+
+def _close(a: Fraction, b: Fraction) -> bool:
+    return (a / b if a >= b else b / a) <= CROP_WITHIN
+
+
+def dominant_shape(clips: list[tuple[int | None, int | None, int]]) -> Fraction | None:
+    """The display shape covering most of the edit: ``(width, height, frames)`` per event.
+    None when no clip has a known size."""
+    totals: dict[Fraction, int] = {}
+    for w, h, frames in clips:
+        if w and h:
+            shape = Fraction(w, h)
+            totals[shape] = totals.get(shape, 0) + frames
+    if not totals:
+        return None
+    return max(totals.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
+def framing(
+    display_w: int | None, display_h: int | None, width: int, height: int, fill: str = "auto"
+) -> Framing:
+    """How a clip fills the frame (PRODUCT.md §4 Destination, ADR 0046): ``crop`` (a
+    centre crop) when the profile crops everything or the clip's shape is within 25 % of
+    the frame's; else ``fit`` (scaled in whole, with bars), so a portrait phone clip in a
+    landscape edit of landscape footage stays visible."""
+    if fill == "crop":
+        return "crop"
+    if not display_w or not display_h:
+        return "fit"
+    return "crop" if _close(Fraction(display_w, display_h), Fraction(width, height)) else "fit"
 
 
 @dataclass(frozen=True)

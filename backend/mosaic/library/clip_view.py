@@ -57,6 +57,7 @@ REASON_WORDS = {
     "nothing_happens": "Nothing much happens",
     "low_interest": "Not much of interest",
     "not_usable": "The AI found nothing usable",
+    "clip_rejected": "You rejected the whole clip",
 }
 QUALITY_METRICS = (
     "sharpness",

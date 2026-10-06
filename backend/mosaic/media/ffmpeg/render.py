@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
+from typing import Literal
 
 from mosaic.media.ffmpeg.builders import TONEMAP_TO_SDR, lut_filters, seconds_expr
 from mosaic.media.ffmpeg.command import (
@@ -70,6 +71,9 @@ class ChunkSpec:
     threads: int = 0
     extra: list[tuple[str, OptionValue]] = field(default_factory=list)
     lut: Path | None = None  # final renders of log footage (previews read LUT'd proxies)
+    # "fit": scale the whole picture into the frame, bars where shapes differ; "crop": fill
+    # the frame and cut the overflow at the centre (ADR 0046).
+    framing: Literal["fit", "crop"] = "fit"
 
 
 def conform_shift(timeline_rate: Fraction, source_rate: Fraction | None) -> Fraction:
@@ -97,7 +101,7 @@ def _video_chain(spec: ChunkSpec, src: str) -> str:
                 "scale",
                 w=spec.width,
                 h=spec.height,
-                force_original_aspect_ratio="decrease",
+                force_original_aspect_ratio="increase" if spec.framing == "crop" else "decrease",
                 force_divisible_by=2,
                 flags="bicubic",
                 out_range="tv",
@@ -110,7 +114,7 @@ def _video_chain(spec: ChunkSpec, src: str) -> str:
                 "scale",
                 w=spec.width,
                 h=spec.height,
-                force_original_aspect_ratio="decrease",
+                force_original_aspect_ratio="increase" if spec.framing == "crop" else "decrease",
                 force_divisible_by=2,
                 flags="bicubic",
             ),
@@ -122,7 +126,7 @@ def _video_chain(spec: ChunkSpec, src: str) -> str:
                 "scale",
                 w=spec.width,
                 h=spec.height,
-                force_original_aspect_ratio="decrease",
+                force_original_aspect_ratio="increase" if spec.framing == "crop" else "decrease",
                 force_divisible_by=2,
                 flags="bicubic",
                 in_range="pc" if spec.full_range else "tv",
@@ -131,7 +135,11 @@ def _video_chain(spec: ChunkSpec, src: str) -> str:
             )
         )
     fit += [
-        Filter.of("pad", w=spec.width, h=spec.height, x="(ow-iw)/2", y="(oh-ih)/2", color="black"),
+        Filter.of("crop", w=spec.width, h=spec.height, x="(iw-ow)/2", y="(ih-oh)/2")
+        if spec.framing == "crop"
+        else Filter.of(
+            "pad", w=spec.width, h=spec.height, x="(ow-iw)/2", y="(oh-ih)/2", color="black"
+        ),
         Filter.of("setsar", "1"),
         # Exactly ``frames``: clone the last frame if the source ends early, then cut.
         Filter.of("tpad", stop_mode="clone", stop=spec.frames),

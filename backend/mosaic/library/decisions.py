@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from sqlalchemy import delete, select
+from sqlalchemy import Select, case, delete, func, select
 from sqlalchemy.orm import Session
 
 from mosaic.core.clock import now_iso
@@ -126,6 +126,43 @@ def user_rejected(s: Session) -> set[int]:
         if seg_user.get(sid, "REJECT") == "REJECT":
             out.add(sid)
     return out
+
+
+def rejected_segments() -> Select[int, int, str]:
+    """Every segment whose decision in force is REJECT, with who set it (``clip``,
+    ``user`` or ``ai``), by segment id: ``resolve`` in SQL, so the edit report pages the
+    rejected list without loading every clip. Unanalysed segments of a rejected clip are
+    rejected too."""
+    prio = {"USE": 1, "MAYBE": 2, "REJECT": 3}
+
+    def p(expr: Any) -> Any:
+        return case(*((expr == k, v) for k, v in prio.items()), else_=None)
+
+    seg = (
+        select(
+            Disposition.segment_id.label("segment_id"),
+            func.max(case((Disposition.source == "user", p(Disposition.status)))).label("u"),
+            func.max(case((Disposition.source == "ai", p(Disposition.status)))).label("a"),
+        )
+        .where(Disposition.segment_id.is_not(None))
+        .group_by(Disposition.segment_id)
+        .subquery()
+    )
+    never = case((ClipDecision.include == "never", 3))
+    rule = case((ClipDecision.include == "always", 1), else_=p(ClipDecision.disposition))
+    source = case(
+        (never.is_not(None), "clip"),
+        (seg.c.u.is_not(None), "user"),
+        (rule.is_not(None), "clip"),
+        else_="ai",
+    )
+    return (
+        select(Segment.id, Segment.asset_id, source.label("source"))
+        .outerjoin(seg, seg.c.segment_id == Segment.id)
+        .outerjoin(ClipDecision, ClipDecision.asset_id == Segment.asset_id)
+        .where(func.coalesce(never, seg.c.u, rule, seg.c.a) == 3)
+        .order_by(Segment.id)
+    )
 
 
 class DecisionError(ValueError):
