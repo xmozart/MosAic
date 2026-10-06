@@ -8,8 +8,10 @@ mode finds, how many become L3 candidates) the estimate is a range.
 Every value here is for display: seconds and dollars are rounded, nothing is stored or
 used as an authoritative time (invariant 3).
 
-Wall time uses per-mode speed factors measured on the M0 eval machine until the hardware
-benchmark (M1 step 12) replaces them.
+Wall time comes from this computer's hardware benchmark (ADR 0030): proxy decoding per
+minute of footage over the encode slots, plus the frame pass and image embeddings over
+the CPU slots. Without a benchmark it falls back to per-mode speed factors measured on
+the M0 eval machine (``basis: "default"``).
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ OUTPUT_SHARE = (Fraction(1, 4), Fraction(1))
 TEXT_TOKENS = 2000  # prompt, context and schema per call
 # Local analysis wall time per second of footage, by mode (M0: 90 min Balanced in 27 min).
 SPEED = {"quick": Fraction(1, 8), "balanced": Fraction(3, 10), "thorough": Fraction(3, 5)}
+EMBED_MS = 150  # per sample image when the benchmark had no embedder (M1 eval machine)
 AI_CALL_SECONDS = (4, 15)  # per call, one AI slot
 WALL_SPREAD = (Fraction(7, 10), Fraction(3, 2))
 SAMPLE_BYTES = 60_000  # 640 px JPEG
@@ -61,6 +64,7 @@ class Estimate:
     storage_bytes: int
     wall_seconds: tuple[int, int]
     days: int | None = None  # deepen: trip days in scope
+    basis: str = "default"  # wall time from "benchmark" (this computer) or "default"
 
     def as_json(self) -> dict[str, Any]:
         out = asdict(self)
@@ -193,7 +197,7 @@ def for_project(
     proxy = footage * BITRATE[mode.proxy] / 8
     sheets = l2[1]
     storage = math.ceil(proxy + samples * SAMPLE_BYTES + sheets * SHEET_BYTES)
-    speed = SPEED.get(mode.name, SPEED["balanced"])
+    local, basis = _local_seconds(config, mode, footage, samples, videos)
     return Estimate(
         mode=mode.name,
         scope="project",
@@ -205,8 +209,32 @@ def for_project(
         l3_calls=l3,
         cost_usd=_sum(l2_cost, l3_cost),
         storage_bytes=storage,
-        wall_seconds=_wall(footage * speed, (l2[0] + l3[0], l2[1] + l3[1])),
+        wall_seconds=_wall(local, (l2[0] + l3[0], l2[1] + l3[1])),
+        basis=basis,
     )
+
+
+def _local_seconds(
+    config: ConfigService, mode: ModeConfig, footage: Fraction, samples: int, videos: int
+) -> tuple[Fraction, str]:
+    """Local analysis time of ``footage`` seconds: from this computer's benchmark when it
+    has one, else the M0 speed factors."""
+    from mosaic.jobs.worker import configured_slots
+    from mosaic.media import benchmark
+
+    bench = benchmark.latest(config.control)
+    proxy_ms = bench.ms_per_minute(mode.proxy) if bench else None
+    frame_ms = bench.ms_per_minute("analysis") if bench else None
+    if bench is None or proxy_ms is None or frame_ms is None:
+        return footage * SPEED.get(mode.name, SPEED["balanced"]), "default"
+    slots = configured_slots(config.control)
+    parallel = max(1, videos)  # one asset's stages run in order
+    encode = min(slots["gpu_encode"], parallel)
+    cpu = min(slots["cpu"], parallel)
+    minutes = footage / 60
+    embed_ms = bench.embed_ms if bench.embed_ms is not None else EMBED_MS
+    cpu_ms = minutes * frame_ms + samples * embed_ms
+    return (minutes * proxy_ms / encode + cpu_ms / cpu) / 1000, "benchmark"
 
 
 def for_deepen(

@@ -184,3 +184,17 @@ class UsageRecord(ControlBase):
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[str] = mapped_column(String(40))
+
+
+class HardwareBenchmark(ControlBase):
+    """This computer's measured analysis speed (ADR 0030): feeds wall-time estimates.
+    One row per machine fingerprint and benchmark version; a re-run replaces it."""
+
+    __tablename__ = "hardware_benchmark"
+    __table_args__ = (Index("ux_hardware_benchmark", "fingerprint", "version", unique=True),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(32))
+    version: Mapped[str] = mapped_column(String(40))
+    hardware: Mapped[dict[str, Any]] = mapped_column(JSON)
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[str] = mapped_column(String(40))

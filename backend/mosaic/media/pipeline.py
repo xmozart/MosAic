@@ -8,6 +8,7 @@ from mosaic.core.modes import ModeConfig, resolve
 from mosaic.core.principal import Principal
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
+from mosaic.storage.control import ControlDB
 from mosaic.storage.projects import Project
 
 
@@ -30,6 +31,7 @@ def submit_analysis(
     mode: str | ModeConfig = "balanced",
     cost_limit_usd: float | None = None,
     overrides: dict[str, Any] | None = None,
+    benchmark: bool = False,
 ) -> int:
     """Start an analysis run of the whole project in ``mode`` (ANALYSIS_MODES §2). Each
     stage reads the mode from the job; whatever already matches its key is reused.
@@ -44,13 +46,44 @@ def submit_analysis(
             cost_limit_usd=(
                 job_cost_limit(principal) if cost_limit_usd is None else cost_limit_usd
             ),
-            tasks=[
+            # A first run on this computer measures it before the heavy work starts, so
+            # the benchmark is not slowed by the analysis it times (ADR 0030).
+            tasks=([benchmark_spec()] if benchmark else [])
+            + [
                 TaskSpec(
                     kind="analysis.scan",
                     stage="scan",
                     resource_class=ResourceClass.IO,
                     label="scanning folder",
+                    deps=[0] if benchmark else [],
                 )
             ],
         ),
     )
+
+
+def benchmark_spec(force: bool = False) -> TaskSpec:
+    return TaskSpec(
+        kind="system.benchmark",
+        stage="benchmark",
+        resource_class=ResourceClass.CPU,
+        params={"force": force},
+        label="measuring this computer",
+    )
+
+
+def submit_benchmark(
+    executor: Executor, principal: Principal, project: Project, force: bool = False
+) -> int:
+    """Measure this computer (ADR 0030). The job belongs to ``project`` (jobs are
+    project-scoped) but writes only the control DB."""
+    return executor.submit(
+        principal,
+        JobSpec(project_id=project.id, kind="benchmark", tasks=[benchmark_spec(force)]),
+    )
+
+
+def needs_benchmark(control: ControlDB) -> bool:
+    from mosaic.media.benchmark import latest
+
+    return latest(control) is None

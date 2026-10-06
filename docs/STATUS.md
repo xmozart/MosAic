@@ -9,7 +9,7 @@ _(empty — the agent is working on M1)_
 ## Current
 
 - **Milestone:** M1
-- **Step:** M1 step 12 (hardware probe, benchmark, rate limits); steps 1–11 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search).
+- **Step:** M1 step 13 (40-hour scale test, acceptance 6); steps 1–12 done (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -42,7 +42,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - [x] 9. Photos: HEIC/JPEG/NEF/DNG ingest, Live Photo pairing, bursts, photo+video moments, photos in mosaics and vision (licence-clean decoders)
 - [x] 10. Clock correction (per-device offsets, CLI) and colour: per-profile hints, user LUTs for log sources
 - [x] 11. Hybrid search: SigLIP text→image + FTS5, RRF; API and CLI
-- [ ] 12. Hardware probe and benchmark → estimates; worker pool resource classes and per-provider rate limits
+- [x] 12. Hardware probe and benchmark → estimates; worker pool resource classes and per-provider rate limits
 - [ ] 13. Scale: the 40-hour synthetic project, bounded memory, list API < 300 ms (acceptance 6)
 - [ ] 14. M1 acceptance suite, `make eval`, `docs/reports/M1.md`; then continue to M2
 
@@ -50,7 +50,6 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - A job paused at its cost limit needs a way to raise that job's `cost_limit_usd` before resuming (S9/S20, API `resume` parameter).
-- Step 12: wire the per-`make eval` run ($5) and per-milestone ($25) budgets (AGENT_WORKFLOW §4) as job cost limits and a running total.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
 
@@ -112,3 +111,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-05 · M1.10a · Devices and clock correction: device table, raw vs corrected capture times (offsets apply instantly, no re-analysis), L1 `library.clock` suggestions from cross-device evidence pairs, devices API and `mosaic clock` (ADR 0027)
 - 2026-10-05 · M1.10b · LUTs for log footage: per-device .cube LUT (validated, copied into the artifact store by content), lut3d first in proxies and before scaling in final renders, keys change only for LUT devices, devices API `lut_path`/`clear_lut` and `mosaic device --lut` (ADR 0028)
 - 2026-10-05 · M1.11 · Hybrid search: SigLIP text embeddings (same pinned weights), FTS5 index over descriptions/tags/transcripts rebuilt by `library.search_index` at the end of every chain, reciprocal rank fusion, search + suggestions API and `mosaic search` (ADR 0029)
+- 2026-10-05 · M1.12 · Hardware probe (cores, memory, working hardware encoders, fingerprint), `system.benchmark` (generated 4K clip through the real proxy builder, frame pass and embedder; stored per computer; first analysis on a machine runs it), benchmark-based wall-time estimates with `basis`, worker slots sized from the probe (`workers.*` overrides), per-provider AI rate limits (`ai.rate.*`), `mosaic hardware`, `/system/info`, `POST /projects/{pid}/benchmark` (ADR 0030); eval budgets were already job cost limits

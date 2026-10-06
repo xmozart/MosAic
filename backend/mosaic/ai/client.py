@@ -23,6 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from mosaic.ai import ratelimit
 from mosaic.ai.adapters.base import Adapter, strict_schema
 from mosaic.ai.prompts.loader import load
 from mosaic.ai.registry import adapter_for
@@ -180,18 +181,25 @@ class AIClient:
         validate: Validator | None,
     ) -> AIResult:
         feedback: str | None = None
+        limit = ratelimit.limit_for(self.config, self.principal, provider)
         total_in = total_out = 0
         total_cost = 0.0
         served = model
         for attempt in (1, 2):
             reserved = self._reserve(adapter, request, model)
             try:
-                raw = adapter.complete(request, model, schema_json, feedback)
+                with ratelimit.slot(
+                    provider, limit, sum(adapter.estimate_tokens(request)), self.ctx.check_cancelled
+                ):
+                    raw = adapter.complete(request, model, schema_json, feedback)
             except AdapterError as exc:
                 self.ctx.store.adjust_cost(self.ctx.task.job_id, -reserved)
                 if exc.retryable:
                     raise RuntimeError(str(exc)) from None  # the worker retries the task
                 raise PermanentError(str(exc)) from None
+            except BaseException:  # any other failure, including a cancelled slot wait
+                self.ctx.store.adjust_cost(self.ctx.task.job_id, -reserved)
+                raise
             cost = adapter.cost_usd(model, raw.tokens_in, raw.tokens_out)
             self.ctx.store.adjust_cost(self.ctx.task.job_id, cost - reserved)
             self._record_usage(

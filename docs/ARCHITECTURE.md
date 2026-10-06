@@ -58,7 +58,7 @@ tests/            unit, integration (synthetic media), evaluation
 | Auth | Single admin account, Argon2 password hash, HttpOnly SameSite cookie, CSRF token | Per-launch random bearer token passed from Tauri. Host-header allowlist protects against DNS rebinding. |
 | Folder selection | Server-side browser limited to configured media roots | Native folder picker |
 | Secrets | Env vars, Docker secrets, or an encrypted file keyed by an install master key | OS keyring via Python `keyring` (Keychain / Credential Manager); also used in development (ADR 0003) |
-| Workers | Configurable counts per resource class | Auto-sized from CPU/GPU probe |
+| Workers | Configurable counts per resource class | Auto-sized from CPU/GPU probe (`workers.<class>` overrides; ADR 0030) |
 
 ## 4. Storage placement policy
 
@@ -186,7 +186,7 @@ AI qualitative scores use **ordinal scales**: `poor | fair | good | excellent`, 
 - `job` is a user-visible unit, such as an analysis run, an edit generation or a render. `task` is an idempotent unit of work with `kind`, `resource_class`, `input_keys`, `output_key` and `status` (`pending | ready | leased | done | failed | skipped | cancelled`).
 - **Scheduler.** Tasks become `ready` when all dependencies are `done`. Workers atomically lease one ready task of their class using `UPDATE … RETURNING` with a lease expiry and heartbeat. Expired leases return the task to `ready`.
 - **Idempotency.** Before running, a worker checks whether the artifact for `output_key` exists and is valid. If it does, the task is marked done without work. This makes resume after a crash trivial.
-- **Rate limits.** `ai_api` tasks pass through per-provider token buckets (requests per minute and tokens per minute) plus a cost ceiling per job. (M0: the cost ceiling is enforced by atomic reservation and provider SDK retries handle 429s; the token buckets arrive with heavier parallel use in M1, ADR 0012.)
+- **Rate limits.** `ai_api` tasks pass through per-provider token buckets (requests per minute and tokens per minute) plus a cost ceiling per job. (M0: the cost ceiling is enforced by atomic reservation and provider SDK retries handle 429s, ADR 0012. M1: each provider has a process-wide limiter for concurrency, requests per minute and estimated tokens per minute, with `ai.rate.<provider>.*` settings, ADR 0030.)
 - **Per-project write serialization.** Project DB writes go through a single writer per project: a worker-side queue, with SQLite WAL mode only on `local` placement.
 - **Progress** is aggregated per job: stage, current item, done/total, and ETA only after at least 10% of tasks have completed. It is published over SSE.
 - **Executor interface.** `Executor.submit / cancel / heartbeat` isolates this design so a distributed executor can replace local processes later without schema changes.

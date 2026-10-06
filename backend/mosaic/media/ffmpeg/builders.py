@@ -571,6 +571,34 @@ def encoder_trial(encoder: str) -> FFmpegCommand:
     )
 
 
+def bench_source(
+    out: Path, width: int, height: int, rate: int, seconds: int, encoder: str
+) -> FFmpegCommand:
+    """A moving, noisy test clip for the hardware benchmark (ADR 0030): camera-like
+    detail so decoding and analysis cost what real footage costs."""
+    graph = f"testsrc2=s={width}x{height}:r={rate}:d={seconds}"
+    return FFmpegCommand(
+        inputs=[InputSpec(graph, [("-f", "lavfi")])],
+        outputs=[
+            OutputSpec(
+                media_path(out),
+                [
+                    (
+                        "-vf",
+                        chain(
+                            Filter.of("noise", alls=12, allf="t"), Filter.of("format", "yuv420p")
+                        ),
+                    ),
+                    ("-c:v", encoder),
+                    ("-b:v", "40M"),
+                    ("-movflags", "+faststart"),
+                ],
+            )
+        ],
+        description=f"benchmark source {width}x{height}",
+    )
+
+
 def still_frame(
     src: Path,
     stream_index: int,

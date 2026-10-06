@@ -37,6 +37,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.library.search",
     "mosaic.library.review",
     "mosaic.render.tasks",
+    "mosaic.media.benchmark",
 )
 """Modules that register production handlers; extended as pipeline stages land."""
 

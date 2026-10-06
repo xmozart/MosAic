@@ -20,7 +20,7 @@ from mosaic.core.modes import MODES, ModeConfig, UnknownModeError, resolve
 from mosaic.core.principal import Principal, check
 from mosaic.library import estimate
 from mosaic.library.review import TARGETS, DeepenScope, submit_deepen
-from mosaic.media.pipeline import submit_analysis
+from mosaic.media.pipeline import needs_benchmark, submit_analysis
 from mosaic.storage.config import ConfigService
 
 router = APIRouter(prefix="/api")
@@ -119,7 +119,14 @@ def post_run(pid: str, body: RunBody, svc: Services = Svc, me: Principal = Me) -
     config = _mode(body.mode, body.overrides, body.scope)
     with _project(svc, me, pid, write=True) as project:
         if body.scope is None:
-            job = submit_analysis(svc.executor, me, project, config, body.cost_limit)
+            job = submit_analysis(
+                svc.executor,
+                me,
+                project,
+                config,
+                body.cost_limit,
+                benchmark=needs_benchmark(svc.control),
+            )
             return {"job_id": job, "mode": config.model_dump(mode="json")}
         run = submit_deepen(
             svc.executor,

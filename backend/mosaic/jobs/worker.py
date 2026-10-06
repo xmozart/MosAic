@@ -27,6 +27,7 @@ from mosaic.jobs.context import TaskCancelledError, TaskContext
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.model import JOB_TERMINAL, LeasedTask, ResourceClass
 from mosaic.jobs.store import LEASE_MS, JobStore, now_ms
+from mosaic.media import hardware
 from mosaic.storage import lease
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_control import Job, TaskEvent, WorkerRecord
@@ -37,14 +38,42 @@ log = logging.getLogger("mosaic.worker")
 ENV_LEASE_MS = "MOSAIC_LEASE_MS"
 
 
-def default_slots() -> dict[str, int]:
-    cpus = os.cpu_count() or 4
-    return {
-        ResourceClass.CPU.value: max(2, cpus // 2),
-        ResourceClass.GPU_ENCODE.value: 2,
+GB = 1 << 30
+SLOT_MEMORY = 2 * GB  # a heavy CPU task (Whisper medium, the frame pass) at its peak
+SLOT_SETTINGS = {rc.value: f"workers.{rc.value}" for rc in ResourceClass}
+
+
+def default_slots(
+    hw: hardware.Hardware | None = None, overrides: dict[str, int] | None = None
+) -> dict[str, int]:
+    """Slots per resource class, sized from the hardware probe (ARCHITECTURE.md §3,
+    ADR 0030); a positive override (the ``workers.<class>`` settings) wins."""
+    hw = hw or hardware.probe()
+    cpu = max(2, hw.cpu_logical // 2)
+    if hw.memory_bytes:
+        cpu = max(1, min(cpu, hw.memory_bytes // SLOT_MEMORY))
+    slots = {
+        ResourceClass.CPU.value: cpu,
+        # A hardware encoder runs two sessions well; software encoding is CPU work.
+        ResourceClass.GPU_ENCODE.value: 2 if hw.hw_encoders else 1,
+        # Concurrency per provider is limited separately (ai/ratelimit.py).
         ResourceClass.AI_API.value: 4,
         ResourceClass.IO.value: 2,
     }
+    for rc, n in (overrides or {}).items():
+        if n > 0:
+            slots[rc] = n
+    return slots
+
+
+def configured_slots(control: ControlDB) -> dict[str, int]:
+    from mosaic.storage.config import ConfigService
+
+    config = ConfigService(control)
+    me = control.local_principal
+    return default_slots(
+        overrides={rc: int(config.get(me, key)) for rc, key in SLOT_SETTINGS.items()}
+    )
 
 
 @dataclass
@@ -273,7 +302,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     lease_ms = int(os.environ.get(ENV_LEASE_MS, LEASE_MS))
-    worker = Worker(ControlDB(), lease_ms=lease_ms)
+    control = ControlDB()
+    worker = Worker(control, slots=configured_slots(control), lease_ms=lease_ms)
+    log.info("worker slots: %s", worker.slots)
     signal.signal(signal.SIGTERM, lambda *_: worker.stop.set())
     worker.run(exit_when_idle_s=args.exit_when_idle)
 

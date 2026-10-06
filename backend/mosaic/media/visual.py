@@ -10,7 +10,9 @@ proxy size: frame metrics, pHash de-duplication and thumbnails.
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -111,15 +113,22 @@ def _is_done(ctx: TaskContext) -> bool:
 
 
 def pass_a(ctx: TaskContext, px: ProxyInfo) -> tuple[list[float], list[tuple[float, float]]]:
+    return frame_pass(px.path, px.width, px.height, ctx.check_cancelled)
+
+
+def frame_pass(
+    path: Path, width: int, height: int, check: Callable[[], None]
+) -> tuple[list[float], list[tuple[float, float]]]:
+    """Content change and camera shift per proxy frame (also timed by the benchmark)."""
     binaries, _ = media_tools()
     w = ANALYSIS_WIDTH
-    h = _even(Fraction(w * px.height, px.width))
+    h = _even(Fraction(w * height, width))
     content: list[float] = []
     shifts: list[tuple[float, float]] = []
     prev_hsv = prev_gray = None
-    for i, buf in enumerate(stream_stdout(binaries, builders.raw_frames(px.path, w, h), w * h * 3)):
+    for i, buf in enumerate(stream_stdout(binaries, builders.raw_frames(path, w, h), w * h * 3)):
         if i % 500 == 0:
-            ctx.check_cancelled()
+            check()
         rgb = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)
         hsv = l1.rgb_to_hsv(rgb)
         gray = l1.luma(rgb)

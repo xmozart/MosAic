@@ -204,7 +204,7 @@ def run_trip(
     deepen: bool = False,
 ) -> dict[str, Any]:
     from mosaic.editing.service import create_edit, get_version, submit_generate
-    from mosaic.media.pipeline import submit_analysis
+    from mosaic.media.pipeline import needs_benchmark, submit_analysis
     from mosaic.render.service import create_render, get_render, submit_render
     from mosaic.render.tasks import output_path
     from mosaic.storage.projects import NotAProjectError, init_project, open_project
@@ -220,7 +220,13 @@ def run_trip(
     try:
         if budget.remaining <= 0:
             raise GateStop("G2", "the eval budget is used up for this run or milestone")
-        job = submit_analysis(executor, me, project, cost_limit_usd=budget.remaining)
+        job = submit_analysis(
+            executor,
+            me,
+            project,
+            cost_limit_usd=budget.remaining,
+            benchmark=needs_benchmark(control),
+        )
         _run_job(control, job, "analysis", budget, name)
         # Context first: the L3 review prompt includes it.
         apply_context(project, CORPUS_META / name.lower() / "context.json")

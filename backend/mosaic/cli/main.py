@@ -165,6 +165,11 @@ def _show_estimate(control: Any, project: Any, config: Any) -> None:
         f"{est.storage_bytes / 1e9:.1f} GB · {est.l2_calls} sheets"
         + (f" · {est.l3_calls[0]}–{est.l3_calls[1]} deep reviews" if config.l3 else "")
     )
+    if est.basis == "default":
+        click.echo(
+            "  (time from typical speeds; `mosaic hardware FOLDER --benchmark` measures "
+            "this computer)"
+        )
 
 
 @cli.command()
@@ -191,7 +196,7 @@ def analyze(folder: Path, mode: str, overrides: tuple[str, ...], estimate: bool)
     from mosaic.core.modes import UnknownModeError, resolve
     from mosaic.jobs.executor import LocalExecutor
     from mosaic.jobs.store import JobStore
-    from mosaic.media.pipeline import submit_analysis
+    from mosaic.media.pipeline import needs_benchmark, submit_analysis
 
     try:
         config = resolve(mode, _overrides(overrides) or None)
@@ -204,7 +209,11 @@ def analyze(folder: Path, mode: str, overrides: tuple[str, ...], estimate: bool)
             _show_estimate(control, project, config)
             return
         job_id = submit_analysis(
-            LocalExecutor(JobStore(control.db)), control.local_principal, project, config
+            LocalExecutor(JobStore(control.db)),
+            control.local_principal,
+            project,
+            config,
+            benchmark=needs_benchmark(control),
         )
         click.echo(f"Analysis job {job_id} ({mode})")
         status = _follow(control, job_id)
@@ -293,6 +302,62 @@ def edit(
         )
     finally:
         project.close()
+        control.db.dispose()
+
+
+@cli.command()
+@click.argument(
+    "folder", required=False, type=click.Path(exists=True, file_okay=False, path_type=Path)
+)
+@click.option("--benchmark", is_flag=True, help="Measure this computer (runs in FOLDER's queue).")
+@click.option("--force", is_flag=True, help="Measure again even if a result exists.")
+def hardware(folder: Path | None, benchmark: bool, force: bool) -> None:
+    """Show this computer's hardware, worker slots and measured speed (ADR 0030)."""
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from mosaic.jobs.worker import configured_slots
+    from mosaic.media import benchmark as bench_mod
+    from mosaic.media import hardware as hw_mod
+    from mosaic.media.pipeline import submit_benchmark
+
+    control = _control()
+    try:
+        if benchmark:
+            if folder is None:
+                raise click.ClickException("--benchmark needs a project FOLDER for its job")
+            project = _open(control, folder)
+            try:
+                job_id = submit_benchmark(
+                    LocalExecutor(JobStore(control.db)), control.local_principal, project, force
+                )
+                status = _follow(control, job_id)
+            finally:
+                project.close()
+            if status != "done":
+                raise click.ClickException(f"benchmark {status}")
+        hw = hw_mod.probe()
+        mem = f"{hw.memory_bytes / (1 << 30):.0f} GB" if hw.memory_bytes else "memory unknown"
+        cores = f"{hw.cpu_logical} threads"
+        if hw.cpu_performance:
+            cores += f", {hw.cpu_performance} performance cores"
+        click.echo(f"{hw.cpu_model or hw.arch} · {cores} · {mem}")
+        click.echo(f"  hardware encoders: {', '.join(hw.hw_encoders) or 'none (software)'}")
+        slots = configured_slots(control)
+        click.echo("  worker slots: " + ", ".join(f"{k} {v}" for k, v in slots.items()))
+        found = bench_mod.latest(control, hw)
+        if found is None:
+            click.echo("  not measured yet: the first analysis measures it, or use --benchmark")
+            return
+        per = found.result["ms_per_minute"]
+        embed = found.embed_ms
+        click.echo(
+            "  per minute of 4K footage: "
+            f"540p proxy {per['lrf_or_540'] / 1000:.1f} s, 720p proxy {per['720'] / 1000:.1f} s, "
+            f"frame analysis {per['analysis'] / 1000:.1f} s"
+            + (f"; {embed} ms per image embedding" if embed is not None else "")
+        )
+        click.echo(f"  measured {found.created_at}")
+    finally:
         control.db.dispose()
 
 

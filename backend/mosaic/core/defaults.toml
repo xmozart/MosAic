@@ -12,6 +12,20 @@
 "ai.cli.claude_path" = ""  # Claude Code app (claude-cli provider, ADR 0014); "" = find on PATH
 "ai.cli.codex_path" = ""  # Codex app (codex-cli provider); "" = find on PATH
 "ai.cli.timeout_s" = 300.0
+"workers.cpu" = 0.0  # worker slots per resource class; 0 = sized from the hardware probe
+"workers.gpu_encode" = 0.0
+"workers.ai_api" = 0.0
+"workers.io" = 0.0
+# AI rate limits per provider (ADR 0030); 0 = the provider default in ai/ratelimit.py
+"ai.rate.anthropic.requests_per_minute" = 0.0
+"ai.rate.anthropic.tokens_per_minute" = 0.0
+"ai.rate.anthropic.concurrency" = 0.0
+"ai.rate.claude-cli.requests_per_minute" = 0.0
+"ai.rate.claude-cli.tokens_per_minute" = 0.0
+"ai.rate.claude-cli.concurrency" = 0.0
+"ai.rate.codex-cli.requests_per_minute" = 0.0
+"ai.rate.codex-cli.tokens_per_minute" = 0.0
+"ai.rate.codex-cli.concurrency" = 0.0
 "allow_gpl_ffmpeg" = false  # dev only; never enable in a shipped build
 
 # capability → provider, model, mode. Anthropic is the default provider, not a requirement.

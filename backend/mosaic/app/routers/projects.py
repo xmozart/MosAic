@@ -13,7 +13,7 @@ from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
 from mosaic.core.modes import from_params
 from mosaic.core.principal import Principal, check
-from mosaic.media.pipeline import submit_analysis
+from mosaic.media.pipeline import needs_benchmark, submit_analysis
 from mosaic.storage import lease
 from mosaic.storage.descriptor import read_descriptor
 from mosaic.storage.placement import Placement
@@ -127,7 +127,9 @@ def relink(
         last = svc.store.jobs(pid, None, kind="analysis", limit=1)
         analysis = last[0] if last else None
         mode = from_params(analysis.params if analysis else None)
-        job = submit_analysis(svc.executor, me, project, mode)
+        job = submit_analysis(
+            svc.executor, me, project, mode, benchmark=needs_benchmark(svc.control)
+        )
     finally:
         project.close(checkpoint=False)
     return {"job_id": job, "root": str(root), "mode": mode.name}
