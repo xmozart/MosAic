@@ -11,6 +11,10 @@ export interface SecretFieldProps {
   status?: "ok" | "invalid";
   onSave: (value: string) => Promise<void> | void;
   onValidate: () => void;
+  /** Removes the key the user entered (a deployment key is used again; ADR 0036). */
+  onRemove?: () => void;
+  /** Why Validate can't run now (e.g. Local only is on); disables it. */
+  validateBlocked?: string;
 }
 
 /**
@@ -18,7 +22,7 @@ export interface SecretFieldProps {
  * sent, and the field is cleared. Only "••••last4" is ever shown; nothing is kept in
  * component state after saving, and nothing goes to browser storage.
  */
-export function SecretField({ label, where, last4, validating, status, onSave, onValidate }: SecretFieldProps) {
+export function SecretField({ label, where, last4, validating, status, onSave, onValidate, onRemove, validateBlocked }: SecretFieldProps) {
   const [editing, setEditing] = useState(!last4);
   const [value, setValue] = useState("");
   const [failed, setFailed] = useState(false);
@@ -80,12 +84,18 @@ export function SecretField({ label, where, last4, validating, status, onSave, o
             )}{" "}
             · <span className="mono text-timecode">••••{last4}</span>
           </span>
-          <Button size="sm" onClick={onValidate} disabled={validating}>
+          <Button size="sm" onClick={onValidate} disabled={validating || Boolean(validateBlocked)}>
             {validating ? "Validating…" : "Validate"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
             Replace key
           </Button>
+          {onRemove && (
+            <Button size="sm" variant="ghost" onClick={onRemove}>
+              Remove key
+            </Button>
+          )}
+          {validateBlocked && <span className="text-caption font-normal text-text-faint">{validateBlocked}</span>}
         </div>
       )}
     </div>

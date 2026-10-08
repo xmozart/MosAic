@@ -193,3 +193,13 @@ export const Sections: Story = {
     );
   },
 };
+
+export const SecretFieldStates: Story = {
+  name: "SecretField · remove and blocked validate",
+  render: () => (
+    <div className="flex w-[640px] flex-col gap-6">
+      <SecretField label="Anthropic API key" where="Stored in the system keychain" last4="7F3A" onSave={() => {}} onValidate={() => {}} onRemove={() => {}} />
+      <SecretField label="Anthropic API key" where="Stored in the system keychain" last4="7F3A" onSave={() => {}} onValidate={() => {}} validateBlocked="Local only is on: nothing is sent to check the key." />
+    </div>
+  ),
+};

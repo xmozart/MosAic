@@ -5,6 +5,8 @@ export interface Section {
   label: string;
   /** The Danger zone reads in the reject color. */
   danger?: boolean;
+  /** A small tag after the label (S22: "Admin"). */
+  tag?: string;
 }
 
 /** The settings screens' left nav (S21, S22): one entry per section; the active one is
@@ -29,6 +31,7 @@ export function SectionNav({ title, sections, active, onSelect }: { title: strin
           )}
         >
           {s.label}
+          {s.tag && <span className="ml-2 rounded-full border border-border bg-surface-2 px-[7px] py-px text-tag font-medium text-text-muted">{s.tag}</span>}
         </a>
       ))}
     </nav>

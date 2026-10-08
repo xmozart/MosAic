@@ -4600,13 +4600,21 @@
         "summary": "Get Providers"
       },
       "patch": {
+        "description": "``capability \u2192 {provider, model}``, or ``null`` to reset it (S22's Reset).",
         "operationId": "patch_providers_api_providers_patch",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "additionalProperties": {
-                  "$ref": "#/components/schemas/ProviderPatch"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProviderPatch"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "title": "Body",
                 "type": "object"
@@ -4640,6 +4648,27 @@
           }
         },
         "summary": "Patch Providers"
+      }
+    },
+    "/api/providers/options": {
+      "get": {
+        "description": "What S22 offers per task: each provider's mode, the tasks it can serve, models to\npick from (local providers accept only these; cloud ones are suggestions), presets.",
+        "operationId": "provider_options_api_providers_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Provider Options Api Providers Options Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Provider Options"
       }
     },
     "/api/renders": {

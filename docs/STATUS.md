@@ -60,7 +60,7 @@ Order: design foundation first (milestone rule), then the server pieces the brow
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
   - [x] 9a. Backend: project storage and clearing (job), removal of MosAic data, diagnostics tasks, retry/skip and the redacted bundle
   - [x] 9b. S21 Project settings
-  - [ ] 9c. S22 App settings
+  - [x] 9c. S22 App settings
   - [ ] 9d. S23 Diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
 - [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
@@ -189,3 +189,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-08 · M2.8d · S20 Exports (`/p/:pid/exports`; `/exports` opens the newest trip's): render rows with cover, version, preset label (vertical/square/aspect), status with progress, size, time or "Stopped at n %"; Cancel/Remove, Open, Download, Delete file with confirmation, Details, Re-render; paging and polling (ADR 0050). Step 8 done
 - 2026-10-08 · M2.9a · Storage groups (previews, contact sheets and render cache regenerable; frames, renders and analysis kept), clearing as a job that never touches durable data, removal of MosAic's data (rename aside, unregister, background purge; never the footage; checkpoint guard), diagnostics task list/detail with retry and skip, redacted bundle scanned for planted secrets (ADR 0051)
 - 2026-10-08 · M2.9b · S21 Project settings (`/p/:pid/settings`): General with rename (`PATCH /projects/{pid}`, also the header's inline rename), Analysis rows with source and Reset, Devices with the clock check, Trip context summary, Storage with clearing, Danger zone removal with the typed name; SectionNav (ADR 0052)
+- 2026-10-08 · M2.9c · S22 App settings (`/settings`): appearance, analysis defaults, AI providers (key cards with validate, models by task with provider/model/mode/source/Reset, Hybrid vs Local only, what leaves this computer), processing and workers, media roots on a server, about; `GET /providers/options`, `PATCH /providers {task: null}` (ADR 0053)

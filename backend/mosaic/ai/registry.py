@@ -90,6 +90,12 @@ def _anthropic_price(model: str) -> tuple[float, float] | None:
     return PRICES.get(model)
 
 
+def _anthropic_models() -> tuple[str, ...]:
+    from mosaic.ai.adapters.anthropic.adapter import PRICES
+
+    return tuple(PRICES)  # the models MosAic can budget
+
+
 def _unpriced(_model: str) -> tuple[float, float] | None:
     return None
 
@@ -125,11 +131,18 @@ class ProviderEntry:
     check: Callable[[ConfigService, Principal], None] = _no_check  # installed app present
     # USD per million (input, output) tokens, without a key; None when unknown (estimates).
     price: Callable[[str], tuple[float, float] | None] = _unpriced
+    # Models S22 suggests for this provider (besides its preset's), without a key.
+    models: Callable[[], tuple[str, ...]] = lambda: ()
 
 
 PROVIDERS: dict[str, ProviderEntry] = {
     "anthropic": ProviderEntry(
-        _anthropic, True, _anthropic_limits, remote=True, price=_anthropic_price
+        _anthropic,
+        True,
+        _anthropic_limits,
+        remote=True,
+        price=_anthropic_price,
+        models=_anthropic_models,
     ),
     "claude-cli": ProviderEntry(
         _claude_cli,

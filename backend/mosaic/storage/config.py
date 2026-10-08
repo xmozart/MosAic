@@ -327,6 +327,19 @@ class ConfigService:
                     )
                 )
 
+    def reset_provider(self, principal: Principal, capability: str) -> None:
+        """Back to the shipped default (or the owner's inherited choice; ADR 0019)."""
+        check(principal, "providers.write", capability)
+        if capability not in CAPABILITIES:
+            raise SettingError(f"unknown capability {capability!r}")
+        with self.control.db.session() as s:
+            s.execute(
+                delete(ProviderProfile).where(
+                    ProviderProfile.user_id == principal.user_id,
+                    ProviderProfile.capability == capability,
+                )
+            )
+
     def key_status(self, principal: Principal, provider: str) -> KeyStatus:
         ref = self.secret_ref(principal, provider)
         if ref is None:

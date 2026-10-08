@@ -77,14 +77,58 @@ class ProviderPatch(BaseModel):
 
 @router.patch("/providers")
 def patch_providers(
-    body: dict[str, ProviderPatch], svc: Services = Svc, me: Principal = Me
+    body: dict[str, ProviderPatch | None], svc: Services = Svc, me: Principal = Me
 ) -> dict[str, Any]:
+    """``capability → {provider, model}``, or ``null`` to reset it (S22's Reset)."""
+    from mosaic.core.settings import CAPABILITIES
+
     cfg = _config(svc)
+    resets = [cap for cap, c in body.items() if c is None]
+    unknown = [cap for cap in resets if cap not in CAPABILITIES]
+    if unknown:  # validated before anything is written: all or nothing
+        raise HTTPException(422, f"unknown capability {unknown[0]!r}")
     try:
-        cfg.set_providers_many(me, {cap: (c.provider, c.model) for cap, c in body.items()})
+        cfg.set_providers_many(
+            me, {cap: (c.provider, c.model) for cap, c in body.items() if c is not None}
+        )
+        for cap in resets:
+            cfg.reset_provider(me, cap)
     except SettingError as exc:
         raise HTTPException(422, str(exc)) from exc
     return _providers_json(cfg, me)
+
+
+@router.get("/providers/options")
+def provider_options(_me: Principal = Me) -> dict[str, Any]:
+    """What S22 offers per task: each provider's mode, the tasks it can serve, models to
+    pick from (local providers accept only these; cloud ones are suggestions), presets."""
+    from mosaic.ai.registry import PROVIDERS
+    from mosaic.core.settings import (
+        CAPABILITIES,
+        LOCAL_MODELS,
+        PROVIDER_CAPABILITIES,
+        defaults,
+    )
+
+    presets: dict[str, dict[str, str]] = defaults().get("presets", {})
+    providers: dict[str, Any] = {}
+    for name, mode in KNOWN_PROVIDERS.items():
+        if name == "fake":
+            continue  # tests and scale runs only
+        models = list(LOCAL_MODELS.get(name, ()))
+        if not models:
+            suggested = set(presets.get(name, {}).values())
+            entry = PROVIDERS.get(name)
+            if entry is not None:
+                suggested |= set(entry.models())
+            models = sorted(suggested)
+        providers[name] = {
+            "mode": mode,
+            "capabilities": list(PROVIDER_CAPABILITIES.get(name, ())),
+            "models": models,
+            "fixed_models": name in LOCAL_MODELS,
+        }
+    return {"capabilities": list(CAPABILITIES), "providers": providers, "presets": presets}
 
 
 class SecretBody(BaseModel):

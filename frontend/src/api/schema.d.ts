@@ -1231,8 +1231,32 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch Providers */
+        /**
+         * Patch Providers
+         * @description ``capability → {provider, model}``, or ``null`` to reset it (S22's Reset).
+         */
         patch: operations["patch_providers_api_providers_patch"];
+        trace?: never;
+    };
+    "/api/providers/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Options
+         * @description What S22 offers per task: each provider's mode, the tasks it can serve, models to
+         *     pick from (local providers accept only these; cloud ones are suggestions), presets.
+         */
+        get: operations["provider_options_api_providers_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/renders": {
@@ -4020,7 +4044,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    [key: string]: components["schemas"]["ProviderPatch"];
+                    [key: string]: components["schemas"]["ProviderPatch"] | null;
                 };
             };
         };
@@ -4043,6 +4067,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_options_api_providers_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

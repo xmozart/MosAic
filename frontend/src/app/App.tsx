@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router";
 import { AnalysisProgressScreen } from "@/features/analysis/AnalysisProgressScreen";
 import { AnalysisSetupScreen } from "@/features/analysis/AnalysisSetupScreen";
 import { DeepenRoute } from "@/features/analysis/DeepenRoute";
+import { AppSettingsScreen } from "@/features/app-settings/AppSettingsScreen";
 import { AuthGate } from "@/features/auth/AuthGate";
 import { TripContextScreen } from "@/features/context/TripContextScreen";
 import { EditsScreen } from "@/features/edits/EditsScreen";
@@ -33,7 +34,7 @@ export function App() {
             <Route element={<AppShell />}>
               <Route index element={<HomeScreen />} />
               <Route path="exports" element={<ExportsIndex />} />
-              <Route path="settings" element={<Placeholder title="Settings" />} />
+              <Route path="settings" element={<AppSettingsScreen />} />
               <Route path="p/:pid" element={<ProjectLayout />}>
                 <Route index element={<ProjectIndex />} />
                 <Route path="inventory" element={<InventoryScreen />} />
