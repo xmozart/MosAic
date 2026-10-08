@@ -552,6 +552,20 @@
         "title": "RelinkBody",
         "type": "object"
       },
+      "RemoveBody": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_name": {
+            "title": "Confirm Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_name"
+        ],
+        "title": "RemoveBody",
+        "type": "object"
+      },
       "RenderBody": {
         "additionalProperties": false,
         "description": "M0 subset of ``POST /renders``. ``final`` stands in for S19's preset/resolution\n(1080p SDR final from originals, or a 720p preview from proxies).",
@@ -987,6 +1001,235 @@
           }
         },
         "summary": "Status"
+      }
+    },
+    "/api/diagnostics/bundle": {
+      "post": {
+        "description": "A redacted zip for support (system, settings, recent jobs and tasks, log tails).",
+        "operationId": "diagnostics_bundle_api_diagnostics_bundle_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Diagnostics Bundle"
+      }
+    },
+    "/api/diagnostics/tasks": {
+      "get": {
+        "operationId": "diagnostics_tasks_api_diagnostics_tasks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diagnostics Tasks Api Diagnostics Tasks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diagnostics Tasks"
+      }
+    },
+    "/api/diagnostics/tasks/{tid}": {
+      "get": {
+        "operationId": "diagnostics_task_api_diagnostics_tasks__tid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "title": "Tid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diagnostics Task Api Diagnostics Tasks  Tid  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diagnostics Task"
+      }
+    },
+    "/api/diagnostics/tasks/{tid}/retry": {
+      "post": {
+        "description": "S23 Retry: this task and the tasks it cancelled run again.",
+        "operationId": "diagnostics_retry_api_diagnostics_tasks__tid__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "title": "Tid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diagnostics Retry Api Diagnostics Tasks  Tid  Retry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diagnostics Retry"
+      }
+    },
+    "/api/diagnostics/tasks/{tid}/skip": {
+      "post": {
+        "description": "S23 Skip: accept a failed task; what it held back runs, and its job can finish.",
+        "operationId": "diagnostics_skip_api_diagnostics_tasks__tid__skip_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "title": "Tid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diagnostics Skip Api Diagnostics Tasks  Tid  Skip Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diagnostics Skip"
       }
     },
     "/api/edits/estimate": {
@@ -3913,6 +4156,89 @@
         "summary": "Patch Project Settings"
       }
     },
+    "/api/projects/{pid}/storage": {
+      "get": {
+        "description": "S21 Storage: bytes per group, regenerable or kept.",
+        "operationId": "get_storage_api_projects__pid__storage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Storage Api Projects  Pid  Storage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Storage"
+      }
+    },
+    "/api/projects/{pid}/storage/clear-cache": {
+      "post": {
+        "operationId": "clear_cache_api_projects__pid__storage_clear_cache_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Cache Api Projects  Pid  Storage Clear Cache Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Cache"
+      }
+    },
     "/api/projects/{pid}/summaries": {
       "get": {
         "description": "Trip and day summaries (``level=day``), or one level: trip, day, scene, shot.\nScene and shot summaries are paged by ``ref`` (``after_ref``, ``limit``).",
@@ -4134,6 +4460,58 @@
           }
         },
         "summary": "Parse Context"
+      }
+    },
+    "/api/projects/{pid}/workspace": {
+      "delete": {
+        "description": "S21 Danger zone: deletes MosAic's folder and descriptor; the footage stays.",
+        "operationId": "remove_workspace_api_projects__pid__workspace_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Workspace Api Projects  Pid  Workspace Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Workspace"
       }
     },
     "/api/providers": {

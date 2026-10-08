@@ -257,7 +257,7 @@ def version_facts(s: Session, v: EditVersion) -> dict[str, Any]:
     tracks = v.timeline.get("tracks") or [{}]
     events = tracks[0].get("events", [])
     ids = {int(e["asset_id"][4:]) for e in events}
-    kinds = dict(s.execute(select(Asset.id, Asset.kind).where(Asset.id.in_(ids))).tuples().all())
+    kinds = dict(s.execute(select(Asset.id, Asset.kind).where(Asset.id.in_(ids))).all())
     m = v.metrics or {}
     return {
         "duration": v.timeline.get("duration"),

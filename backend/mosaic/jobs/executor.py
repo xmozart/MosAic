@@ -45,6 +45,13 @@ class LocalExecutor:
 
     def submit(self, principal: Principal, job: JobSpec) -> int:
         check(principal, "job.submit", job.project_id)
+        if job.kind != "storage" and self.store.jobs(job.project_id, True, kind="storage", limit=1):
+            # Clearing regenerable files: nothing may start reading them (ADR 0051).
+            from mosaic.storage.projects import ProjectBusyError
+
+            raise ProjectBusyError(
+                "MosAic is clearing this project's regenerable files; try again in a moment"
+            )
         return self.store.create_job(principal, job)
 
     def spawn(self, job_id: int, tasks: Sequence[TaskSpec]) -> list[int]:

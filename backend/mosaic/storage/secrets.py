@@ -99,6 +99,11 @@ def writable_ref(name: str) -> str:
     return file_ref(name)
 
 
+def docker_dir() -> Path:
+    """Where Docker secrets are mounted (``MOSAIC_DOCKER_SECRETS_DIR`` overrides)."""
+    return _docker_dir()
+
+
 def _docker_dir() -> Path:
     return Path(os.environ.get("MOSAIC_DOCKER_SECRETS_DIR", DOCKER_DIR))
 

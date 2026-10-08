@@ -151,6 +151,9 @@ class Services:
             from mosaic.storage.media_roots import seed_from_env
 
             seed_from_env(control)  # MOSAIC_MEDIA_ROOTS (docker compose)
+        from mosaic.storage.cleanup import purge_in_background
+
+        purge_in_background()  # finish deleting any project removed before a restart
         return cls(control, store, LocalExecutor(store))
 
     @property

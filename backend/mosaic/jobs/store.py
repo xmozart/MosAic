@@ -419,6 +419,75 @@ class JobStore:
             self._settle_job(s, job_id)
             return reset
 
+    def _cancelled_below(self, s: Session, task_id: int) -> set[int]:
+        """Tasks cancelled ("dependency failed") because of ``task_id``, transitively."""
+        ids: set[int] = set()
+        frontier = [task_id]
+        while frontier:
+            below = list(
+                s.scalars(
+                    select(Task.id)
+                    .join(TaskDependency, TaskDependency.task_id == Task.id)
+                    .where(
+                        TaskDependency.depends_on_id.in_(frontier),
+                        Task.status == TaskStatus.CANCELLED.value,
+                        Task.error == "dependency failed",
+                    )
+                )
+            )
+            frontier = [i for i in below if i not in ids]
+            ids.update(frontier)
+        return ids
+
+    def _reopen(self, s: Session, job_id: int, ids: set[int]) -> None:
+        s.execute(
+            update(Task)
+            .where(Task.id.in_(ids))
+            .values(status=TaskStatus.PENDING.value, attempts=0, error=None, finished_at=None)
+        )
+        s.execute(
+            update(Job)
+            .where(Job.id == job_id)
+            .values(status=JobStatus.RUNNING.value, updated_at=now_iso())
+        )
+        s.flush()
+        self._promote(s, job_id)
+        self._settle_job(s, job_id)
+
+    def retry_task(self, task_id: int) -> int:
+        """One failed task (or one cancelled by a failure) and what it cancelled run again
+        (S23 Retry). Not for a job the owner cancelled. Returns the tasks reset."""
+        with self.db.session() as s:
+            task = s.get(Task, task_id)
+            job = s.get(Job, task.job_id) if task is not None else None
+            if task is None or job is None or job.status == JobStatus.CANCELLED.value:
+                return 0
+            if task.status != TaskStatus.FAILED.value and not (
+                task.status == TaskStatus.CANCELLED.value and task.error == "dependency failed"
+            ):
+                return 0
+            ids = {task_id} | self._cancelled_below(s, task_id)
+            self._event(s, task_id, "retry_requested", None, None)
+            self._reopen(s, task.job_id, ids)
+            return len(ids)
+
+    def skip_failed(self, task_id: int, reason: str) -> bool:
+        """A failed task is accepted as skipped (S23 Skip): what it cancelled runs, as after
+        any skipped task, and the job can finish."""
+        with self.db.session() as s:
+            task = s.get(Task, task_id)
+            job = s.get(Job, task.job_id) if task is not None else None
+            if task is None or job is None or task.status != TaskStatus.FAILED.value:
+                return False
+            if job.status == JobStatus.CANCELLED.value:
+                return False
+            below = self._cancelled_below(s, task_id)
+            task.status = TaskStatus.SKIPPED.value
+            task.error = f"{reason}\n{task.error or ''}".strip()
+            self._event(s, task_id, "skipped_by_user", None, reason)
+            self._reopen(s, task.job_id, below)
+            return True
+
     def set_stage(self, job_id: int, stage: str) -> None:
         with self.db.session() as s:
             s.execute(update(Job).where(Job.id == job_id).values(stage=stage, updated_at=now_iso()))

@@ -58,6 +58,10 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 8c. S17 player and selection/rejection report
   - [x] 8d. S20 Exports
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
+  - [x] 9a. Backend: project storage and clearing (job), removal of MosAic data, diagnostics tasks, retry/skip and the redacted bundle
+  - [ ] 9b. S21 Project settings
+  - [ ] 9c. S22 App settings
+  - [ ] 9d. S23 Diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
 - [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
 
@@ -182,3 +186,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-07 · M2.8b · S13 Edits (cards with status, progress ring, vertical covers, preliminary warning, polling; Start from: duplicate as another length, vertical version) and S14 wizard steps 1, 2, 6 (durations, strict length, aspect, resolution and frame rate; seven story cards with the owner's collages plus Custom; chronology; instructions with idea chips; summary from the request; debounced estimate; preliminary banner; ⌘Enter, ⌘↑/↓) (ADR 0048)
 - 2026-10-08 · M2.8c · S17 Preview: the version's preview with beat segments, version and beat chips, a version selector; previews start on their own; EditFacts from the edit's new `facts`; Render final → Download final; the selection report (shots with timecodes that seek, not used, rejected with the AI-vs-you chip and whole-clip tags, paged); generating, failed and missing states; the picture is dark in both themes (ADR 0049)
 - 2026-10-08 · M2.8d · S20 Exports (`/p/:pid/exports`; `/exports` opens the newest trip's): render rows with cover, version, preset label (vertical/square/aspect), status with progress, size, time or "Stopped at n %"; Cancel/Remove, Open, Download, Delete file with confirmation, Details, Re-render; paging and polling (ADR 0050). Step 8 done
+- 2026-10-08 · M2.9a · Storage groups (previews, contact sheets and render cache regenerable; frames, renders and analysis kept), clearing as a job that never touches durable data, removal of MosAic's data (rename aside, unregister, background purge; never the footage; checkpoint guard), diagnostics task list/detail with retry and skip, redacted bundle scanned for planted secrets (ADR 0051)

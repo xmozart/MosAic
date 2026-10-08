@@ -46,9 +46,8 @@ These are the REST endpoints and SSE events the screens need.
 | GET/PUT | `/projects/{pid}/trip-context` (PUT returns `summaries_job`: a context change re-runs summaries only) · POST `/trip-context/parse` `{text}` → `{job_id}`; the job's `result.proposal` (`GET /jobs/{id}`) is the proposed structure, saved only by a PUT (ADR 0040) | S7 |
 | GET | `/projects/{pid}/summaries?level=day\|trip\|scene\|shot&after_ref=&limit=` (`day`: the trip plus each day; scene and shot are paged by ref, limit ≤ 1000) → `{items: [{level, ref, text, themes?, highlights, subjects?, span?}], next_after_ref}` (ADR 0021) | S10, S16 |
 | GET/PATCH | `/projects/{pid}/settings?mode=` → `{settings: {key: {value, source}}}`, source `project` / `user` / `default` / `mode` (an analysis parameter the mode decides; `mode=` shows a preset's values). Keys: `analysis.mode`, `analysis.cost_limit_usd`, `ai.send_gps`, `analysis.sample_interval`, `analysis.tiles`, `analysis.forced_max_shot`, `analysis.proxy`, `analysis.stt_model`. PATCH `{values: {key: value \| null}}` (null resets; 422 invalid; ADR 0041) | S8, S21 |
-| GET | `/projects/{pid}/storage` · POST `/storage/clear-cache` | S21 |
 | DELETE | `/projects/{pid}/recent` → 204 (hides the project from recents and releases its lease; nothing is deleted; opening the folder again brings it back; ADR 0039) | S3 |
-| DELETE | `/projects/{pid}/workspace` (removes MosAic data; originals untouched) | S21 |
+| GET | `/projects/{pid}/storage` (groups, regenerable or kept) · POST `/projects/{pid}/storage/clear-cache` (job) · DELETE `/projects/{pid}/workspace` `{confirm_name}` (removes MosAic data; originals untouched; ADR 0051) | S21 |
 
 ## Analysis & jobs
 
@@ -120,5 +119,6 @@ SSE event types:
 
 | Method | Path | Used by |
 |---|---|---|
-| GET | `/diagnostics/tasks?project=&status=` · `/diagnostics/tasks/{tid}` | S23 |
-| POST | `/diagnostics/bundle` (redacted export) | S23 |
+| GET | `/diagnostics/tasks?project=&status=&cursor=` · `/diagnostics/tasks/{tid}` | S23 |
+| POST | `/diagnostics/tasks/{tid}/retry` · `/skip` (ADR 0051) | S23 |
+| POST | `/diagnostics/bundle` (redacted zip; ADR 0051) | S23 |

@@ -26,6 +26,7 @@ from mosaic.app.routers import (
     files,
     jobs,
     library,
+    maintenance,
     media,
     project_list,
     projects,
@@ -103,6 +104,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(search.router)
     app.include_router(library.router)
     app.include_router(media.router)
+    app.include_router(maintenance.router)
     mount_ui(app)
     return app
 

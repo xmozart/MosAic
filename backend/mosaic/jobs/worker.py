@@ -121,6 +121,15 @@ class Worker:
             raise registry.PermanentError(str(exc)) from None
         return project
 
+    def _release_idle_projects(self) -> None:
+        """Close cached projects that have no unfinished job: an idle worker never keeps a
+        project open, so it can be moved or removed (ADR 0051)."""
+        with self._projects_lock:
+            idle = [pid for pid in self._projects if not self.store.jobs(pid, True, limit=1)]
+            closing = [self._projects.pop(pid) for pid in idle]
+        for p in closing:
+            p.close()
+
     def _checkpoint(self, project: Project) -> None:
         try:
             project.checkpoint()
@@ -283,6 +292,8 @@ class Worker:
                     rec = s.get(WorkerRecord, self.worker_id)
                     if rec is not None:
                         rec.heartbeat_ms = now_ms()
+                if not self._busy:
+                    self._release_idle_projects()
                 if exit_when_idle_s is not None:
                     if self._busy or self._active_jobs():
                         idle_since = time.monotonic()

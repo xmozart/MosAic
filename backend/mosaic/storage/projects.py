@@ -187,6 +187,8 @@ class Project:
         - A newer snapshot from another computer is never overwritten."""
         if self.placement is not Placement.SPLIT or self.read_only:
             return None
+        if not self.outputs_dir.is_dir():
+            return None  # MosAic's data was removed from the folder (ADR 0051): never recreate it
         dest = self.outputs_dir / PROJECT_DB
         state_path = self.live_dir / STATE_FILE
         with self._checkpoint_mutex, locked(self.live_dir / CHECKPOINT_LOCK):
