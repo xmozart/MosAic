@@ -68,6 +68,7 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `PlacementBadge` | In folder / Split · NAS / Split · iCloud / Stored separately / External drive. |
 | `UnsupportedRow` | Icon, title, reason, fix action, optional inline progress; rows divide one "Needs attention" card. |
 | `ClockOffsetRow` | Evidence pair (left), explanation, offset stepper (+/− keys: 1 h, Shift: 1 min) and a segmented Accept suggestion / Adjust / Leave as is (right). Without a suggestion: stepper, Adjust and Leave only. |
-| `SettingRow` | Shows the effective value, "From: default / your preference / this project", and Reset. |
+| `SettingRow` | Shows the effective value, "From: default / your preference / this project / the analysis mode", and Reset (not for default or mode values). |
+| `SectionNav` | The settings screens' left nav (S21, S22): sections, the active one raised, Danger zone in `reject`; selecting one scrolls to it. |
 | `SecretField` | Write-only. Shows "Connected · ••••last4", Validate, Replace. |
 | `StorageBreakdown` | Stacked bar with Regenerable/Kept tags. |

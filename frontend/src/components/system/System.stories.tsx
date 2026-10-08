@@ -10,6 +10,7 @@ import { EstimateCard } from "./EstimateCard";
 import { ModeCard } from "./ModeCard";
 import { PlacementBadge } from "./PlacementBadge";
 import { SecretField } from "./SecretField";
+import { SectionNav } from "./SectionNav";
 import { SettingRow } from "./SettingRow";
 import { StageList } from "./StageList";
 import { StorageBreakdown } from "./StorageBreakdown";
@@ -139,6 +140,7 @@ export const Settings: Story = {
         />
         <SettingRow label="Speech" description="whisper · medium · On this Mac" source="user" control={<Button size="sm">Change</Button>} onReset={() => {}} />
         <SettingRow label="Cost limit" source="project" control={<span className="mono text-timecode">$10.00</span>} onReset={() => {}} />
+        <SettingRow label="Sample interval" description="Decided by the analysis mode" source="mode" control={<span className="mono text-timecode">2.0 s</span>} onReset={() => {}} />
       </div>
     );
   },
@@ -168,4 +170,26 @@ export const Storage: Story = {
       />
     </div>
   ),
+};
+
+export const Sections: Story = {
+  name: "SectionNav",
+  render: function Render() {
+    const [active, setActive] = useState("storage");
+    return (
+      <div className="flex h-[400px] bg-bg">
+        <SectionNav
+          title="Project settings"
+          active={active}
+          onSelect={setActive}
+          sections={[
+            { id: "general", label: "General" },
+            { id: "analysis", label: "Analysis" },
+            { id: "storage", label: "Storage" },
+            { id: "danger", label: "Danger zone", danger: true },
+          ]}
+        />
+      </div>
+    );
+  },
 };

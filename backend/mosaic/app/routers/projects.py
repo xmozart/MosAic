@@ -83,6 +83,27 @@ def open_(
         project.close(checkpoint=False)
 
 
+class RenameBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+
+
+@router.patch("/projects/{pid}")
+def rename(pid: str, body: RenameBody, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """S0 header and S21 General: the project's name (the folder keeps its own)."""
+    from mosaic.app.routers.edits import _project
+    from mosaic.storage.projects import rename_project
+
+    check(me, "project.write", pid)
+    with _project(svc, me, pid, write=True) as project:
+        try:
+            name = rename_project(svc.control, project, body.name)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+    return {"project_id": pid, "name": name}
+
+
 @router.post("/projects/{pid}/close")
 def close(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     check(me, "project.close", pid)

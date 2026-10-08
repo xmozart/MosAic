@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button";
 
-export type SettingSource = "default" | "user" | "project" | "installation" | "admin";
+export type SettingSource = "default" | "user" | "project" | "installation" | "admin" | "mode";
 
 const FROM: Record<SettingSource, string> = {
   default: "default",
@@ -10,6 +10,7 @@ const FROM: Record<SettingSource, string> = {
   project: "this project",
   installation: "this computer",
   admin: "your admin",
+  mode: "the analysis mode",
 };
 
 export interface SettingRowProps {
@@ -33,7 +34,7 @@ export function SettingRow({ label, description, source, control, onReset }: Set
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {control}
-        {source !== "default" && onReset && (
+        {source !== "default" && source !== "mode" && onReset && (
           <Button variant="ghost" size="sm" onClick={onReset}>
             Reset
           </Button>

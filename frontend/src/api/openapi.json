@@ -566,6 +566,20 @@
         "title": "RemoveBody",
         "type": "object"
       },
+      "RenameBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RenameBody",
+        "type": "object"
+      },
       "RenderBody": {
         "additionalProperties": false,
         "description": "M0 subset of ``POST /renders``. ``final`` stands in for S19's preset/resolution\n(1080p SDR final from originals, or a 720p preview from proxies).",
@@ -2247,6 +2261,58 @@
           }
         },
         "summary": "Preview Folder"
+      }
+    },
+    "/api/projects/{pid}": {
+      "patch": {
+        "description": "S0 header and S21 General: the project's name (the folder keeps its own).",
+        "operationId": "rename_api_projects__pid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Rename Api Projects  Pid  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename"
       }
     },
     "/api/projects/{pid}/analysis-runs": {

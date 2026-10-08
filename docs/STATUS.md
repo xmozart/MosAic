@@ -59,7 +59,7 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 8d. S20 Exports
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
   - [x] 9a. Backend: project storage and clearing (job), removal of MosAic data, diagnostics tasks, retry/skip and the redacted bundle
-  - [ ] 9b. S21 Project settings
+  - [x] 9b. S21 Project settings
   - [ ] 9c. S22 App settings
   - [ ] 9d. S23 Diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
@@ -86,7 +86,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 
 ## Carry-forward notes
 
-- From 5b: a project rename endpoint (the header's inline rename is built, `onRename` unwired); `POST /projects/{pid}/open` → 409 → OpenElsewhereDialog when screens open a project (5c/5d).
+- From 5b: `POST /projects/{pid}/open` → 409 → OpenElsewhereDialog when screens open a project (5c/5d).
 - From 5a: S5 inline download progress needs per-file progress from `media.cloud_download` (one task per file, or item progress); refresh the Home card on user decisions and edit renames, not only at checkpoints; typed `response_model`s for the M2 routes so the generated client is typed.
 - CPU worker slots are threads: Python-heavy per-frame work contends for the GIL (40-hour run: summed task time ≈ 5× wall on 5 slots). Consider process-based CPU slots with the M2 desktop packaging (ADR 0031).
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
@@ -96,6 +96,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - `POST /edits/estimate` runs the edit's full retrieval in the request (no AI call; ADR 0047) and S14 calls it on every change: debounced in 8b (400 ms); add a timing budget on the 40-hour fixture to step 11's acceptance suite.
 - Wizard radio groups (S14) move with the arrow keys but every option is still a Tab stop: give them a roving tabindex in step 11's accessibility pass.
 - S20 polls every loaded page every 2 s while a render runs (each row costs a job lookup and a file stat): poll only the first page or the active rows if exports grow long (step 11 timing).
+- S21 follow-ups: the section nav could follow scrolling (IntersectionObserver); removal refusals are matched on the server's text, so give 409 bodies a machine-readable `code`; backend tests for renaming a read-only project (409) and an external-placement project (descriptor in app data).
 - Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
@@ -187,3 +188,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-08 · M2.8c · S17 Preview: the version's preview with beat segments, version and beat chips, a version selector; previews start on their own; EditFacts from the edit's new `facts`; Render final → Download final; the selection report (shots with timecodes that seek, not used, rejected with the AI-vs-you chip and whole-clip tags, paged); generating, failed and missing states; the picture is dark in both themes (ADR 0049)
 - 2026-10-08 · M2.8d · S20 Exports (`/p/:pid/exports`; `/exports` opens the newest trip's): render rows with cover, version, preset label (vertical/square/aspect), status with progress, size, time or "Stopped at n %"; Cancel/Remove, Open, Download, Delete file with confirmation, Details, Re-render; paging and polling (ADR 0050). Step 8 done
 - 2026-10-08 · M2.9a · Storage groups (previews, contact sheets and render cache regenerable; frames, renders and analysis kept), clearing as a job that never touches durable data, removal of MosAic's data (rename aside, unregister, background purge; never the footage; checkpoint guard), diagnostics task list/detail with retry and skip, redacted bundle scanned for planted secrets (ADR 0051)
+- 2026-10-08 · M2.9b · S21 Project settings (`/p/:pid/settings`): General with rename (`PATCH /projects/{pid}`, also the header's inline rename), Analysis rows with source and Reset, Devices with the clock check, Trip context summary, Storage with clearing, Danger zone removal with the typed name; SectionNav (ADR 0052)

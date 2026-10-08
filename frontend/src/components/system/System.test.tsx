@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { SecretField } from "./SecretField";
+import { SectionNav } from "./SectionNav";
 import { SettingRow } from "./SettingRow";
 import { StageList } from "./StageList";
 
@@ -33,6 +34,35 @@ describe("SettingRow", () => {
     rerender(<SettingRow label="Mode" source="project" control={<span />} onReset={() => {}} />);
     expect(screen.getByText("From: this project")).toBeInTheDocument();
     expect(screen.getByText("Reset")).toBeInTheDocument();
+    // A value the analysis mode decides has no Reset of its own.
+    rerender(<SettingRow label="Interval" source="mode" control={<span />} onReset={() => {}} />);
+    expect(screen.getByText("From: the analysis mode")).toBeInTheDocument();
+    expect(screen.queryByText("Reset")).toBeNull();
+  });
+});
+
+describe("SectionNav", () => {
+  it("marks the active section and selects one on click", () => {
+    const select = vi.fn();
+    render(
+      <SectionNav
+        title="Project settings"
+        active="storage"
+        onSelect={select}
+        sections={[
+          { id: "general", label: "General" },
+          { id: "storage", label: "Storage" },
+          { id: "danger", label: "Danger zone", danger: true },
+        ]}
+      />,
+    );
+    const nav = screen.getByRole("navigation", { name: "Project settings" });
+    expect(screen.getByRole("link", { name: "Storage" })).toHaveAttribute("aria-current", "location");
+    expect(screen.getByRole("link", { name: "General" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute("href", "#section-general");
+    fireEvent.click(screen.getByRole("link", { name: "Danger zone" }));
+    expect(select).toHaveBeenCalledWith("danger");
+    expect(nav).toBeInTheDocument();
   });
 });
 

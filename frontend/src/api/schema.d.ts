@@ -558,6 +558,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename
+         * @description S0 header and S21 General: the project's name (the folder keeps its own).
+         */
+        patch: operations["rename_api_projects__pid__patch"];
+        trace?: never;
+    };
     "/api/projects/{pid}/analysis-runs": {
         parameters: {
             query?: never;
@@ -1474,6 +1494,11 @@ export interface components {
         RemoveBody: {
             /** Confirm Name */
             confirm_name: string;
+        };
+        /** RenameBody */
+        RenameBody: {
+            /** Name */
+            name: string;
         };
         /**
          * RenderBody
@@ -2549,6 +2574,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["FolderRef"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_api_projects__pid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameBody"];
             };
         };
         responses: {

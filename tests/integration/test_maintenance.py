@@ -457,3 +457,21 @@ def test_bundle_redacts_the_master_key_and_docker_secrets_but_keeps_counts(
             assert secret not in text, (name, secret)
     store = JobStore(control.db)
     store.cancel(job)
+
+
+def test_rename_changes_the_name_not_the_folder(setup: Any) -> None:
+    from mosaic.storage.descriptor import read_descriptor
+
+    _, project, client, original = setup
+    folder = original.parent
+    r = client.patch(f"/api/projects/{project.id}", json={"name": "  Costa   Rica 2026 · family "})
+    assert r.status_code == 200
+    assert r.json()["name"] == "Costa Rica 2026 · family"
+    d = read_descriptor(folder)
+    assert d is not None
+    assert d.name == "Costa Rica 2026 · family"
+    assert folder.name == "Trip"
+    listed = {p["id"]: p["name"] for p in client.get("/api/projects").json()["items"]}
+    assert listed[project.id] == "Costa Rica 2026 · family"
+    assert client.patch(f"/api/projects/{project.id}", json={"name": "   "}).status_code == 422
+    assert client.patch(f"/api/projects/{project.id}", json={"name": "x" * 121}).status_code == 422

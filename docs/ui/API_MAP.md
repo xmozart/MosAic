@@ -47,6 +47,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/projects/{pid}/summaries?level=day\|trip\|scene\|shot&after_ref=&limit=` (`day`: the trip plus each day; scene and shot are paged by ref, limit ≤ 1000) → `{items: [{level, ref, text, themes?, highlights, subjects?, span?}], next_after_ref}` (ADR 0021) | S10, S16 |
 | GET/PATCH | `/projects/{pid}/settings?mode=` → `{settings: {key: {value, source}}}`, source `project` / `user` / `default` / `mode` (an analysis parameter the mode decides; `mode=` shows a preset's values). Keys: `analysis.mode`, `analysis.cost_limit_usd`, `ai.send_gps`, `analysis.sample_interval`, `analysis.tiles`, `analysis.forced_max_shot`, `analysis.proxy`, `analysis.stt_model`. PATCH `{values: {key: value \| null}}` (null resets; 422 invalid; ADR 0041) | S8, S21 |
 | DELETE | `/projects/{pid}/recent` → 204 (hides the project from recents and releases its lease; nothing is deleted; opening the folder again brings it back; ADR 0039) | S3 |
+| PATCH | `/projects/{pid}` `{name}` (renames the project, not the folder; ADR 0052) | S0, S21 |
 | GET | `/projects/{pid}/storage` (groups, regenerable or kept) · POST `/projects/{pid}/storage/clear-cache` (job) · DELETE `/projects/{pid}/workspace` `{confirm_name}` (removes MosAic data; originals untouched; ADR 0051) | S21 |
 
 ## Analysis & jobs

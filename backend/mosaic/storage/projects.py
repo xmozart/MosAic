@@ -298,6 +298,24 @@ def _save_descriptor(root: Path, d: ProjectDescriptor) -> None:
         write_descriptor(root, d)
 
 
+MAX_NAME = 120
+
+
+def rename_project(control: ControlDB, project: Project, name: str) -> str:
+    """The project's display name, in its descriptor and the registry (S0 header, S21).
+    The folder is never renamed."""
+    clean = " ".join(name.split())
+    if not clean or len(clean) > MAX_NAME:
+        raise ValueError(f"a name has 1–{MAX_NAME} characters")
+    if project.read_only:
+        raise ReadOnlyProjectError("this project is open read-only")
+    d = project.descriptor.model_copy(update={"name": clean})
+    _save_descriptor(project.root, d)
+    project.descriptor = d
+    control.rename_project(project.id, clean)
+    return clean
+
+
 def _sweep_temp(*dirs: Path) -> None:
     """Remove snapshot temp files an interrupted run left behind."""
     cutoff = time.time() - STALE_TEMP_S

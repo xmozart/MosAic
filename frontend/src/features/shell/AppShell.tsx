@@ -22,7 +22,7 @@ function railItem(path: string): RailItem {
   if (path.includes("/library") || path.includes("/search")) return "library";
   if (path.includes("/edits")) return "edits";
   if (path.startsWith("/exports") || path.endsWith("/exports")) return "exports";
-  if (path.startsWith("/settings")) return "settings";
+  if (path.startsWith("/settings") || path.endsWith("/settings")) return "settings";
   return "home";
 }
 
@@ -77,6 +77,7 @@ export function AppShell() {
           { id: "lib", label: "Open library", kind: "Action" as const, run: () => navigate(`/p/${pid}/library`) },
           { id: "edit", label: "Create edit", kind: "Action" as const, run: () => navigate(`/p/${pid}/edits/new`) },
           { id: "deepen", label: "Deepen analysis…", kind: "Action" as const, run: () => navigate(`/p/${pid}/deepen`) },
+          { id: "project-settings", label: "Project settings", kind: "Action" as const, run: () => navigate(`/p/${pid}/settings`) },
         ]
       : []),
     ...(projects.data?.items ?? []).map((p) => ({

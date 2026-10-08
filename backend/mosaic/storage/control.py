@@ -79,6 +79,12 @@ class ControlDB:
                 row.folder_fingerprint = folder_fingerprint or row.folder_fingerprint
                 row.hidden_at = None
 
+    def rename_project(self, project_id: str, name: str) -> None:
+        with self.db.session() as s:
+            row = s.get(ProjectRegistry, project_id)
+            if row is not None:
+                row.name = name
+
     def find_project(self, root: Path) -> ProjectRegistry | None:
         """The most recently opened project registered for this folder."""
         with self.db.session() as s:
