@@ -21,7 +21,7 @@ interface ProjectRow {
 function railItem(path: string): RailItem {
   if (path.includes("/library") || path.includes("/search")) return "library";
   if (path.includes("/edits")) return "edits";
-  if (path.startsWith("/exports")) return "exports";
+  if (path.startsWith("/exports") || path.endsWith("/exports")) return "exports";
   if (path.startsWith("/settings")) return "settings";
   return "home";
 }
@@ -66,7 +66,7 @@ export function AppShell() {
     (theme.choice === "system" && !window.matchMedia?.("(prefers-color-scheme: light)").matches);
   const links: Partial<Record<RailItem, string>> = {
     home: "/",
-    exports: "/exports",
+    exports: pid ? `/p/${pid}/exports` : "/exports",
     settings: "/settings",
     ...(pid ? { library: `/p/${pid}/library`, edits: `/p/${pid}/edits` } : {}),
   };

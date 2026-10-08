@@ -7,6 +7,7 @@ import { DeepenRoute } from "@/features/analysis/DeepenRoute";
 import { AuthGate } from "@/features/auth/AuthGate";
 import { TripContextScreen } from "@/features/context/TripContextScreen";
 import { EditsScreen } from "@/features/edits/EditsScreen";
+import { ExportsIndex, ExportsScreen } from "@/features/exports/ExportsScreen";
 import { WizardScreen } from "@/features/edits/WizardScreen";
 import { HomeScreen } from "@/features/home/HomeScreen";
 import { InventoryScreen } from "@/features/inventory/InventoryScreen";
@@ -30,7 +31,7 @@ export function App() {
           <Routes>
             <Route element={<AppShell />}>
               <Route index element={<HomeScreen />} />
-              <Route path="exports" element={<Placeholder title="Exports" />} />
+              <Route path="exports" element={<ExportsIndex />} />
               <Route path="settings" element={<Placeholder title="Settings" />} />
               <Route path="p/:pid" element={<ProjectLayout />}>
                 <Route index element={<ProjectIndex />} />
@@ -45,6 +46,7 @@ export function App() {
                 <Route path="edits" element={<EditsScreen />} />
                 <Route path="edits/new" element={<WizardScreen />} />
                 <Route path="edits/:eid" element={<PreviewScreen />} />
+                <Route path="exports" element={<ExportsScreen />} />
                 <Route path="*" element={<Placeholder title="Coming in this milestone" />} />
               </Route>
               <Route path="*" element={<Placeholder title="Not found" />} />

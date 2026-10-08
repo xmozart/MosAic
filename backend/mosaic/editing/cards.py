@@ -127,14 +127,19 @@ def edit_cards(
 
 
 def render_label(profile: dict[str, Any]) -> str:
-    """``Preview · 720p``, ``Web · 1080p``, ``Web · 4K · 9:16`` (S20's preset column)."""
+    """``Preview · 720p``, ``Web · 1080p``, ``Web · 1080p vertical``, ``Web · 4K · 4:5``
+    (S20's preset column)."""
     w, h = int(profile.get("width") or 0), int(profile.get("height") or 0)
-    res = RESOLUTION_LABEL.get(min(w, h), f"{min(w, h)}p")
+    # A frame whose long side was capped (2.39:1 at 4K is 4096×1714) is named by it.
+    res = RESOLUTION_LABEL.get(min(w, h)) or ("4K" if max(w, h) >= 3840 else f"{min(w, h)}p")
     head = "Preview" if profile.get("kind") == "preview" else "Web"
     if profile.get("lossless"):
         head = "Master"
-    shape = "" if not w or not h or abs(w * 9 - h * 16) <= 16 else f" · {_shape(w, h)}"
-    return f"{head} · {res}{shape}"
+    if not w or not h or abs(w * 9 - h * 16) <= 16:
+        return f"{head} · {res}"
+    shape = _shape(w, h)
+    words = {"9:16": " vertical", "1:1": " square"}
+    return f"{head} · {res}{words.get(shape, f' · {shape}')}"
 
 
 def _shape(w: int, h: int) -> str:
@@ -193,6 +198,9 @@ def render_rows(
         job = store.job(r.job_id) if r.job_id is not None else None
         status = render_state(r.status, job.status if job else None)
         pct, error = None, job.error if job is not None and status == "failed" else None
+        if status == "failed" and job is not None:  # S20 "Stopped at n %"
+            progress = store.progress(job.id)
+            pct = progress.pct if progress else None
         if status == "pending":
             if job is None or job.status == "pending":
                 status = "queued"

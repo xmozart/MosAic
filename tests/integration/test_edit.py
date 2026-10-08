@@ -380,6 +380,17 @@ def test_card_and_render_states_follow_their_jobs(
         j.status, j.error = "failed", "encoder exploded"
     assert row(rid)["status"] == "failed"
     assert row(rid)["error"] == "encoder exploded"
+    assert row(rid)["pct"] == 0, "S20: stopped before any shot was rendered"
+    # Shots rendered before the failure: S20 says "Stopped at n %" (ADR 0050).
+    from mosaic.storage.models_control import Task
+
+    with control.db.session() as s, s.begin():
+        tasks = list(s.query(Task).filter(Task.job_id == job).order_by(Task.id))
+        for t in tasks[: len(tasks) // 3]:
+            t.status = "done"
+        stopped = 100 * (len(tasks) // 3) // len(tasks)
+    assert stopped > 0
+    assert row(rid)["pct"] == stopped
     assert card()["status"] == "ready", "a failed render is not rendering"
     base = f"/api/projects/{project.id}/renders/{rid}"
     assert client.post(f"{base}/cancel").status_code == 409

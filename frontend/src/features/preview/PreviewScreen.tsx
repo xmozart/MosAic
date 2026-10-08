@@ -147,7 +147,7 @@ function Preview() {
       onRetryGenerate={() => regenerate.mutate()}
       onRetryLoad={() => void edit.refetch()}
       onBack={() => navigate(`/p/${pid}/edits`)}
-      onExports={() => navigate("/exports")}
+      onExports={() => navigate(`/p/${pid}/exports`)}
       report={merged}
       reportError={report.isError && !merged}
       onRetryReport={() => void report.refetch()}

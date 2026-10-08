@@ -53,7 +53,7 @@ The API map leaves several of these open:
     - `DELETE /projects/{pid}/renders/{rid}/file`;
     - `GET /projects/{pid}/renders/{rid}/file` (Range requests; `?download=true` makes it an attachment).
   - **One rule for a render's state** (`render.service.render_state`): a pending row whose job ended without a result (it failed, or was cancelled from Activity) takes the job's end. The rows, the edit cards, Cancel (409 unless queued or running) and Re-render (409 while queued or running) all use it.
-  - **Rows** carry a label (`Preview · 720p`, `Web · 4K · 9:16`, `Master · …`), a status (queued, rendering n %, paused, done, failed, cancelled, deleted, missing), size, time and error, plus the renders folder.
+  - **Rows** carry a label (`Preview · 720p`, `Web · 4K`, `Web · 1080p vertical`, `Web · 1080p square`, `Web · 4K · 2.39:1`, `Master · …`; a frame capped at 4096 px is named by its long side), a status (queued, rendering n %, paused, done, failed, cancelled, deleted, missing), size, time and error, plus the renders folder.
   - **Cancel** marks the render cancelled and cancels its job. An assembler that finishes after a cancel deletes its output instead of marking the render done. Chunks stay cached, so a re-render reuses them.
   - **Delete** removes the rendered file, which is a derived output and never an original. The row stays as history.
   - **Reveal ("Show in Finder")** waits for the desktop app, which has no shell yet in M2. On the web, S20 offers Open and Download.

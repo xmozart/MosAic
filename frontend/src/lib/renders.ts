@@ -56,3 +56,12 @@ export function renderStatusText(r: Pick<RenderRow, "status" | "pct">): string {
       return "File missing";
   }
 }
+
+/** "40 s", "9 m 12 s", "1 h 05 m": how long a render took (display). */
+export function renderTime(seconds: number | null): string {
+  if (seconds == null) return "—";
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} m ${s % 60} s`;
+  return `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")} m`;
+}

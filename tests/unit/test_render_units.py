@@ -237,3 +237,18 @@ def test_crop_framing_fills_the_frame() -> None:
     assert ",pad=" not in chain, "no bars: the frame is filled"
     fit = rb._video_chain(replace(spec, framing="fit"), "[0:v]")
     assert "pad=w=1080:h=1920" in fit
+
+
+def test_render_labels_read_as_s20() -> None:
+    from mosaic.editing.cards import render_label
+
+    assert render_label({"kind": "preview", "width": 1280, "height": 720}) == "Preview · 720p"
+    assert render_label({"kind": "final", "width": 3840, "height": 2160}) == "Web · 4K"
+    assert render_label({"kind": "final", "width": 1080, "height": 1920}) == "Web · 1080p vertical"
+    assert render_label({"kind": "final", "width": 1080, "height": 1080}) == "Web · 1080p square"
+    assert render_label({"kind": "final", "width": 1080, "height": 1350}) == "Web · 1080p · 4:5"
+    assert render_label({"kind": "final", "width": 4096, "height": 1714}) == "Web · 4K · 2.39:1"
+    assert (
+        render_label({"kind": "final", "width": 1920, "height": 1080, "lossless": True})
+        == "Master · 1080p"
+    )

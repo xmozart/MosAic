@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 8 (Edits basic, S17, S20); steps 1–7 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 9 (Settings S21, S22, S23); steps 1–8 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -52,11 +52,11 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 7b2. S10 Library screen
   - [x] 7c. S11 Clip detail
   - [x] 7d. S12 Search
-- [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
+- [x] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
   - [x] 8a. Backend: destination (aspect, resolution, framing), edit cards, story presets and collages, edit estimate, render rows and actions, render file, report rejections per ADR 0042
   - [x] 8b. S13 Edits and S14 wizard steps 1, 2, 6
   - [x] 8c. S17 player and selection/rejection report
-  - [ ] 8d. S20 Exports
+  - [x] 8d. S20 Exports
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
 - [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
@@ -91,6 +91,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - A 5,000-clip filter timing test (M2 acceptance 4) belongs to step 11's acceptance suite. The 40-hour scale test's slowest library page rose from 19–63 ms (M1) to 103–151 ms with tile status and facts (budget 300 ms; one CI run failed it once): profile the per-request project open and the first page's three status scans in step 11.
 - `POST /edits/estimate` runs the edit's full retrieval in the request (no AI call; ADR 0047) and S14 calls it on every change: debounced in 8b (400 ms); add a timing budget on the 40-hour fixture to step 11's acceptance suite.
 - Wizard radio groups (S14) move with the arrow keys but every option is still a Tab stop: give them a roving tabindex in step 11's accessibility pass.
+- S20 polls every loaded page every 2 s while a render runs (each row costs a job lookup and a file stat): poll only the first page or the active rows if exports grow long (step 11 timing).
 - Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
@@ -180,3 +181,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.8a · Edits backend: aspect and resolution are render-only (not in the edit key; crop for non-native shapes, ADR 0046); S13 edit cards with status, cover and preliminary flag; 16 story presets with collages from the owner's clips; edit estimate (plan reuse = $0); render rows, cancel, re-render, delete file, Range-served render file; report rejections include whole-clip decisions (ADR 0047)
 - 2026-10-07 · M2.8b · S13 Edits (cards with status, progress ring, vertical covers, preliminary warning, polling; Start from: duplicate as another length, vertical version) and S14 wizard steps 1, 2, 6 (durations, strict length, aspect, resolution and frame rate; seven story cards with the owner's collages plus Custom; chronology; instructions with idea chips; summary from the request; debounced estimate; preliminary banner; ⌘Enter, ⌘↑/↓) (ADR 0048)
 - 2026-10-08 · M2.8c · S17 Preview: the version's preview with beat segments, version and beat chips, a version selector; previews start on their own; EditFacts from the edit's new `facts`; Render final → Download final; the selection report (shots with timecodes that seek, not used, rejected with the AI-vs-you chip and whole-clip tags, paged); generating, failed and missing states; the picture is dark in both themes (ADR 0049)
+- 2026-10-08 · M2.8d · S20 Exports (`/p/:pid/exports`; `/exports` opens the newest trip's): render rows with cover, version, preset label (vertical/square/aspect), status with progress, size, time or "Stopped at n %"; Cancel/Remove, Open, Download, Delete file with confirmation, Details, Re-render; paging and polling (ADR 0050). Step 8 done
