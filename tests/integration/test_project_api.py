@@ -334,3 +334,79 @@ def test_removing_an_external_project_with_edits_keeps_its_link(
 
 def _held(client: Any) -> set[str]:
     return set(client.app.state.services.leases.held)
+
+
+@pytest.mark.parametrize("how", ["policy", "virtiofs"])
+def test_an_in_folder_trip_opens_from_the_browser_and_moves_in_a_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """ADR 0055: a trip made in-folder on the desktop, opened on the server (policy) or
+    through Docker Desktop's host share (virtiofs). The request copies nothing: it starts a
+    move job, project routes say so (409) meanwhile, and after the job the live DB and the
+    cache are in app data with every row; the footage is untouched."""
+    from mosaic.core.paths import app_data_dir
+    from mosaic.storage import placement
+    from mosaic.storage.control import ControlDB
+    from mosaic.storage.models_project import ProjectMeta
+    from mosaic.storage.projects import init_project, open_project
+    from tests.support.runner import run_job
+
+    trip = tmp_path / "Trip"
+    trip.mkdir()
+    (trip / "IMG_0001.MOV").write_bytes(b"\x00" * 64)
+    control = ControlDB()
+    made = init_project(control, control.local_principal, trip)  # on the desktop
+    assert made.placement is placement.Placement.IN_FOLDER
+    with made.write() as s:
+        s.merge(ProjectMeta(key="kept", value="yes"))
+    pid = made.id
+    big = made.live_dir / "cache" / "proxy" / "ab" / "proxykey.mp4"
+    big.parent.mkdir(parents=True)
+    big.write_bytes(b"p" * 200_000)  # stands in for GBs of previews
+    made.close()
+    if how == "policy":
+        monkeypatch.setenv(placement.ENV_FOLDER_DB, "never")
+    else:
+        shared = trip.resolve()  # only the footage is shared in; app data is the VM's disk
+        monkeypatch.setattr(
+            placement,
+            "fs_type",
+            lambda p: "virtiofs" if p == shared or shared in p.parents else "ext4",
+        )
+
+    # A read-only open can't move it: it says how to fix it.
+    with pytest.raises(placement.PlacementRefusedError, match="open it for editing once"):
+        open_project(control, control.local_principal, trip, read_only=True)
+
+    client = _client(control)
+    pv = client.post("/api/projects/preview", json={"path": str(trip)})
+    assert pv.json()["placement"] == "split"
+    opened = client.post("/api/projects", json={"path": str(trip)})
+    assert opened.status_code == 201, opened.text
+    body = opened.json()
+    assert body["id"] == pid
+    job = body["moving_job"]
+    assert isinstance(job, int)
+    app_cache = app_data_dir() / "projects" / pid / "cache"
+    assert not app_cache.exists(), "nothing is copied inside the request (invariant 8)"
+    assert client.post("/api/projects", json={"path": str(trip)}).json()["moving_job"] == job
+    assert client.post(f"/api/projects/{pid}/open").json()["moving_job"] == job
+    r = client.get(f"/api/projects/{pid}/edits")
+    assert r.status_code == 409
+    assert "has to move out of its folder" in r.json()["detail"]
+
+    assert run_job(control, job, timeout=120) == "done"
+    p = open_project(control, control.local_principal, trip, read_only=True)
+    try:
+        assert p.placement is placement.Placement.SPLIT
+        assert app_data_dir().resolve() in p.live_dir.resolve().parents
+        with p.db.session() as s:
+            row = s.get(ProjectMeta, "kept")
+            assert row is not None
+            assert row.value == "yes"
+    finally:
+        p.close(checkpoint=False)
+    assert (app_cache / "proxy" / "ab" / "proxykey.mp4").stat().st_size == 200_000
+    assert not (trip / "MosAic" / "cache").exists(), "the folder no longer holds the cache"
+    assert (trip / "IMG_0001.MOV").read_bytes() == b"\x00" * 64
+    assert client.get(f"/api/projects/{pid}/edits").status_code == 200

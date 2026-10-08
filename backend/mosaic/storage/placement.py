@@ -50,6 +50,25 @@ NETWORK_FS_TYPES = frozenset(
     }
 )
 
+# A host folder shared into a VM or container (Docker Desktop, Podman machine, VirtualBox,
+# Parallels). What backs it (a NAS, a cloud-synced folder) can't be seen from inside, so
+# it is treated like a network share: never a live database there (invariant 2; ADR 0055).
+HOST_SHARE_FS_TYPES = frozenset(
+    {
+        "virtiofs",
+        "fakeowner",
+        "grpcfuse",
+        "fuse.grpcfuse",
+        "osxfs",
+        "fuse.osxfs",
+        "vboxsf",
+        "prl_fs",
+    }
+)
+# ``never``: a live database never goes in a footage folder, whatever it looks like (the
+# server image sets it: a bind mount can't be trusted to reveal its storage; ADR 0055).
+ENV_FOLDER_DB = "MOSAIC_FOLDER_DB"
+
 _CLOUD_MARKERS = (
     ("Library", "Mobile Documents"),  # iCloud Drive
     ("Library", "CloudStorage"),  # File Provider: OneDrive, Google Drive, Dropbox, Box
@@ -168,11 +187,24 @@ def classify(path: Path, *, home: Path | None = None) -> Classification:
         cls, reason = FsClass.CLOUD_SYNCED, "folder is inside a cloud-synced location"
     elif ftype in NETWORK_FS_TYPES or ftype == "remote":
         cls, reason = FsClass.NETWORK, f"folder is on a network filesystem ({ftype})"
+    elif ftype in HOST_SHARE_FS_TYPES:
+        cls, reason = (
+            FsClass.NETWORK,
+            f"folder is shared in from the host ({ftype}); its storage can't be seen",
+        )
     elif not is_writable(path):
         cls, reason = FsClass.READ_ONLY, "folder is not writable"
     else:
         cls, reason = FsClass.LOCAL, f"local filesystem ({ftype})"
-    return Classification(cls, PLACEMENT_FOR_CLASS[cls], ftype, reason)
+    placement = PLACEMENT_FOR_CLASS[cls]
+    if placement is Placement.IN_FOLDER and folder_db_forbidden():
+        placement = Placement.SPLIT
+        reason += f"; the live database stays in app data ({ENV_FOLDER_DB}=never)"
+    return Classification(cls, placement, ftype, reason)
+
+
+def folder_db_forbidden() -> bool:
+    return os.environ.get(ENV_FOLDER_DB, "").strip().lower() == "never"
 
 
 def assert_live_db_allowed(db_path: Path) -> None:
@@ -183,3 +215,13 @@ def assert_live_db_allowed(db_path: Path) -> None:
     c = classify(probe)
     if c.fs_class in (FsClass.NETWORK, FsClass.CLOUD_SYNCED):
         raise PlacementRefusedError(f"refusing to open a live database at {db_path}: {c.reason}")
+    if folder_db_forbidden():
+        from mosaic.core.paths import app_data_dir
+
+        home = app_data_dir().resolve()
+        target = probe.resolve()
+        if target != home and home not in target.parents:
+            raise PlacementRefusedError(
+                f"refusing to open a live database at {db_path}: {ENV_FOLDER_DB}=never keeps "
+                "live databases in app data"
+            )

@@ -16,9 +16,10 @@ const ROW = {
   status: { state: "analyzed", mode: "balanced" },
 };
 
-function mount(path: string) {
+function mount(path: string, seed?: (qc: QueryClient) => void) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(["projects"], { items: [ROW] });
+  seed?.(qc);
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
@@ -58,6 +59,26 @@ describe("AppShell", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText(/You can look, but changes are off/)).toBeInTheDocument();
     expect(screen.getByText("Costa Rica 2026").closest("button")).toBeDisabled();
+  });
+
+  it("waits while the trip's data moves, then shows the screen (ADR 0055)", () => {
+    mount("/p/p1/library");
+    act(() =>
+      useActivity.getState().upsert({
+        jobId: 7, projectId: "p1", kind: "move", state: "running", pct: 30, stage: "moving", item: null, cost: 0,
+      }),
+    );
+    expect(screen.getByText(/Moving this trip's data/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Library" })).toBeNull();
+    act(() => useActivity.getState().setState(7, "done"));
+    expect(screen.queryByText(/Moving this trip's data/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Library" })).toBeInTheDocument();
+  });
+
+  it("finds a move already running when the trip opens", () => {
+    mount("/p/p1/library", (qc) => qc.setQueryData(["moving", "p1"], [{ job_id: 3, kind: "move" }]));
+    expect(screen.getByText(/Moving this trip's data/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Library" })).toBeNull();
   });
 
   it("says when a trip is unknown", () => {

@@ -371,3 +371,69 @@ def test_project_errors_are_409(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     r = TestClient(app).get(f"/api/projects/{pid}/trip-context")
     assert r.status_code == 409
     assert "elsewhere" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("ftype", ["virtiofs", "fakeowner", "fuse.grpcfuse", "osxfs"])
+def test_a_folder_shared_in_from_the_host_never_holds_a_live_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ftype: str
+) -> None:
+    """Invariant 2, ADR 0055: Docker Desktop shares a host folder that may be a NAS or a
+    cloud-synced folder; from inside it looks local, so it is treated as a network share."""
+    from mosaic.storage import placement
+
+    monkeypatch.setattr(placement, "fs_type", lambda _p: ftype)
+    c = placement.classify(tmp_path)
+    assert c.fs_class is placement.FsClass.NETWORK
+    assert c.placement is Placement.SPLIT
+    with pytest.raises(placement.PlacementRefusedError):
+        placement.assert_live_db_allowed(tmp_path / "MosAic" / PROJECT_DB)
+
+
+def test_the_server_image_keeps_live_dbs_in_app_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mosaic.core.paths import app_data_dir
+    from mosaic.storage import placement
+
+    monkeypatch.setattr(placement, "fs_type", lambda _p: "ext4")
+    assert placement.classify(tmp_path).placement is Placement.IN_FOLDER
+    monkeypatch.setenv(placement.ENV_FOLDER_DB, "never")
+    c = placement.classify(tmp_path)
+    assert c.fs_class is placement.FsClass.LOCAL
+    assert c.placement is Placement.SPLIT
+    assert "stays in app data" in c.reason
+    with pytest.raises(placement.PlacementRefusedError):
+        placement.assert_live_db_allowed(tmp_path / "MosAic" / PROJECT_DB)
+    placement.assert_live_db_allowed(app_data_dir() / "projects" / "x" / PROJECT_DB)
+    # A new project there is split: its live DB in app data, nothing live in the folder.
+    control = ControlDB()
+    project = init_project(control, control.local_principal, tmp_path)
+    assert project.placement is Placement.SPLIT
+    assert app_data_dir().resolve() in project.live_dir.resolve().parents
+    assert not (tmp_path / "MosAic" / f"{PROJECT_DB}-wal").exists()
+    project.close()
+
+
+def test_a_trip_made_in_folder_moves_its_live_db_when_opened_by_the_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mosaic.core.paths import app_data_dir
+    from mosaic.storage import placement
+
+    monkeypatch.setattr(placement, "fs_type", lambda _p: "ext4")
+    control = ControlDB()
+    made = init_project(control, control.local_principal, tmp_path)  # on the desktop
+    assert made.placement is Placement.IN_FOLDER
+    _note(made, "kept", "yes")
+    made.close()
+    monkeypatch.setenv(placement.ENV_FOLDER_DB, "never")  # the server image
+    with pytest.raises(placement.PlacementRefusedError):
+        init_project(control, control.local_principal, tmp_path, placement=Placement.IN_FOLDER)
+    moved = init_project(control, control.local_principal, tmp_path)
+    assert moved.placement is Placement.SPLIT
+    assert app_data_dir().resolve() in moved.live_dir.resolve().parents
+    with moved.db.session() as s:
+        row = s.get(ProjectMeta, "kept")
+        assert row is not None
+        assert row.value == "yes"  # nothing was lost on the way
+    moved.close()

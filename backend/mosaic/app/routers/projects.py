@@ -19,6 +19,7 @@ from mosaic.storage import lease, media_roots
 from mosaic.storage.descriptor import read_descriptor
 from mosaic.storage.placement import Placement
 from mosaic.storage.projects import (
+    MoveNeededError,
     NotAProjectError,
     ReadOnlyProjectError,
     folder_fingerprint,
@@ -63,10 +64,20 @@ def open_(
     body = body or OpenBody()
     try:
         project = open_project(
-            svc.control, me, _root(svc, pid), read_only=body.read_only, take_over=body.take_over
+            svc.control,
+            me,
+            _root(svc, pid),
+            read_only=body.read_only,
+            take_over=body.take_over,
+            move=False,
         )
     except NotAProjectError as exc:
         raise HTTPException(404, str(exc)) from None
+    except MoveNeededError as exc:  # moved in a job, never in a request (ADR 0055)
+        from mosaic.storage.cleanup import ensure_move
+
+        job = ensure_move(svc.store, svc.executor, me, exc.project_id)
+        return {"project_id": pid, "moving_job": job, "read_only": body.read_only}
     try:
         if body.read_only:
             svc.leases.open_read_only(pid)
@@ -172,7 +183,7 @@ def relink(
         root = chosen
     elif not root.is_dir():
         raise HTTPException(409, "The project folder is missing. Choose where it is now.")
-    project = open_project(svc.control, me, root)  # registers the (new) root
+    project = open_project(svc.control, me, root, move=False)  # registers the (new) root
     try:
         # The mode of the last analysis, so nothing is recomputed at another density.
         last = svc.store.jobs(pid, None, kind="analysis", limit=1)

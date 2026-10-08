@@ -1,0 +1,34 @@
+# MosAic server (docs/deploy/DOCKER.md; ADR 0055).
+#   docker compose up -d        then open http://localhost:8765 and set the admin password.
+# NVIDIA hardware encoding: docker compose -f compose.yaml -f compose.nvidia.yaml up -d
+services:
+  mosaic:
+    image: mosaic:latest
+    build: .
+    restart: unless-stopped
+    init: true # reaps the job workers MosAic starts and passes them docker stop's signal
+    ports:
+      - "8765:8765"
+    environment:
+      # Host names browsers use to reach MosAic; empty: any (put a TLS reverse proxy in front).
+      MOSAIC_ALLOWED_HOSTS: ${MOSAIC_ALLOWED_HOSTS:-}
+      # Encrypts API keys typed into Settings. Prefer the Docker secret below.
+      MOSAIC_MASTER_KEY_FILE: /run/secrets/mosaic_master_key
+    secrets:
+      - mosaic_master_key
+    volumes:
+      # App data: control DB, settings, models, logs, and every trip's live database.
+      - mosaic-data:/data
+      # Your footage. MosAic never changes originals. Next to them it writes a MosAic/
+      # folder (previews, renders, a snapshot of the trip's database) and a
+      # .mosaic-project.json; the live database stays in /data. Add ":ro" to keep even
+      # those in /data instead. MosAic runs as uid 1000: the folder must be writable by it.
+      - ${MOSAIC_MEDIA:-./media}:/media
+
+volumes:
+  mosaic-data:
+
+secrets:
+  mosaic_master_key:
+    # 32+ random characters, e.g.: openssl rand -base64 48 > master_key.txt
+    file: ${MOSAIC_MASTER_KEY_PATH:-./master_key.txt}

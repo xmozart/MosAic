@@ -313,3 +313,19 @@ def test_server_relink_by_root_and_path(
         f"/api/projects/{pid}/relink", json={"root": rid, "path": "../secret"}, headers=h
     )
     assert out.status_code == 403
+
+
+def test_roots_from_the_environment_take_commas_or_colons(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mosaic.storage import media_roots
+    from mosaic.storage.control import ControlDB
+
+    for name in ("a", "b", "c"):
+        (tmp_path / name).mkdir()
+    monkeypatch.setenv(
+        "MOSAIC_MEDIA_ROOTS", f"{tmp_path / 'a'},{tmp_path / 'b'}:{tmp_path / 'c'}, /missing"
+    )
+    control = ControlDB()
+    media_roots.seed_from_env(control)
+    assert sorted(r.path.name for r in media_roots.roots(control)) == ["a", "b", "c"]

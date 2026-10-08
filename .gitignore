@@ -20,3 +20,5 @@ __pycache__/
 
 # Node
 node_modules/
+master_key.txt
+/media/

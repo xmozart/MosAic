@@ -3,12 +3,12 @@ import { useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 
 import { api } from "@/api/client";
-import type { Placement } from "@/components/system/PlacementBadge";
 import type { Settings } from "@/features/analysis/model";
 import type { TripContext } from "@/features/context/model";
 import { ClockCheckDialog } from "@/features/inventory/ClockCheckDialog";
 import { formatBytes } from "@/lib/format";
 import { useToasts } from "@/lib/toasts";
+import { placementOf } from "@/lib/placement";
 
 import type { DeviceSummary, StorageData } from "./model";
 import { ProjectSettingsView } from "./ProjectSettingsView";
@@ -21,12 +21,6 @@ interface Row {
   folder?: { root: string | null; path: string | null };
   placement: string;
   fs_class: string;
-}
-
-function placementOf(row: Row): Placement {
-  if (row.placement === "split") return row.fs_class === "cloud_synced" ? "split_icloud" : "split_nas";
-  if (row.placement === "external") return "separate";
-  return "in_folder";
 }
 
 /** S21 Project settings (`/p/:pid/settings`; ADR 0052). */

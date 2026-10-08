@@ -3,12 +3,13 @@ import { useMemo } from "react";
 import { Outlet, useOutletContext, useParams } from "react-router";
 
 import { api } from "@/api/client";
-import type { Placement } from "@/components/system/PlacementBadge";
 import { ProjectHeader, type ProjectStatus } from "@/components/shell/ProjectHeader";
 import { useActivity } from "@/lib/activity";
 import { useToasts } from "@/lib/toasts";
+import { placementOf } from "@/lib/placement";
 
 import { ReadOnlyBanner } from "./dialogs";
+import { MovingView } from "./MovingView";
 
 interface Row {
   id: string;
@@ -16,12 +17,6 @@ interface Row {
   placement: string;
   fs_class: string;
   status: ProjectStatus;
-}
-
-function placementBadge(row: Row): Placement {
-  if (row.placement === "split") return row.fs_class === "cloud_synced" ? "split_icloud" : "split_nas";
-  if (row.placement === "external") return "separate";
-  return "in_folder";
 }
 
 /** Project screens: the S0 header (name, placement, status, ⌘K) above the screen. */
@@ -44,6 +39,18 @@ export function ProjectLayout() {
     queryFn: async () => (await api.GET("/api/projects")).data as { items: Row[] } | undefined,
   });
   const row = projects.data?.items.find((p) => p.id === pid);
+  // A trip made in-folder elsewhere is moving its data out of its folder (ADR 0055): its
+  // screens wait until the move job ends.
+  const moves = useQuery({
+    queryKey: ["moving", pid],
+    queryFn: async () => {
+      const { data } = await api.GET("/api/jobs", { params: { query: { project: pid, active: true } } });
+      const items = (data as { items?: { job_id: number; kind: string }[] } | undefined)?.items ?? [];
+      return items.filter((j) => j.kind === "move");
+    },
+    refetchInterval: (q) => (q.state.data?.length ? 2000 : false),
+  });
+  const moving = Object.values(jobMap).find((j) => j.projectId === pid && j.kind === "move") ?? moves.data?.[0];
   if (!row) {
     return (
       <div className="flex flex-1 flex-col gap-2 p-8">
@@ -62,7 +69,7 @@ export function ProjectLayout() {
     <>
       <ProjectHeader
         name={row.name}
-        placement={placementBadge(row)}
+        placement={placementOf(row)}
         status={status}
         aiCost={live && live.cost > 0 ? `AI $${live.cost.toFixed(2)}` : undefined}
         readOnly={readOnly}
@@ -78,7 +85,12 @@ export function ProjectLayout() {
       {readOnly && (
         <ReadOnlyBanner reason="This project is open on another computer. You can look, but changes are off." />
       )}
-      <Outlet context={{ openPalette, readOnly }} />
+      {moving ? (
+        <MovingView />
+      ) : (
+        <Outlet context={{ openPalette, readOnly }} />
+      )}
     </>
   );
 }
+

@@ -34,6 +34,17 @@ def _media_info() -> tuple[tuple[str, ...], tuple[tuple[str, Any], ...]]:
     return tuple(caps.h264_encoders()), info
 
 
+@router.get("/health")
+def health(svc: Services = Svc) -> dict[str, Any]:
+    """Liveness for the container healthcheck and a reverse proxy: no sign-in, so it says
+    nothing but that the control DB answers (an error is a 500: unhealthy)."""
+    from sqlalchemy import text
+
+    with svc.control.db.session() as s:
+        s.execute(text("SELECT 1"))
+    return {"ok": True}
+
+
 @router.get("/system/info")
 def system_info(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     from mosaic.ai import ratelimit

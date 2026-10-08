@@ -11,6 +11,7 @@ Python package is missing here or is GPL/AGPL. Regenerate the Python tables with
 |---|---|---|---|
 | FFmpeg / ffprobe (dev build, `scripts/build-ffmpeg.sh`) | 8.1.2 | LGPL-2.1-or-later (built without `--enable-gpl`/`--enable-nonfree`) | Separate process (subprocess) only |
 | FFmpeg / ffprobe (CI, BtbN `linux64-lgpl` static) | n8.1 | LGPL-3.0-or-later (`--enable-version3`) | Separate process (subprocess) only, CI |
+| FFmpeg / ffprobe (Docker image, BtbN `linux64-lgpl` / `linuxarm64-lgpl` static) | n8.1 | LGPL-3.0-or-later (`--enable-version3`); the build is refused if it reports `--enable-gpl` | Separate process (subprocess) only, server image (ADR 0055) |
 | libzimg (linked into FFmpeg) | 3.0.6 | WTFPL | `zscale` filter for HDR tone mapping |
 | libopenh264 (linked into FFmpeg) | 2.6.0 | BSD-2-Clause | Fallback H.264 encoder. Patent note: Cisco's patent coverage applies only to Cisco-distributed binaries (FUTURE_APPENDIX §5) |
 | VideoToolbox / AudioToolbox | macOS | Apple system frameworks | Hardware H.264/HEVC encode |
@@ -32,7 +33,8 @@ separate process only.
 |---|---|---|---|
 | CPython (uv-managed, python-build-standalone) | 3.12 | PSF-2.0 | Backend runtime |
 | hatchling | ≥1.25 | MIT | Build backend (packaging only) |
-| uv | 0.10 | MIT OR Apache-2.0 | Dependency manager (dev and CI only) |
+| uv | 0.10 | MIT OR Apache-2.0 | Dependency manager (dev and CI; installs the server image's environment) |
+| Docker base images: `python:3.12-slim-bookworm` (runtime), `debian:bookworm-slim`, `node:24-bookworm-slim` (build stages only) | 3.12 / bookworm / 24 | PSF-2.0 (CPython) and Debian's DFSG licenses; Node.js MIT | Server image (ADR 0055); Node.js only builds the web UI and is not in the final image |
 
 ## Models
 

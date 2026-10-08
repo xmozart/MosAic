@@ -36,7 +36,9 @@ from mosaic.app.routers import (
 from mosaic.app.routers import auth as auth_router
 from mosaic.app.services import Services
 from mosaic.storage.lease import LeaseHeldError
+from mosaic.storage.placement import PlacementRefusedError
 from mosaic.storage.projects import (
+    MoveNeededError,
     ProjectBusyError,
     ReadOnlyProjectError,
     SnapshotConflictError,
@@ -70,6 +72,12 @@ def create_app(services: Services | None = None) -> FastAPI:
         errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": errors})
 
+    @app.exception_handler(PlacementRefusedError)
+    async def _refused(_request: Request, exc: Exception) -> JSONResponse:
+        # A placement the folder can't take (invariant 2): a reason, never a 500.
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(MoveNeededError)
     @app.exception_handler(ProjectBusyError)
     @app.exception_handler(SnapshotConflictError)
     @app.exception_handler(ReadOnlyProjectError)

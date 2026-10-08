@@ -219,7 +219,8 @@ def test_allowed_hosts_setting_in_server_mode(monkeypatch: pytest.MonkeyPatch) -
 def test_every_route_but_sign_in_needs_a_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route surface guard: a router that forgets the principal dependency fails here."""
     client, _ = _client(monkeypatch, "server")
-    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login"}
+    # health: the container's healthcheck and a proxy's probe; it returns only {ok}
+    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login", "/api/health"}
     paths = client.app.openapi()["paths"]  # type: ignore[attr-defined]
     checked = 0
     for path, ops in paths.items():
@@ -268,7 +269,8 @@ def test_every_api_route_depends_on_the_session_check(monkeypatch: pytest.Monkey
     from mosaic.app.deps import principal
 
     client, _ = _client(monkeypatch, "server")
-    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login"}
+    # health: the container's healthcheck and a proxy's probe; it returns only {ok}
+    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login", "/api/health"}
 
     def uses_principal(d: Dependant) -> bool:
         return any(sub.call is principal or uses_principal(sub) for sub in d.dependencies)

@@ -9,6 +9,7 @@ way. Roots come from the admin (S22) and from ``MOSAIC_MEDIA_ROOTS`` at start-up
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -80,8 +81,9 @@ def remove(control: ControlDB, root_id: int) -> bool:
 
 
 def seed_from_env(control: ControlDB) -> None:
-    """``MOSAIC_MEDIA_ROOTS``: folders separated by the OS path separator (``:``)."""
-    for item in os.environ.get(ENV_ROOTS, "").split(os.pathsep):
+    """``MOSAIC_MEDIA_ROOTS``: folders separated by commas or the OS path separator
+    (``/media/nas,/media/archive`` or ``/media/nas:/media/archive``)."""
+    for item in re.split(rf"[,{re.escape(os.pathsep)}]", os.environ.get(ENV_ROOTS, "")):
         if item.strip():
             try:
                 add(control, item.strip(), source="env")

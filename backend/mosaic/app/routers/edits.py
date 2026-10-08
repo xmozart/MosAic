@@ -62,7 +62,7 @@ def _project(svc: Services, me: Principal, pid: str, *, write: bool = False) -> 
         )
     read_only = not write and pid not in svc.leases.held
     try:
-        project = open_project(svc.control, me, root, read_only=read_only)
+        project = open_project(svc.control, me, root, read_only=read_only, move=False)
     except NotAProjectError as exc:
         raise HTTPException(404, str(exc)) from None
     try:

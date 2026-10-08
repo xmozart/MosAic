@@ -236,3 +236,32 @@ def test_installed_ai_apps_never_get_mosaic_secrets(monkeypatch: pytest.MonkeyPa
         "ANTHROPIC_API_KEY",
     ):
         assert name not in env, name
+
+
+def test_health_needs_no_sign_in_and_tells_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mosaic.app.main import create_app
+    from mosaic.app.services import Services
+    from mosaic.storage.control import ControlDB
+
+    monkeypatch.setenv("MOSAIC_MODE", "server")
+    monkeypatch.setenv("MOSAIC_ALLOWED_HOSTS", "mosaic.example")
+    client = TestClient(create_app(Services.create(ControlDB())), base_url="http://127.0.0.1:8765")
+    r = client.get("/api/health")  # the container's own healthcheck, by loopback
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}  # nothing else: no sign-in needed
+    assert client.get("/api/system/info").status_code == 421, "everything else checks the host"
+
+
+def test_health_is_unhealthy_when_the_control_db_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mosaic.app.main import create_app
+    from mosaic.app.services import Services
+    from mosaic.storage.control import ControlDB
+
+    control = ControlDB()
+    client = TestClient(create_app(Services.create(control)), raise_server_exceptions=False)
+
+    def broken() -> None:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(control.db, "session", broken)
+    assert client.get("/api/health").status_code == 500

@@ -21,6 +21,7 @@ Background activity ring in the rail. Clicking it opens `ActivityPopover`.
 - **Unsaved draft changes:** summarizes the changes. Actions: Save as vN / Discard / Cancel.
 - **Read-only mode:** a banner under the header; all write controls are disabled with a tooltip explaining why.
 - **Lost lease** (`lock.lost` event): a blocking dialog that offers read-only mode.
+- **Moving the trip's data** (server, ADR 0055): while a `move` job runs for the project, the project area shows "Moving this trip's data to MosAic's storage" with an indeterminate bar in place of the screen; the header stays. The screen appears when the job ends.
 
 ## Data & API
 

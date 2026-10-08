@@ -31,7 +31,7 @@ from mosaic.media import hardware
 from mosaic.storage import lease
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_control import Job, TaskEvent, WorkerRecord
-from mosaic.storage.projects import Project, open_project
+from mosaic.storage.projects import Project, ProjectBusyError, open_project
 
 log = logging.getLogger("mosaic.worker")
 
@@ -109,6 +109,9 @@ class Worker:
                     )
                 except lease.LeaseHeldError as exc:
                     raise registry.PermanentError(str(exc)) from None
+                except ProjectBusyError as exc:
+                    # Being moved or opened exclusively elsewhere (ADR 0055): try again later.
+                    raise registry.DeferTask(str(exc)) from None
             project = self._projects[project_id]
         # Renew the project's lease while working on it (a cheap no-op when recent). If
         # another computer took it over, stop writing to the project.

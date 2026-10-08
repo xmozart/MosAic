@@ -4,7 +4,6 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { api } from "@/api/client";
-import type { Placement } from "@/components/system/PlacementBadge";
 import { Button } from "@/components/ui/Button";
 import { CreateProjectDialog, type PreviewData } from "@/features/open/CreateProjectDialog";
 import { FolderBrowserDialog, type FolderPick } from "@/features/open/FolderBrowserDialog";
@@ -14,6 +13,7 @@ import { formatOpened } from "@/lib/format";
 import { media } from "@/lib/media";
 import { useMode } from "@/lib/mode";
 import { useToasts } from "@/lib/toasts";
+import { placementOf } from "@/lib/placement";
 
 import { ProjectCard, type ProjectCardData } from "./ProjectCard";
 
@@ -37,12 +37,6 @@ interface Row {
 }
 
 type FolderRef = { path: string } | FolderPick;
-
-function placementOf(r: Row): Placement {
-  if (r.placement === "split") return r.fs_class === "cloud_synced" ? "split_icloud" : "split_nas";
-  if (r.placement === "external") return "separate";
-  return "in_folder";
-}
 
 function cardData(r: Row): ProjectCardData {
   return {
@@ -129,7 +123,9 @@ export function HomeScreen() {
     }
     setConfirm(null);
     await qc.invalidateQueries({ queryKey: ["projects"] });
-    navigate(`/p/${(data as { id: string }).id}`);
+    const id = (data as { id: string }).id;
+    qc.removeQueries({ queryKey: ["moving", id] }); // a move may have just started (ADR 0055)
+    navigate(`/p/${id}`);
   };
 
   const picked = async (ref: FolderRef) => {

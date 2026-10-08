@@ -3,7 +3,7 @@
 UV ?= uv
 PYTEST = $(UV) run pytest
 
-.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus clean
+.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker clean
 
 help:
 	@echo "check       lint + types + unit tests (fast)"
@@ -13,6 +13,7 @@ help:
 	@echo "ci          everything CI runs"
 	@echo "eval        real-corpus evaluation (uses the configured AI provider)"
 	@echo "ffmpeg      build the LGPL dev FFmpeg (macOS)"
+	@echo "docker      build the server image for this machine and smoke-test it"
 
 sync:
 	$(UV) sync --frozen
@@ -55,6 +56,9 @@ eval:  # real corpus, real AI; exits 3 at a human gate (G1/G2) with the fix
 
 ffmpeg:
 	./scripts/build-ffmpeg.sh
+
+docker:
+	./scripts/docker-smoke.sh
 
 ffmpeg-ci:
 	./scripts/fetch-ffmpeg-ci.sh

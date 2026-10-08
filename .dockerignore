@@ -1,0 +1,16 @@
+# Only what the image is built from: the backend, the frontend sources, the tokens.
+**/__pycache__
+**/*.pyc
+.venv
+.tools
+.cache
+.git
+**/node_modules
+frontend/dist
+frontend/storybook-static
+Samples
+Other
+tests
+scripts/*.sh
+**/.DS_Store
+*.log

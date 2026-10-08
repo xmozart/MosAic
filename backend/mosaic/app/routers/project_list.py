@@ -29,8 +29,14 @@ from mosaic.media.pipeline import submit_scan
 from mosaic.media.scan import quick_counts
 from mosaic.storage import media_roots, project_cards
 from mosaic.storage.descriptor import read_descriptor
-from mosaic.storage.placement import PLACEMENT_FOR_CLASS, Placement, PlacementRefusedError
-from mosaic.storage.projects import NotAProjectError, init_project, open_project, preview
+from mosaic.storage.placement import Placement, PlacementRefusedError
+from mosaic.storage.projects import (
+    MoveNeededError,
+    NotAProjectError,
+    init_project,
+    open_project,
+    preview,
+)
 
 router = APIRouter(prefix="/api")
 Svc = Depends(services)
@@ -181,7 +187,7 @@ def preview_folder(body: FolderRef, svc: Services = Svc, me: Principal = Me) -> 
         "name": folder.name,
         "fs_class": c.fs_class.value,
         "reason": c.reason,
-        "placement": PLACEMENT_FOR_CLASS.get(c.fs_class, Placement.IN_FOLDER).value,
+        "placement": c.placement.value,  # what creating it will use (ADR 0055)
         "counts": quick_counts(folder, PREVIEW_MAX_ENTRIES),
         "project_id": known,
     }
@@ -197,11 +203,25 @@ def create_project(body: CreateBody, svc: Services = Svc, me: Principal = Me) ->
     existing = _known_project(svc, folder) is not None
     try:
         if existing:  # opened as it is: a placement change belongs to S21, not to S4
-            project = open_project(svc.control, me, folder)
+            project = open_project(svc.control, me, folder, move=False)
         else:
             project = init_project(
-                svc.control, me, folder, name=body.name, placement=body.placement
+                svc.control, me, folder, name=body.name, placement=body.placement, move=False
             )
+    except MoveNeededError as exc:
+        # An in-folder trip on a server or a host share: its data moves in a job, not in
+        # this request (ADR 0055). The UI shows the move, then opens the trip.
+        from mosaic.storage.cleanup import ensure_move
+
+        job = ensure_move(svc.store, svc.executor, me, exc.project_id)
+        return {
+            "id": exc.project_id,
+            "name": d.name if (d := read_descriptor(folder)) else folder.name,
+            "created": False,
+            "placement": "split",
+            "scan_job": None,
+            "moving_job": job,
+        }
     except PlacementRefusedError as exc:
         raise HTTPException(422, str(exc)) from None
     except NotAProjectError:

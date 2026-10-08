@@ -17,6 +17,7 @@ import { ActivityPopover } from "./ActivityPopover";
 import { AppRail } from "./AppRail";
 import { CommandPalette } from "./CommandPalette";
 import { ProjectHeader } from "./ProjectHeader";
+import { MovingView } from "@/features/shell/MovingView";
 
 const meta: Meta = { title: "Shell", parameters: { layout: "fullscreen" } };
 export default meta;
@@ -100,6 +101,8 @@ export const DialogUnsavedDraft: Story = {
 export const DialogLeaseLost: Story = {
   render: () => <LeaseLostDialog open project="Costa Rica 2026" onReadOnly={noop} onClose={noop} />,
 };
+
+export const MovingTripData: Story = { render: () => <MovingView /> };
 
 export const Toasts: Story = {
   render: function Render() {

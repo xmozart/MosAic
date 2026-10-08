@@ -155,6 +155,42 @@ def clear_task(ctx: TaskContext) -> dict[str, Any]:
     return {"files": removed, "freed_bytes": freed}
 
 
+# ------------------------------------------------------------------ moving
+
+
+def move_job(project_id: str) -> JobSpec:
+    """Moves an in-folder trip's live database and cache to app data (ADR 0055): the
+    worker's open does it (``open_project`` moves when it may), outside any request."""
+    return JobSpec(
+        project_id=project_id,
+        kind="move",
+        params={},
+        tasks=[
+            TaskSpec(
+                kind="project.move",
+                stage="moving",
+                resource_class=ResourceClass.IO,
+                params={},
+                label="moving the trip's data to MosAic's storage",
+            )
+        ],
+    )
+
+
+def ensure_move(store: Any, executor: Any, principal: Any, project_id: str) -> int:
+    """The project's running move job, or a new one (never two at once)."""
+    moving = store.jobs(project_id, True, kind="move", limit=1)
+    if moving:
+        return int(moving[0].id)
+    return int(executor.submit(principal, move_job(project_id)))
+
+
+@task("project.move", checkpoint=True)
+def move_task(ctx: TaskContext) -> dict[str, Any]:
+    """By the time this runs, the worker opened (and so moved) the project."""
+    return {"placement": ctx.project.placement.value}
+
+
 # ------------------------------------------------------------------ removal
 
 

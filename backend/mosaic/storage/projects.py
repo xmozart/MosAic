@@ -58,12 +58,12 @@ from mosaic.storage.descriptor import ProjectDescriptor, read_descriptor, write_
 from mosaic.storage.locks import FileLock, LockBusyError, fsync_file, locked
 from mosaic.storage.models_project import ProjectMeta
 from mosaic.storage.placement import (
-    PLACEMENT_FOR_CLASS,
     Classification,
     FsClass,
     Placement,
     PlacementRefusedError,
     classify,
+    folder_db_forbidden,
 )
 from mosaic.storage.sqlite_engine import backup
 
@@ -91,6 +91,16 @@ class ProjectBusyError(RuntimeError):
 
 class SnapshotConflictError(RuntimeError):
     """This computer's live DB and the folder's newer snapshot both have changes."""
+
+
+class MoveNeededError(RuntimeError):
+    """The trip keeps its live database in its folder, which can't be used here: it must
+    be moved to split first. The move copies its cache (often many GB), so a request never
+    does it; a job does (``project.move``; ADR 0055). The project is registered already."""
+
+    def __init__(self, project_id: str, message: str) -> None:
+        super().__init__(message)
+        self.project_id = project_id
 
 
 class ReadOnlyProjectError(RuntimeError):
@@ -277,6 +287,11 @@ def check_placement(placement: Placement, c: Classification) -> None:
         raise PlacementRefusedError(
             f"in-folder placement keeps the live database in the folder, but {c.reason}: "
             "a database there can be corrupted by the network or by sync. Use split placement."
+        )
+    if placement is Placement.IN_FOLDER and folder_db_forbidden():
+        raise PlacementRefusedError(
+            "this server keeps live databases in its own data folder (MOSAIC_FOLDER_DB=never); "
+            "use split placement"
         )
     if placement is not Placement.EXTERNAL and c.fs_class is FsClass.READ_ONLY:
         raise PlacementRefusedError(
@@ -610,6 +625,28 @@ def _take_lease(control: ControlDB, project: Project, take_over: bool) -> None:
         raise
 
 
+_MOVE_MESSAGE = (
+    "This trip's data has to move out of its folder before it can be used here (its live "
+    "database can't stay there). If it isn't moving now, open the trip from Home to move it"
+)
+
+
+def _move(
+    control: ControlDB,
+    root: Path,
+    descriptor: ProjectDescriptor,
+    wanted: Placement,
+    take_over: bool,
+) -> ProjectDescriptor:
+    """Relocate under the project's lease (never move it under another computer)."""
+    _, out = locations(descriptor.placement, root, descriptor.project_id)
+    lease.acquire(out, control.installation_id, force=take_over)
+    moved = _relocate(root, descriptor, wanted)
+    if locations(wanted, root, descriptor.project_id)[1] != out:
+        lease.release(out, control.installation_id)
+    return moved
+
+
 def init_project(
     control: ControlDB,
     principal: Principal,
@@ -618,6 +655,7 @@ def init_project(
     placement: Placement | None = None,
     *,
     take_over: bool = False,
+    move: bool = True,
 ) -> Project:
     """Create (or re-open) the project for ``folder``. ``placement`` overrides the policy
     (Advanced settings); an existing project is moved to it."""
@@ -627,7 +665,15 @@ def init_project(
     check(principal, "project.create", str(root))
     c = classify(root)
     descriptor, fingerprint = _find_descriptor(control, root)
-    wanted = placement or (descriptor.placement if descriptor else PLACEMENT_FOR_CLASS[c.fs_class])
+    wanted = placement or (descriptor.placement if descriptor else c.placement)
+    if placement is None and wanted is Placement.IN_FOLDER and c.placement is Placement.SPLIT:
+        # A trip made in-folder elsewhere, opened where its folder can't hold a live
+        # database (a host share, or a server that keeps them in app data): moved to split,
+        # its live database to app data, a snapshot left in the folder (ADR 0055).
+        wanted = Placement.SPLIT
+        if descriptor is not None and not move:
+            _register(control, principal, root, descriptor, c, fingerprint)
+            raise MoveNeededError(descriptor.project_id, _MOVE_MESSAGE)
     check_placement(wanted, c)
     if descriptor is None:
         descriptor = ProjectDescriptor(
@@ -638,11 +684,7 @@ def init_project(
         )
         _save_descriptor(root, descriptor)
     elif descriptor.placement is not wanted:
-        _, out = locations(descriptor.placement, root, descriptor.project_id)
-        lease.acquire(out, control.installation_id, force=take_over)  # never move it under
-        descriptor = _relocate(root, descriptor, wanted)
-        if locations(wanted, root, descriptor.project_id)[1] != out:
-            lease.release(out, control.installation_id)
+        descriptor = _move(control, root, descriptor, wanted, take_over)
     if wanted is Placement.EXTERNAL and fingerprint is None:
         fingerprint = folder_fingerprint(root)
     project = _open_handles(root, descriptor)
@@ -658,6 +700,7 @@ def open_project(
     *,
     read_only: bool = False,
     take_over: bool = False,
+    move: bool = True,
 ) -> Project:
     """Open a project for editing, which takes (or renews) its lease and raises
     ``lease.LeaseHeldError`` if another computer holds it; or ``read_only``, which never
@@ -668,6 +711,18 @@ def open_project(
         raise NotAProjectError(f"{root} is not a MosAic project; run `mosaic init {root}`")
     check(principal, "project.open", descriptor.project_id)
     c = classify(root)
+    if descriptor.placement is Placement.IN_FOLDER and c.placement is Placement.SPLIT:
+        # Made in-folder elsewhere; here the folder can't hold a live database (a host
+        # share, or a server that keeps them in app data): moved to split (ADR 0055).
+        if not move:
+            _register(control, principal, root, descriptor, c, fingerprint)
+            raise MoveNeededError(descriptor.project_id, _MOVE_MESSAGE)
+        if read_only:
+            raise PlacementRefusedError(
+                "this trip keeps its live database in its folder, which can't be used from "
+                "here; open it for editing once to move the database to MosAic's data"
+            )
+        descriptor = _move(control, root, descriptor, Placement.SPLIT, take_over)
     check_placement(descriptor.placement, c)
     if descriptor.placement is Placement.EXTERNAL and fingerprint is None:
         fingerprint = folder_fingerprint(root)

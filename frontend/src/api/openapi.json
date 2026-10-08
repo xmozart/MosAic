@@ -1700,6 +1700,27 @@
         "summary": "Browse"
       }
     },
+    "/api/health": {
+      "get": {
+        "description": "Liveness for the container healthcheck and a reverse proxy: no sign-in, so it says\nnothing but that the control DB answers (an error is a 500: unhealthy).",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
     "/api/jobs": {
       "get": {
         "operationId": "list_jobs_api_jobs_get",
