@@ -44,10 +44,10 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 
 | Component | Notes |
 |---|---|
-| `WizardStepNav` | Six steps. Done steps show ✓ and are clickable. |
-| `EditSummaryPanel` | 340 px. Plain-language lines, lock and must-include chips, warnings, estimate, primary "Create edit". |
-| `DurationChips`, `AspectPicker` | AspectPicker draws visual frames. |
-| `StoryPresetCard` | Collage built from the user's own matching clips (`/api/projects/{id}/presets/{preset}/collage`). |
+| `WizardStepNav` | Six steps. Done steps show ✓ and are clickable. Steps not built yet are disabled, with a note under the list (M2: steps 3–5; ADR 0048). `components/edit/Wizard.tsx`. |
+| `EditSummaryPanel` | 340 px. Plain-language lines (from `summaryLines(request)`), lock and must-include chips (M4), warnings, estimate (skeleton while loading), primary "Create edit". |
+| `DurationChips`, `AspectPicker` | AspectPicker draws visual frames; an option can be disabled (Native in M2). Both are radio groups. `ChoiceChip` is the shared selected style (accent-soft + accent border). |
+| `StoryPresetCard` | Collage built from the user's own matching clips (`/api/projects/{id}/presets/{preset}/collage`): one large frame and two small ones; a pulse while loading; a dashed frame for Custom or when no clip matches. |
 | `WeightSlider` | Five steps: Avoid · Less · Neutral · More · Strongly prefer. Keyboard ←/→. ARIA slider. |
 | `PaceSlider` | Six stops with a live "about n s per shot" readout. |
 | `BeatCard` | Title, intent, share, shot chips, Locked state (`user` border), Regenerating state (shimmer), infeasible warning, actions (Regenerate, Faster/Slower, ⋯ menu). Drag handle. |
@@ -56,7 +56,7 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `FindingCard` | Severity (Issue / Suggestion), clickable timecode, text, suggested fix, Apply/Ignore, "Applied in vN" state. |
 | `EditFacts` | Duration, target, shots, average shot, beats, days covered, photos, AI cost. |
 | `VersionList`, `VersionCompare` | Synced/independent players plus a change list (Replaced / Trimmed / Moved / Removed). |
-| `EditCard` | Cover (vertical-aware), duration, format, versions, status, preliminary warning. |
+| `EditCard` | Cover (in the edit's shape: 9:16, 4:5 or 1:1 centred), duration, format, versions, status dot and words, a progress ring while generating, created date, preliminary warning. The whole card is one link (`renderLink`). `components/edit/EditCard.tsx`. |
 
 ## System
 

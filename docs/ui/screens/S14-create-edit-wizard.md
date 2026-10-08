@@ -40,3 +40,10 @@
 
 - The summary panel text is generated from the request object (single source).
 - Category ordering comes from library tag frequency.
+
+## M2 notes (ADR 0048)
+
+- Steps 3–5 are shown disabled, and Next on step 2 goes to step 6.
+- Step 2's More options (the arc template and beats), locks and must-include chips wait for M4.
+- Custom (step 2) offers the nine other story presets.
+- Create returns to S13 (S15 is M4).

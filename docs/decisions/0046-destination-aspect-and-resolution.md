@@ -1,6 +1,6 @@
 # 0046 — Destination: aspect and resolution are render settings
 
-- Status: accepted (M2 step 8a)
+- Status: accepted (M2 step 8a); the wording of the "Native" tooltip was amended by 0048
 - Deciders: agent (autonomous; no human gate)
 
 ## Context
@@ -31,7 +31,7 @@ Three questions needed an answer:
   - Subject-aware reframing remains a later milestone.
 - **`fill` is part of the profile JSON,** so it enters the chunk key. `RENDER_VERSION` goes to `render/3`, and chunks rendered before this change are re-made once.
 - **"Native", "custom" and "source" wait.**
-  - M2 offers the five aspects. S14 step 1 shows "Native" disabled, with the tooltip "Coming soon".
+  - M2 offers the five aspects. S14 step 1 shows "Native" disabled, with the tooltip "Coming in a later update".
   - Resolution offers 720p / 1080p / 1440p / 4K. "Source" is left out.
   - Frame rate stays the existing `fps` field.
 

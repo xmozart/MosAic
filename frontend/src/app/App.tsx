@@ -6,6 +6,8 @@ import { AnalysisSetupScreen } from "@/features/analysis/AnalysisSetupScreen";
 import { DeepenRoute } from "@/features/analysis/DeepenRoute";
 import { AuthGate } from "@/features/auth/AuthGate";
 import { TripContextScreen } from "@/features/context/TripContextScreen";
+import { EditsScreen } from "@/features/edits/EditsScreen";
+import { WizardScreen } from "@/features/edits/WizardScreen";
 import { HomeScreen } from "@/features/home/HomeScreen";
 import { InventoryScreen } from "@/features/inventory/InventoryScreen";
 import { ClipDetailScreen } from "@/features/library/ClipDetailScreen";
@@ -39,6 +41,8 @@ export function App() {
                 <Route path="library" element={<LibraryScreen />} />
                 <Route path="clips/:aid" element={<ClipDetailScreen />} />
                 <Route path="search" element={<SearchScreen />} />
+                <Route path="edits" element={<EditsScreen />} />
+                <Route path="edits/new" element={<WizardScreen />} />
                 <Route path="*" element={<Placeholder title="Coming in this milestone" />} />
               </Route>
               <Route path="*" element={<Placeholder title="Not found" />} />
