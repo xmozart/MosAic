@@ -12,6 +12,7 @@ import { HomeScreen } from "@/features/home/HomeScreen";
 import { InventoryScreen } from "@/features/inventory/InventoryScreen";
 import { ClipDetailScreen } from "@/features/library/ClipDetailScreen";
 import { LibraryScreen } from "@/features/library/LibraryScreen";
+import { PreviewScreen } from "@/features/preview/PreviewScreen";
 import { SearchScreen } from "@/features/search/SearchScreen";
 import { AppShell, Placeholder } from "@/features/shell/AppShell";
 import { ProjectIndex } from "@/features/shell/ProjectIndex";
@@ -43,6 +44,7 @@ export function App() {
                 <Route path="search" element={<SearchScreen />} />
                 <Route path="edits" element={<EditsScreen />} />
                 <Route path="edits/new" element={<WizardScreen />} />
+                <Route path="edits/:eid" element={<PreviewScreen />} />
                 <Route path="*" element={<Placeholder title="Coming in this milestone" />} />
               </Route>
               <Route path="*" element={<Placeholder title="Not found" />} />

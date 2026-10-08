@@ -1,5 +1,5 @@
 import { Pause, Play } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { fps, formatClock, frameIndex, seconds, type SourceTime } from "@/lib/time";
@@ -15,6 +15,13 @@ export interface PlayerMarker {
   kind: "moment" | "finding";
 }
 
+/** A stretch of the bar in one of the categorical series colours (S17: beats). */
+export interface PlayerSegment extends PlayerRange {
+  label: string;
+  /** 1–6: the `cam-n` series colour. */
+  series: number;
+}
+
 export interface PlayerProps {
   src?: string;
   poster?: string;
@@ -26,7 +33,19 @@ export interface PlayerProps {
   className?: string;
   /** Called as playback moves (display seconds; e.g. to follow along in a transcript). */
   onTime?: (seconds: number) => void;
+  /** Coloured stretches drawn on the bar (S17's beats). */
+  segments?: PlayerSegment[];
+  /** Chips over the picture (S17: version and beat). */
+  overlay?: ReactNode;
+  /** Shown over the picture instead of "No preview yet" when there is no source. */
+  empty?: ReactNode;
+  /** Controls at the end of the control row (S17's version selector). */
+  controlsEnd?: ReactNode;
+  /** The length known before the video loads (S17: the edit's), so the bar can draw. */
+  length?: SourceTime;
 }
+
+const SERIES = ["bg-cam-1", "bg-cam-2", "bg-cam-3", "bg-cam-4", "bg-cam-5", "bg-cam-6"];
 
 export interface PlayerHandle {
   /** Shows the frame that contains ``t`` (S11: a transcript click lands within a frame). */
@@ -44,13 +63,15 @@ const L_RATES = [1, 1.5, 2, 4];
  * · ←/→ one frame · Shift+←/→ one second.
  */
 export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
-  { src, poster, rate, usableRange, markers = [], range, className, onTime },
+  { src, poster, rate, usableRange, markers = [], range, className, onTime, segments = [], overlay, empty, controlsEnd, length },
   ref,
 ) {
   const video = useRef<HTMLVideoElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [videoDuration, setDuration] = useState(0);
+  // Until the video's metadata loads, the bar draws from the known length (S17).
+  const duration = videoDuration || (length ? seconds(length) : 0);
   const [playing, setPlaying] = useState(false);
   const frame = 1 / fps(rate);
   const lo = range ? seconds(range.start) : 0;
@@ -156,7 +177,7 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
         className,
       )}
     >
-      <div className="relative aspect-video overflow-hidden rounded-md bg-black">
+      <div data-theme="dark" className="relative aspect-video overflow-hidden rounded-md bg-bg">
         {src ? (
           <video
             ref={video}
@@ -178,9 +199,10 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
           />
         ) : (
           <div className="flex size-full items-center justify-center text-small text-on-media/70">
-            No preview yet
+            {empty ?? "No preview yet"}
           </div>
         )}
+        {overlay}
       </div>
       <div className="flex items-center gap-3">
         <button
@@ -204,6 +226,19 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
           onPointerDown={onBar}
           className="relative h-2 flex-1 cursor-pointer rounded-full bg-surface-3"
         >
+          {segments.length > 0 && (
+            <div className="absolute inset-0 overflow-hidden rounded-full">
+              {segments.map((g) => (
+                <div
+                  key={`seg-${g.start.ticks}`}
+                  data-testid="segment"
+                  title={g.label}
+                  className={cn("absolute inset-y-0 opacity-60", SERIES[(g.series - 1) % SERIES.length])}
+                  style={{ left: pct(seconds(g.start)), right: `calc(100% - ${pct(seconds(g.end))})` }}
+                />
+              ))}
+            </div>
+          )}
           {usableRange && (
             <div
               data-testid="usable-range"
@@ -232,6 +267,7 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
         <span className="mono text-timecode-sm text-text-muted">
           {formatClock(time)} / {formatClock(duration)}
         </span>
+        {controlsEnd}
       </div>
     </div>
   );

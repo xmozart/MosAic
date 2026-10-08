@@ -28,3 +28,11 @@
 ## Acceptance
 
 - Clicking a finding's timecode seeks the player.
+
+## M2 notes (ADR 0049)
+
+- The right column is the selection report: "Why these shots", with Shots, Not used and Rejected. Findings replace or join it in M4.
+- Opening a version without a preview starts one.
+- "Open storyboard" is disabled until M4. "Export…" is **Exports** (S20).
+- Render final becomes Download final when the render is done.
+

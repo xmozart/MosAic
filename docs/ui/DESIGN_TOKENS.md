@@ -68,7 +68,7 @@ Map the shadcn/ui CSS variables onto these tokens:
 
 **Over footage** (ADR 0033): text and icons use `on-media`, badges `media-chip`, centred notices `media-overlay`, label gradients `scrim`. These do not change with the theme, because footage does not.
 
-**Camera series** (ADR 0040): `cam-1` … `cam-6` tell cameras apart in charts (S5 trip timeline and legend, S21 devices), in the order the screen lists the cameras; a seventh camera repeats `cam-1`. They are never used for dispositions or user decisions, and a chart always pairs them with the camera's name (legend or label).
+**Camera series** (ADR 0040, 0049): `cam-1` … `cam-6` tell cameras apart in charts (S5 trip timeline and legend, S21 devices), in the order the screen lists the cameras; a seventh camera repeats `cam-1`. The same series colours an edit's beats on S17's player bar, in beat order (ADR 0049), each stretch titled with its beat. They are never used for dispositions or user decisions, and a chart always pairs them with a name (the camera's or the beat's, as a legend, label or title).
 
 ## 4. Spacing, radius, motion
 

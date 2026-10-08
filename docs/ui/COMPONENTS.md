@@ -22,7 +22,7 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `DispositionControl` | `value`, `onChange` | Segmented USE/MAYBE/REJECT with U/M/R hints. |
 | `StarRating` | `value`, `onChange` | 1–5 keys; the accent color is reserved for filled stars. |
 | `IncludeToggle` | `value: always\|never\|none`, `onChange` | Always shown in `user` blue. One value, because a clip cannot be both (L and X toggle it). |
-| `Player` | `src`, `rate` (the proxy's frame rate), `usableRange?`, `markers?`, `range?`, `onTime?`; handle `seekTo(SourceTime)` (to the frame that contains it), `toggle()`, `focus()` | Proxy playback through HTTP range requests. Shows the usable range highlighted and markers (moments, findings). Shortcuts: Space, J/K/L, ←/→ (one frame), Shift+←/→ (one second). |
+| `Player` | `src`, `rate` (the proxy's frame rate), `usableRange?`, `markers?`, `range?`, `onTime?`, `segments?` (coloured stretches in the `cam-n` series: S17's beats), `length?` (draws the bar before the video loads), `overlay?` (chips over the picture), `empty?` (shown without a source), `controlsEnd?` (S17's version selector); handle `seekTo(SourceTime)` (to the frame that contains it), `toggle()`, `focus()` | Proxy playback through HTTP range requests. Shows the usable range highlighted and markers (moments, findings). Shortcuts: Space, J/K/L, ←/→ (one frame), Shift+←/→ (one second). |
 | `Filmstrip`, `Waveform` | `assetId`, `range` | Highlights the selection. |
 | `Transcript` | `lines[]` (sentences with timed words), `now`, `language`, `onSeek` | Highlights the current word (`aria-current`); clicking a word or a line's timestamp seeks; each line's timestamp is its tab stop. No speaker labels (ADR 0043). |
 | `QualityRow` | `sharpness, steadiness, exposure, audio` | Ordinal words, never numbers. Tooltips explain each. |
@@ -54,7 +54,7 @@ Build these in `frontend/src/components/`. Each needs a Storybook story for ever
 | `ShotChip` + `ShotPopover` | Popover shows the reason, role, and alternatives with why-not, plus Lock, Remove and Play. |
 | `DurationBar` | Proportional beats with target marker and tolerance. |
 | `FindingCard` | Severity (Issue / Suggestion), clickable timecode, text, suggested fix, Apply/Ignore, "Applied in vN" state. |
-| `EditFacts` | Duration, target, shots, average shot, beats, days covered, photos, AI cost. |
+| `EditFacts` | Duration, target, shots, average shot, beats, days covered, photos, AI cost: a label over a mono value, four to a row (`components/edit/EditFacts.tsx`; values from `GET /edits/{eid}` `facts`). |
 | `VersionList`, `VersionCompare` | Synced/independent players plus a change list (Replaced / Trimmed / Moved / Removed). |
 | `EditCard` | Cover (in the edit's shape: 9:16, 4:5 or 1:1 centred), duration, format, versions, status dot and words, a progress ring while generating, created date, preliminary warning. The whole card is one link (`renderLink`). `components/edit/EditCard.tsx`. |
 

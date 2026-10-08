@@ -46,6 +46,30 @@ export const PlayRangeOnly: Story = {
   ),
 };
 
+export const BeatSegmentsAndOverlay: Story = {
+  name: "Beat segments, overlay and controls (S17)",
+  render: () => (
+    <div className="w-[640px]">
+      <Player
+        src={sample}
+        rate="30/1"
+        length={at(4)}
+        segments={[
+          { start: at(0), end: at(1.2), label: "Arrival", series: 1 },
+          { start: at(1.2), end: at(2.6), label: "Wildlife", series: 2 },
+          { start: at(2.6), end: at(4), label: "Finale", series: 3 },
+        ]}
+        overlay={
+          <span data-theme="dark" className="absolute top-3 left-3 rounded-full bg-media-chip px-2 py-0.5 text-micro text-on-media">
+            v2 · preview 720p
+          </span>
+        }
+        controlsEnd={<span className="text-caption text-text-muted">v1 · v2</span>}
+      />
+    </div>
+  ),
+};
+
 export const NoPreviewYet: Story = {
   render: () => (
     <div className="w-[640px]">

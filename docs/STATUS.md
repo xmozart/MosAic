@@ -55,7 +55,7 @@ Order: design foundation first (milestone rule), then the server pieces the brow
 - [ ] 8. Edits basic: S13, S14 basic, S17 player + report, S20 exports queue
   - [x] 8a. Backend: destination (aspect, resolution, framing), edit cards, story presets and collages, edit estimate, render rows and actions, render file, report rejections per ADR 0042
   - [x] 8b. S13 Edits and S14 wizard steps 1, 2, 6
-  - [ ] 8c. S17 player and selection/rejection report
+  - [x] 8c. S17 player and selection/rejection report
   - [ ] 8d. S20 Exports
 - [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
@@ -179,3 +179,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-06 · M2.7d · S12 Search: results follow ADR 0042 (decision in force, who made it, the AI's view) with name, camera, stars; header with mode and the trip's own suggestions, matched reasons under each tile, no-results, searching and analysis-incomplete states; query and mode in the URL (ADR 0045)
 - 2026-10-06 · M2.8a · Edits backend: aspect and resolution are render-only (not in the edit key; crop for non-native shapes, ADR 0046); S13 edit cards with status, cover and preliminary flag; 16 story presets with collages from the owner's clips; edit estimate (plan reuse = $0); render rows, cancel, re-render, delete file, Range-served render file; report rejections include whole-clip decisions (ADR 0047)
 - 2026-10-07 · M2.8b · S13 Edits (cards with status, progress ring, vertical covers, preliminary warning, polling; Start from: duplicate as another length, vertical version) and S14 wizard steps 1, 2, 6 (durations, strict length, aspect, resolution and frame rate; seven story cards with the owner's collages plus Custom; chronology; instructions with idea chips; summary from the request; debounced estimate; preliminary banner; ⌘Enter, ⌘↑/↓) (ADR 0048)
+- 2026-10-08 · M2.8c · S17 Preview: the version's preview with beat segments, version and beat chips, a version selector; previews start on their own; EditFacts from the edit's new `facts`; Render final → Download final; the selection report (shots with timecodes that seek, not used, rejected with the AI-vs-you chip and whole-clip tags, paged); generating, failed and missing states; the picture is dark in both themes (ADR 0049)

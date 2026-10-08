@@ -123,7 +123,7 @@ function PhotoVariant({ clip: c, frameUrl, onDecide, onShowClip }: { clip: ClipD
   const poster = c.moments.find((m) => m.sample_id)?.sample_id;
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+      <div data-theme="dark" className="relative aspect-video overflow-hidden rounded-lg bg-bg">
         {poster && <img src={frameUrl(poster)} alt="" className="size-full object-contain" />}
         {c.kind === "live_photo" && (
           <span data-theme="dark" className="absolute top-3 left-3 rounded-sm bg-media-chip px-1.5 py-0.5 text-tag font-bold tracking-[0.06em] text-on-media">

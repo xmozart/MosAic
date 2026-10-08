@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from mosaic.editing.service import edit_ref
@@ -23,12 +23,13 @@ from mosaic.render.service import job_status, render_state
 from mosaic.storage.models_project import Edit, EditVersion, Render, SampleFrame
 
 PAGE = 50
+PHOTO_KINDS = ("photo", "live_photo")
 RESOLUTION_LABEL = {v: ("4K" if k == "4k" else k) for k, v in SHORT_SIDE.items()}
 
 
 def cover(s: Session, timeline: dict[str, Any]) -> int | None:
     """A frame of the edit's first shot: the first kept sample at or after its in point."""
-    events = timeline.get("tracks", [{}])[0].get("events", [])
+    events = (timeline.get("tracks") or [{}])[0].get("events", [])
     if not events:
         return None
     e = events[0]
@@ -160,16 +161,32 @@ def render_rows(
     workspace: Path,
     cursor: int | None = None,
     limit: int = PAGE,
+    edit_id: int | None = None,
+    version: int | None = None,
 ) -> dict[str, Any]:
+    """S20's rows, newest first; ``edit_id``/``version`` narrow them (S17's renders)."""
     from mosaic.render.tasks import output_path
 
     q = select(Render).order_by(Render.id.desc())
     if cursor is not None:
         q = q.where(Render.id < cursor)
+    if edit_id is not None:
+        q = q.where(Render.edit_id == edit_id)
+    if version is not None:
+        q = q.where(Render.version == version)
     rows = list(s.scalars(q.limit(limit + 1)))
     more = len(rows) > limit
     rows = rows[:limit]
     edits = {e.id: e for e in s.scalars(select(Edit).where(Edit.id.in_({r.edit_id for r in rows})))}
+    pairs = {(r.edit_id, r.version) for r in rows}
+    timelines = {
+        (eid, ver): tl
+        for eid, ver, tl in s.execute(
+            select(EditVersion.edit_id, EditVersion.version, EditVersion.timeline).where(
+                tuple_(EditVersion.edit_id, EditVersion.version).in_(pairs)
+            )
+        )
+    }
     items = []
     for r in rows:
         e = edits.get(r.edit_id)
@@ -194,7 +211,13 @@ def render_rows(
                 "render_id": r.id,
                 "edit_id": e.uid if e else None,
                 "edit_name": e.name if e else None,
+                "display_id": edit_ref(r.edit_id),
                 "version": r.version,
+                "cover_sample_id": (
+                    cover(s, timelines[(r.edit_id, r.version)])
+                    if (r.edit_id, r.version) in timelines
+                    else None
+                ),
                 "kind": r.profile.get("kind"),
                 "label": render_label(r.profile),
                 "width": r.profile.get("width"),
@@ -215,4 +238,28 @@ def render_rows(
         "items": items,
         "next_cursor": rows[-1].id if more and rows else None,
         "folder": str(workspace / "renders"),  # S20: where the files are saved
+    }
+
+
+def version_facts(s: Session, v: EditVersion) -> dict[str, Any]:
+    """S17's EditFacts: lengths in frames at the edit's rate (display divides), counts,
+    trip days covered and the AI cost of planning this version."""
+    from mosaic.storage.models_project import Asset
+
+    tracks = v.timeline.get("tracks") or [{}]
+    events = tracks[0].get("events", [])
+    ids = {int(e["asset_id"][4:]) for e in events}
+    kinds = dict(s.execute(select(Asset.id, Asset.kind).where(Asset.id.in_(ids))).tuples().all())
+    m = v.metrics or {}
+    return {
+        "duration": v.timeline.get("duration"),
+        "target": {"frames": m.get("target_frames"), "rate": v.rate},
+        "tolerance": {"frames": m.get("tolerance_frames"), "rate": v.rate},
+        "shots": len(events),
+        # a Live Photo is a photo too (its 2 s of motion is the owner's choice, ADR 0042)
+        "photos": sum(1 for e in events if kinds.get(int(e["asset_id"][4:])) in PHOTO_KINDS),
+        "beats": len(v.beats or []),
+        "days_used": len(m.get("days_used") or []),
+        "days_available": len(m.get("days_available") or []),
+        "ai_cost_usd": (m.get("ai") or {}).get("cost_usd"),
     }

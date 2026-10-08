@@ -21,7 +21,7 @@ from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
 from mosaic.editing import estimate as edit_estimate
 from mosaic.editing import presets
-from mosaic.editing.cards import PAGE, edit_cards, render_rows
+from mosaic.editing.cards import PAGE, edit_cards, render_rows, version_facts
 from mosaic.editing.generate import version_json
 from mosaic.editing.request import STORY_PRESETS, EditRequest
 from mosaic.editing.service import (
@@ -194,10 +194,11 @@ def get_edit(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any
     """M0 has no draft yet: the current state is the latest version."""
     check(me, "edits.read", eid)
     with _edit(svc, me, eid) as (project, edit_id):
-        return _version(project, edit_id, None)
+        return _version(svc, project, edit_id, None)
 
 
-def _version(project: Project, edit_id: int, version: int | None) -> dict[str, Any]:
+def _version(svc: Services, project: Project, edit_id: int, version: int | None) -> dict[str, Any]:
+    """The version, with S17's facts and its renders (newest first; ADR 0049)."""
     try:
         v = get_version(project, edit_id, version)
     except EditNotFoundError as exc:
@@ -208,6 +209,10 @@ def _version(project: Project, edit_id: int, version: int | None) -> dict[str, A
         out = version_json(e, v)
         out["edit_id"] = e.uid
         out["display_id"] = edit_ref(e.id)
+        out["facts"] = version_facts(s, v)
+        out["renders"] = render_rows(
+            s, svc.store, project.workspace, limit=20, edit_id=edit_id, version=v.version
+        )["items"]
     return out
 
 
@@ -236,7 +241,7 @@ def get_edit_version(
 ) -> dict[str, Any]:
     check(me, "edits.read", eid)
     with _edit(svc, me, eid) as (project, edit_id):
-        return _version(project, edit_id, version)
+        return _version(svc, project, edit_id, version)
 
 
 @router.get("/edits/{eid}/report")

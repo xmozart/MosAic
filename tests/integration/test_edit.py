@@ -132,6 +132,21 @@ def test_edit_api(edited: tuple[Project, ControlDB, int]) -> None:
     assert len(eid) == 26  # ULID
     body = client.get(f"/api/edits/{eid}").json()
     assert body["timeline"]["tracks"][0]["events"]
+    facts = body["facts"]  # S17 EditFacts (ADR 0049)
+    assert facts["shots"] == len(body["timeline"]["tracks"][0]["events"])
+    assert facts["duration"] == body["timeline"]["duration"]
+    assert facts["target"]["frames"] == body["metrics"]["target_frames"]
+    assert facts["beats"] == len(body["beats"])
+    assert 0 <= facts["days_used"] <= facts["days_available"]  # fixture days may be unknown
+    with project.db.session() as s:
+        from mosaic.storage.models_project import Asset
+
+        kinds = dict(s.query(Asset.id, Asset.kind).all())
+    events = body["timeline"]["tracks"][0]["events"]
+    assert facts["photos"] == sum(
+        kinds[int(e["asset_id"][4:])] in ("photo", "live_photo") for e in events
+    )
+    assert isinstance(body["renders"], list)
     assert find_float_times(body) == []
     versions = client.get(f"/api/edits/{eid}/versions").json()["items"]
     assert versions[0]["version"] == 1

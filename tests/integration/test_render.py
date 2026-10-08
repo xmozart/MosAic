@@ -218,6 +218,12 @@ def test_render_api(edit: tuple[Project, ControlDB, int, int]) -> None:
     assert mine["size_bytes"] > 0
     assert mine["seconds"] is not None
     rid = mine["render_id"]
+    assert mine["cover_sample_id"] is not None
+    # S17 finds the version's renders on the edit itself.
+    on_edit = client.get(f"/api/edits/{uid}/versions/{mine['version']}").json()["renders"]
+    assert rid in [r["render_id"] for r in on_edit]
+    assert all(r["version"] == mine["version"] for r in on_edit)
+    assert all(r["edit_id"] == uid for r in on_edit), "another edit's renders stay out"
     base = f"/api/projects/{project.id}/renders/{rid}"
     # The S17 player seeks with Range requests.
     part = client.get(f"{base}/file", headers={"Range": "bytes=0-99"})
