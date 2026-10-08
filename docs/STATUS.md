@@ -9,7 +9,7 @@ _(empty — the agent is working on M2)_
 ## Current
 
 - **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 step 9 (Settings S21, S22, S23); steps 1–8 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Step:** M2 step 10 (Docker); steps 1–9 done; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -57,11 +57,11 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 8b. S13 Edits and S14 wizard steps 1, 2, 6
   - [x] 8c. S17 player and selection/rejection report
   - [x] 8d. S20 Exports
-- [ ] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
+- [x] 9. Settings: S21 project, S22 app (five config scopes with source and Reset, providers, keys), S23 diagnostics
   - [x] 9a. Backend: project storage and clearing (job), removal of MosAic data, diagnostics tasks, retry/skip and the redacted bundle
   - [x] 9b. S21 Project settings
   - [x] 9c. S22 App settings
-  - [ ] 9d. S23 Diagnostics
+  - [x] 9d. S23 Diagnostics
 - [ ] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
 - [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
 
@@ -190,3 +190,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-08 · M2.9a · Storage groups (previews, contact sheets and render cache regenerable; frames, renders and analysis kept), clearing as a job that never touches durable data, removal of MosAic's data (rename aside, unregister, background purge; never the footage; checkpoint guard), diagnostics task list/detail with retry and skip, redacted bundle scanned for planted secrets (ADR 0051)
 - 2026-10-08 · M2.9b · S21 Project settings (`/p/:pid/settings`): General with rename (`PATCH /projects/{pid}`, also the header's inline rename), Analysis rows with source and Reset, Devices with the clock check, Trip context summary, Storage with clearing, Danger zone removal with the typed name; SectionNav (ADR 0052)
 - 2026-10-08 · M2.9c · S22 App settings (`/settings`): appearance, analysis defaults, AI providers (key cards with validate, models by task with provider/model/mode/source/Reset, Hybrid vs Local only, what leaves this computer), processing and workers, media roots on a server, about; `GET /providers/options`, `PATCH /providers {task: null}` (ADR 0053)
+- 2026-10-08 · M2.9d · S23 Diagnostics (`/diagnostics?status=&project=`): task table with tool, time, tokens and cost, polling while tasks run, paging; detail with error output, attempts, worker, Retry and Skip; redacted bundle download; reached from S22 and ⌘K (ADR 0054). Step 9 done

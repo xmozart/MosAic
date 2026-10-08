@@ -22,7 +22,7 @@ function railItem(path: string): RailItem {
   if (path.includes("/library") || path.includes("/search")) return "library";
   if (path.includes("/edits")) return "edits";
   if (path.startsWith("/exports") || path.endsWith("/exports")) return "exports";
-  if (path.startsWith("/settings") || path.endsWith("/settings")) return "settings";
+  if (path.startsWith("/settings") || path.endsWith("/settings") || path.startsWith("/diagnostics")) return "settings";
   return "home";
 }
 
@@ -72,6 +72,7 @@ export function AppShell() {
   };
   const commands: Command[] = [
     { id: "home", label: "Go to Home", kind: "Action", run: () => navigate("/") },
+    { id: "diagnostics", label: "Diagnostics", kind: "Action", run: () => navigate("/diagnostics") },
     ...(pid
       ? [
           { id: "lib", label: "Open library", kind: "Action" as const, run: () => navigate(`/p/${pid}/library`) },

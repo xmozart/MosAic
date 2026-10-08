@@ -49,6 +49,8 @@ export interface AppSettingsViewProps {
   onRemoveRoot?: (root: MediaRoot) => void;
   /** The open trip, for "This trip's settings". */
   trip?: { name: string; onOpen: () => void };
+  /** Opens S23 Diagnostics. */
+  onDiagnostics?: () => void;
 }
 
 /** S22 App settings (M2: appearance, analysis defaults, AI providers, processing, media
@@ -517,6 +519,11 @@ function About(p: AppSettingsViewProps) {
           </span>
         )}
         <span className="text-small text-text-muted">Your footage never leaves this computer, and API keys are never shown or exported.</span>
+        {p.onDiagnostics && (
+          <Button size="sm" className="self-start" onClick={p.onDiagnostics}>
+            Diagnostics…
+          </Button>
+        )}
       </Card>
     </section>
   );

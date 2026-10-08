@@ -143,6 +143,7 @@ export function AppSettingsScreen() {
       roots={mode === "server" && roots.isSuccess ? roots.data : undefined}
       onAddRoot={(path, label) => addRoot.mutate({ path, label })}
       onRemoveRoot={(r) => removeRoot.mutate(r)}
+      onDiagnostics={() => navigate("/diagnostics")}
       trip={recent ? { name: recent.name, onOpen: () => navigate(`/p/${recent.id}/settings`) } : undefined}
     />
   );
