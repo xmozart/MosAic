@@ -28,20 +28,41 @@ export function ExportsScreen() {
   const toast = useToasts((s) => s.push);
   const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
 
+  const fetchPage = async (cursor?: number) => {
+    const { data, error } = await api.GET("/api/projects/{pid}/renders", {
+      params: { path: { pid }, query: { limit: PAGE, ...(cursor !== undefined ? { cursor } : {}) } },
+    });
+    if (error || !data) throw new Error("renders");
+    return data as unknown as Page;
+  };
   const pages = useInfiniteQuery({
     queryKey: ["renders", pid],
     initialPageParam: undefined as number | undefined,
-    queryFn: async ({ pageParam }) => {
-      const { data, error } = await api.GET("/api/projects/{pid}/renders", {
-        params: { path: { pid }, query: { limit: PAGE, ...(pageParam !== undefined ? { cursor: pageParam } : {}) } },
-      });
-      if (error || !data) throw new Error("renders");
-      return data as unknown as Page;
-    },
+    queryFn: ({ pageParam }) => fetchPage(pageParam),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    refetchInterval: (q) => (q.state.data?.pages.some((pg) => pg.items.some((r) => ACTIVE.has(r.status))) ? POLL_MS : false),
+    // Running renders are new, so on the first page, which `live` polls alone. Only a
+    // running row further down (rare) makes every loaded page poll.
+    refetchInterval: (q) => (q.state.data?.pages.slice(1).some((pg) => pg.items.some((r) => ACTIVE.has(r.status))) ? POLL_MS : false),
   });
-  const items = useMemo(() => pages.data?.pages.flatMap((pg) => pg.items), [pages.data]);
+  const firstActive = Boolean(pages.data?.pages[0]?.items.some((r) => ACTIVE.has(r.status)));
+  const live = useQuery({
+    queryKey: ["renders", pid, "live"],
+    enabled: firstActive,
+    queryFn: async () => {
+      const page = await fetchPage();
+      // The last running render ended: the loaded pages catch up once.
+      if (!page.items.some((r) => ACTIVE.has(r.status))) void qc.invalidateQueries({ queryKey: ["renders", pid], exact: true });
+      return page;
+    },
+    refetchInterval: (q) => (q.state.data?.items.some((r) => ACTIVE.has(r.status)) ?? true ? POLL_MS : false),
+  });
+  const items = useMemo(() => {
+    if (!pages.data) return undefined;
+    const [first, ...rest] = pages.data.pages;
+    const head = firstActive && live.data && live.dataUpdatedAt >= pages.dataUpdatedAt ? live.data : first;
+    const seen = new Set<number>();
+    return [head!, ...rest].flatMap((pg) => pg.items).filter((r) => !seen.has(r.render_id) && Boolean(seen.add(r.render_id)));
+  }, [pages.data, pages.dataUpdatedAt, live.data, live.dataUpdatedAt, firstActive]);
 
   const act = useMutation({
     mutationFn: async ({ r, action }: { r: RenderRow; action: "cancel" | "rerender" | "delete" }) => {

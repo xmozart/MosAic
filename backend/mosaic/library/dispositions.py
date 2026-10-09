@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import hashlib
 import statistics
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -208,11 +209,38 @@ def effective(session: Session, segment_ids: list[int]) -> dict[int, Disposition
 # ------------------------------------------------------------------------ task
 
 
+class _Metric(NamedTuple):
+    name: str
+    sample_id: int | None
+    start_ticks: int
+    end_ticks: int
+    value: float
+    percentile: float | None
+
+
 def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
+    """Each segment's metrics: per-sample ones whose frame lies in its usable range, and
+    range ones that overlap it. The metrics are indexed by time once per asset, so a
+    segment looks at its own range only (the 40-hour estimate spent 11 s here comparing
+    every segment with every metric). Lists keep the metrics' stored order."""
     assert asset.tb is not None
     tb = parse_rational(asset.tb)
     asset_seconds = Fraction(asset.duration_ticks or 0) * tb
-    metrics = list(session.scalars(select(TechMetric).where(TechMetric.asset_id == asset.id)))
+    metrics = [
+        _Metric(*row)
+        for row in session.execute(
+            select(
+                TechMetric.name,
+                TechMetric.sample_id,
+                TechMetric.start_ticks,
+                TechMetric.end_ticks,
+                TechMetric.value,
+                TechMetric.percentile,
+            )
+            .where(TechMetric.asset_id == asset.id)
+            .order_by(TechMetric.id)
+        )
+    ]
     sample_ticks = {
         sid: t
         for sid, t in session.execute(
@@ -220,20 +248,33 @@ def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
         )
     }
     shake_name = shake_metric_name({m.name for m in metrics})
+    # (time, stored position) for per-sample metrics; (start, position) for range ones.
+    at = sorted(
+        (sample_ticks.get(m.sample_id, m.start_ticks), i)
+        for i, m in enumerate(metrics)
+        if m.sample_id is not None
+    )
+    at_times = [t for t, _ in at]
+    ranged = sorted((m.start_ticks, i) for i, m in enumerate(metrics) if m.sample_id is None)
+    ranged_starts = [t for t, _ in ranged]
     out: dict[int, SegmentFacts] = {}
     for seg in session.scalars(select(Segment).where(Segment.asset_id == asset.id)):
         a, b = seg.usable_start_ticks, seg.usable_end_ticks
         if b <= a:
             a, b = seg.start_ticks, seg.end_ticks
-        at_sample: dict[str, list[TechMetric]] = {}
-        in_range: dict[str, list[TechMetric]] = {}
-        for m in metrics:
-            if m.sample_id is not None:
-                t = sample_ticks.get(m.sample_id, m.start_ticks)
-                if a <= t < b or a == b == t:  # a photo's segment is the one frame at 0
-                    at_sample.setdefault(m.name, []).append(m)
-            elif m.start_ticks < b and m.end_ticks > a:
-                in_range.setdefault(m.name, []).append(m)
+        at_sample: dict[str, list[_Metric]] = {}
+        in_range: dict[str, list[_Metric]] = {}
+        if a == b:  # a photo's segment is the one frame at 0
+            hits = [i for t, i in at[bisect_left(at_times, a) : bisect_right(at_times, a)]]
+        else:
+            hits = [i for _, i in at[bisect_left(at_times, a) : bisect_left(at_times, b)]]
+        for i in sorted(hits):
+            at_sample.setdefault(metrics[i].name, []).append(metrics[i])
+        overlapping = [
+            i for _, i in ranged[: bisect_left(ranged_starts, b)] if metrics[i].end_ticks > a
+        ]
+        for i in sorted(overlapping):
+            in_range.setdefault(metrics[i].name, []).append(metrics[i])
         frozen = sum(
             min(b, m.end_ticks) - max(a, m.start_ticks) for m in in_range.get("freeze", [])
         )

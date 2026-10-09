@@ -102,11 +102,11 @@ export function ProjectHeader(p: ProjectHeaderProps) {
       <button
         type="button"
         onClick={p.onSearch}
-        className="inline-flex items-center gap-2 rounded-[8px] border border-border px-2.5 py-[5px] text-caption text-text-faint hover:text-text-muted focus-visible:outline-2 focus-visible:outline-accent"
+        className="inline-flex items-center gap-2 rounded-md border border-border px-2.5 py-[5px] text-caption text-text-faint hover:text-text-muted focus-visible:outline-2 focus-visible:outline-accent"
       >
         <Search aria-hidden className="size-3.5" />
         Search or jump to…
-        <kbd className="mono inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] border border-border bg-surface-2 px-[5px] text-[11px] text-text-muted">
+        <kbd className="mono inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm border border-border bg-surface-2 px-[5px] text-[11px] text-text-muted">
           ⌘K
         </kbd>
       </button>

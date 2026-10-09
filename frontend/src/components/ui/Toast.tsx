@@ -12,7 +12,7 @@ export function Toaster() {
           key={t.id}
           onOpenChange={(open) => !open && dismiss(t.id)}
           className={cn(
-            "flex items-center gap-3 rounded-[12px] border border-border bg-surface-2 px-4 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.4)]",
+            "flex items-center gap-3 rounded-md border border-border bg-surface-2 px-4 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.4)]",
             t.kind === "error" && "shadow-[inset_3px_0_0_var(--reject),0_12px_32px_rgba(0,0,0,0.4)]",
           )}
         >

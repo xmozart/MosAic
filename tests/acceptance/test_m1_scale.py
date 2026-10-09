@@ -38,6 +38,9 @@ LONG_DIR = Path(os.environ.get("MOSAIC_LONG_PROJECT_DIR", REPO / ".cache" / "lon
 SPEC = LongSpec()
 PEAK_RSS_BYTES = 1536 * 1024 * 1024  # the worker process, whole L0/L1 run
 LIST_PAGE_S = 0.300
+# S14 asks for an estimate after each pause in typing (400 ms debounce); it runs the edit's
+# retrieval in the request (ADR 0047). M2 step 11 budget on this fixture.
+ESTIMATE_S = 2.0
 
 # Runs the worker in this process and prints its peak RSS (bytes) as the last line.
 WORKER = """
@@ -108,6 +111,7 @@ def test_forty_hours_l0_l1_bounded_memory_and_fast_list(
     assert samples > 20_000
 
     times = _list_pages(control, pid)
+    estimates = _estimates(control, pid)
     report = {
         "hours": SPEC.hours,
         "clips": SPEC.clips,
@@ -117,6 +121,7 @@ def test_forty_hours_l0_l1_bounded_memory_and_fast_list(
         "worker_peak_rss_mb": round(peak / 2**20),
         "list_pages": len(times),
         "list_page_ms_max": round(max(times) * 1000, 1),
+        "estimate_ms_max": round(max(estimates) * 1000, 1),
     }
     print("SCALE", json.dumps(report))
     report_file = REPO / ".cache" / "scale-report.json"
@@ -124,6 +129,7 @@ def test_forty_hours_l0_l1_bounded_memory_and_fast_list(
     report_file.write_text(json.dumps(report, indent=2))
     assert peak < PEAK_RSS_BYTES, report
     assert max(times) < LIST_PAGE_S, report
+    assert max(estimates) < ESTIMATE_S, report
 
 
 def _list_pages(control: ControlDB, pid: str) -> list[float]:
@@ -159,4 +165,27 @@ def _list_pages(control: ControlDB, pid: str) -> list[float]:
                 break
         seen[group] = n
     assert seen == {"day": SPEC.clips, "camera": SPEC.clips}
+    return times
+
+
+def _estimates(control: ControlDB, pid: str) -> list[float]:
+    """S14's estimate for a few requests on the 40-hour project (M2; STATUS)."""
+    from fastapi.testclient import TestClient
+
+    from mosaic.app.main import create_app
+    from mosaic.app.services import Services
+
+    app = create_app(Services.create(control))
+    app.state.allowed_hosts = {"testserver"}
+    client = TestClient(app)
+    times: list[float] = []
+    for request in (
+        {"duration_s": 60},
+        {"duration_s": 300, "story": "cinematic_journey"},
+        {"duration_s": 600, "story": "chronological_diary", "chronology": "strict"},
+    ):
+        t = time.perf_counter()
+        r = client.post("/api/edits/estimate", json={"project_id": pid, "request": request})
+        times.append(time.perf_counter() - t)
+        assert r.status_code == 200, r.text
     return times

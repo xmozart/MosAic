@@ -20,4 +20,12 @@ describe("token classes", () => {
     );
     expect(offenders).toEqual([]);
   });
+
+  it("round corners only with the radius tokens (sm, md, lg, full)", () => {
+    // Mockup radii (8, 12, 16 px, …) map to the nearest token by use (ADR 0056).
+    const offenders = files(SRC).filter(
+      (f) => !f.endsWith("classes.test.ts") && /rounded(-[a-z]+)?-\[/.test(readFileSync(f, "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
 });

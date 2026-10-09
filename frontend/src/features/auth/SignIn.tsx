@@ -47,7 +47,7 @@ export function SignIn({ setup, host, submit }: SignInProps) {
     <main className="flex min-h-full items-center justify-center bg-bg p-6">
       <form
         onSubmit={onSubmit}
-        className="flex w-[400px] flex-col gap-[18px] rounded-[18px] border border-border bg-surface-1 p-8"
+        className="flex w-[400px] flex-col gap-[18px] rounded-lg border border-border bg-surface-1 p-8"
       >
         <Wordmark />
         <div className="flex flex-col gap-1.5">

@@ -109,7 +109,7 @@ export function ClipFacts(p: ClipFactsProps) {
                   type="button"
                   aria-label={`Show similar clip ${s.asset_id}`}
                   onClick={() => p.onShowClip?.(s.asset_id)}
-                  className="aspect-video w-24 shrink-0 overflow-hidden rounded-[8px] bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent"
+                  className="aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   {s.sample_id && <img src={p.frameUrl(s.sample_id)} alt="" className="size-full object-cover" />}
                 </button>

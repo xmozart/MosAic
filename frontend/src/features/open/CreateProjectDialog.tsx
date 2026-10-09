@@ -51,7 +51,7 @@ export function CreateProjectDialog(p: {
         <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed top-1/2 left-1/2 z-50 flex w-[620px] -translate-x-1/2 -translate-y-1/2 flex-col gap-5 rounded-[16px] border border-border bg-surface-1 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.5)]"
+          className="fixed top-1/2 left-1/2 z-50 flex w-[620px] -translate-x-1/2 -translate-y-1/2 flex-col gap-5 rounded-lg border border-border bg-surface-1 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.5)]"
         >
           <Dialog.Title className="text-heading text-text">Create project</Dialog.Title>
           <div className="flex flex-col gap-1">

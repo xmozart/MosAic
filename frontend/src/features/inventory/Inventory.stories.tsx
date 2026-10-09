@@ -36,7 +36,7 @@ export const InventoryAllClear: Story = {
 export const InventoryDownloading: Story = { render: () => page(<InventoryView {...inventory} downloadPct={42} />) };
 
 const dialog = (children: React.ReactNode) => (
-  <div className="w-[880px] rounded-[16px] border border-border bg-surface-1 p-6">
+  <div className="w-[880px] rounded-lg border border-border bg-surface-1 p-6">
     <h2 className="mb-4 text-title text-text">Clock check</h2>
     {children}
   </div>

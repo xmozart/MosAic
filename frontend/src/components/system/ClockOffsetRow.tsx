@@ -51,7 +51,7 @@ export function ClockOffsetRow(p: ClockOffsetRowProps) {
               <span key={label} className="contents">
                 {i === 1 && <ArrowLeftRight aria-hidden className="size-4 text-text-faint" />}
                 <figure className="flex w-[150px] flex-col gap-1">
-                  <div className="aspect-video overflow-hidden rounded-[8px] bg-surface-3">
+                  <div className="aspect-video overflow-hidden rounded-md bg-surface-3">
                     {p.evidence?.frames?.[i] && <img src={p.evidence.frames[i] ?? undefined} alt="" className="size-full object-cover" />}
                   </div>
                   <figcaption className="mono text-timecode-sm text-text-muted">{label}</figcaption>

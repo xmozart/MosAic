@@ -11,7 +11,7 @@ import type { Day, Highlights, TripContext } from "./model";
 
 const SHOWN_DAYS = 7;
 const input =
-  "h-[34px] w-full min-w-0 rounded-[8px] border border-border bg-surface-3 px-2.5 text-small text-text placeholder:text-text-faint focus-visible:outline-2 focus-visible:outline-accent";
+  "h-[34px] w-full min-w-0 rounded-md border border-border bg-surface-3 px-2.5 text-small text-text placeholder:text-text-faint focus-visible:outline-2 focus-visible:outline-accent";
 
 export type ContextTab = "paste" | "details";
 
@@ -178,7 +178,7 @@ function DetailsPanel(p: TripContextViewProps & { set: (patch: Partial<TripConte
                     key={d.date}
                     data-parsed={p.highlights.has(`day:${d.date}`) || undefined}
                     className={cn(
-                      "grid grid-cols-[60px_90px_1.3fr_1fr] items-center gap-3 rounded-[8px] px-2.5 py-2",
+                      "grid grid-cols-[60px_90px_1.3fr_1fr] items-center gap-3 rounded-md px-2.5 py-2",
                       p.highlights.has(`day:${d.date}`) && "bg-accent-soft",
                     )}
                   >

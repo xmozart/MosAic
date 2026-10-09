@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
+import { RadioGroup } from "@/components/ui/RadioGroup";
 
-import { radioArrows } from "./radioArrows";
 
 // ------------------------------------------------------------------ step nav
 
@@ -82,7 +82,7 @@ export function ChoiceChip({ selected, onClick, children, label }: { selected: b
 /** COMPONENTS.md DurationChips: 15 s … 20 min, plus Custom. */
 export function DurationChips({ options, value, custom, onChange, onCustom, format }: { options: readonly number[]; value: number; custom: boolean; onChange: (s: number) => void; onCustom: () => void; format: (s: number) => string }) {
   return (
-    <div role="radiogroup" aria-label="Length" onKeyDown={radioArrows} className="flex flex-wrap items-center gap-2">
+    <RadioGroup label="Length" className="flex flex-wrap items-center gap-2">
       {options.map((s) => (
         <ChoiceChip key={s} selected={!custom && s === value} onClick={() => onChange(s)}>
           {format(s)}
@@ -91,7 +91,7 @@ export function DurationChips({ options, value, custom, onChange, onCustom, form
       <ChoiceChip selected={custom} onClick={onCustom}>
         Custom
       </ChoiceChip>
-    </div>
+    </RadioGroup>
   );
 }
 
@@ -106,7 +106,7 @@ export interface AspectOption<T extends string> {
 /** COMPONENTS.md AspectPicker: each option draws its frame. */
 export function AspectPicker<T extends string>({ options, value, onChange }: { options: AspectOption<T>[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div role="radiogroup" aria-label="Shape" onKeyDown={radioArrows} className="flex flex-wrap items-center gap-2">
+    <RadioGroup label="Shape" className="flex flex-wrap items-center gap-2">
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -119,7 +119,7 @@ export function AspectPicker<T extends string>({ options, value, onChange }: { o
             title={o.disabled ? "Coming in a later update" : undefined}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex w-24 flex-col items-center gap-2 rounded-[12px] border-[1.5px] p-3 text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50",
+              "flex w-24 flex-col items-center gap-2 rounded-md border-[1.5px] p-3 text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50",
               on ? "border-accent bg-accent-soft" : "border-border bg-surface-1 enabled:hover:border-text-faint",
             )}
           >
@@ -127,14 +127,14 @@ export function AspectPicker<T extends string>({ options, value, onChange }: { o
               <span
                 aria-hidden
                 style={{ width: o.w, height: o.h }}
-                className={cn("block rounded-[4px] border-2", on ? "border-accent" : "border-text-muted")}
+                className={cn("block rounded-sm border-2", on ? "border-accent" : "border-text-muted")}
               />
             </span>
             <span className="text-caption font-semibold">{o.label}</span>
           </button>
         );
       })}
-    </div>
+    </RadioGroup>
   );
 }
 

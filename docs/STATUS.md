@@ -64,6 +64,8 @@ Order: design foundation first (milestone rule), then the server pieces the brow
   - [x] 9d. S23 Diagnostics
 - [x] 10. Docker: multi-arch image with LGPL FFmpeg, compose (plain, NVIDIA optional), healthcheck, volume layout doc
 - [ ] 11. Acceptance: compose end-to-end to a rendered preview (1), secret scan (3), visual regression both themes (6, 7), OpenAPI coverage (9), `docs/reports/M2.md` → G6
+  - [x] 11a. Acceptance suite (browser flow + secret scan, OpenAPI coverage, 5,000-clip filters, estimate budget), `make docker-e2e`, worker supervision, visual regression, structural review, radius tokens, one Tab stop per radio group, S20 first-page polling (ADR 0056)
+  - [ ] 11b. `docs/reports/M2.md` → G6
 
 ## M1 plan
 
@@ -92,12 +94,8 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - Raising a paused job's cost limit is wired in the Activity popover (5c); S9 and S20 still need their own entry points.
 - `GET /jobs` and `/jobs/{id}` need a per-project permission check before multi-user work: job results can hold trip-context proposals (ADR 0040).
-- A 5,000-clip filter timing test (M2 acceptance 4) belongs to step 11's acceptance suite. The 40-hour scale test's slowest library page rose from 19–63 ms (M1) to 103–151 ms with tile status and facts (budget 300 ms; one CI run failed it once): profile the per-request project open and the first page's three status scans in step 11.
-- `POST /edits/estimate` runs the edit's full retrieval in the request (no AI call; ADR 0047) and S14 calls it on every change: debounced in 8b (400 ms); add a timing budget on the 40-hour fixture to step 11's acceptance suite.
-- Wizard radio groups (S14) move with the arrow keys but every option is still a Tab stop: give them a roving tabindex in step 11's accessibility pass.
-- S20 polls every loaded page every 2 s while a render runs (each row costs a job lookup and a file stat): poll only the first page or the active rows if exports grow long (step 11 timing).
+- The 40-hour scale test's slowest library page is 103–151 ms (M1: 19–63 ms; budget 300 ms; one CI run failed it once under load). The 5,000-clip filter test answers in 50–112 ms. Profile the per-request project open and the first page's three status scans (M3).
 - S21 follow-ups: the section nav could follow scrolling (IntersectionObserver); removal refusals are matched on the server's text, so give 409 bodies a machine-readable `code`; backend tests for renaming a read-only project (409) and an external-placement project (descriptor in app data).
-- Radius tokens: screens use arbitrary radii (`rounded-[16px]`, `rounded-[20px]`, …) from the mockups until step 11 adds radius and outline-offset tokens; replace them then.
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
 
@@ -111,7 +109,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Follow-ups from LUTs (M1.10b): pass the source's colour matrix to the RGB conversion before `lut3d` (untagged HD log footage would use BT.601); key audio analysis on a proxy key without the LUT (a LUT change re-transcribes today); log-curve hints from real Apple Log / N-Log / D-Log M samples (Q-3).
 - Follow-ups from photos (M1.9a): vision prompt wording for stills (photos get 0 s segment lines); a HEIC MakerNote content-id test (no HEIC encoder for fixtures); tiled DNG previews; scaled HEIC decode for large photos; pack several photos per contact sheet (one vision call per photo today; ADR needed); rename the corpus `expect_deferred` flag; photos in L3 review and scene summaries.
 - Follow-ups from lifecycle (M1.7): asset re-key when a file is renamed and a different new file takes its old path (group order; process relinked rows first); write routes on a project never `/open`ed take an untracked lease (hold it in `Leases`); map OSError from an unreachable share to 503; relink preview for S0 (M2).
-- Follow-ups from placement (M1.6): surface "a newer snapshot from another computer is waiting" in project status (UI, M2); shorter open-lock wait for API requests (~5 s) than for the worker; a ProjectBusyError in the worker should defer the task, not fail it; Windows locks (M3).
+- Follow-ups from placement (M1.6): surface "a newer snapshot from another computer is waiting" in project status (UI, M2); shorter open-lock wait for API requests (~5 s) than for the worker; Windows locks (M3).
 - M1 follow-ups from summaries (M1.5): flag in the M1 report that acceptance 5 is read as footage-analysis calls (ADR 0021; alternative: lazy summary refresh); check the context digest before the day loop; keyed shot/scene summary rows; bound the trip call for very long trips (week level) and the day call size (~80 items); tests for the highlight retry path, the unconfigured-summarizer skip and the CLI context/summary commands; summarizer calls in estimates.
 - M1 follow-ups from analysis modes (M1.4): LRF first-frame PTS alignment check in `lrf_matches` (a one-frame offset passes today); SQL aggregates in `library/estimate.py` and a scoped photo count for deepen estimates; move `_project` to `app/deps.py`; hypothesis test for `plan_samples`/`threshold_cuts`.
 - M1 follow-ups from step 4: Apple Log / GoPro flat `log(<name>)` color hints; Live Photo pairing by the still's own content identifier; relink-by-fingerprint probe keys.
@@ -192,3 +190,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-08 · M2.9c · S22 App settings (`/settings`): appearance, analysis defaults, AI providers (key cards with validate, models by task with provider/model/mode/source/Reset, Hybrid vs Local only, what leaves this computer), processing and workers, media roots on a server, about; `GET /providers/options`, `PATCH /providers {task: null}` (ADR 0053)
 - 2026-10-08 · M2.9d · S23 Diagnostics (`/diagnostics?status=&project=`): task table with tool, time, tokens and cost, polling while tasks run, paging; detail with error output, attempts, worker, Retry and Skip; redacted bundle download; reached from S22 and ⌘K (ADR 0054). Step 9 done
 - 2026-10-08 · M2.10 · Docker: three-stage multi-arch image (UI build, BtbN LGPL FFmpeg per arch refused if GPL, python 3.12 slim with the frozen uv env), non-root, /data volume, /api/health and HEALTHCHECK, compose.yaml with the master key as a Docker secret, compose.nvidia.yaml, docs/deploy/DOCKER.md, `make docker` smoke test; npm lock pins the emnapi peers for Linux (ADR 0055)
+- 2026-10-09 · M2.11a · Acceptance suite: the browser's API flow from setup to a ranged preview with a key scan of responses, logs, app data and the media folder; OpenAPI coverage of the API map's M2 rows; 5,000-clip filters (≤ 112 ms) and an estimate budget on the 40-hour fixture; `make docker-e2e` passed against `docker compose up` (analysis 20 min with the first model download); the server now supervises job workers (jobs from the browser never ran before); Storybook screenshots in both themes compared on every `make frontend`; structural review against the mockups; radius tokens; one Tab stop per radio group; S20 polls its first page only (ADR 0056)

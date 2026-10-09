@@ -45,7 +45,7 @@ export function ReportPanel(p: ReportPanelProps) {
         ]}
       />
       {p.error ? (
-        <div role="alert" className="flex items-center gap-3 rounded-[12px] border border-border bg-surface-1 p-3.5 text-small text-text">
+        <div role="alert" className="flex items-center gap-3 rounded-md border border-border bg-surface-1 p-3.5 text-small text-text">
           We couldn't load the report.
           <Button size="sm" onClick={p.onRetry}>
             Try again
@@ -54,14 +54,14 @@ export function ReportPanel(p: ReportPanelProps) {
       ) : !r ? (
         <div aria-label="Loading the report" className="flex flex-col gap-2">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-[12px] bg-surface-1" />
+            <div key={i} className="h-20 animate-pulse rounded-md bg-surface-1" />
           ))}
         </div>
       ) : (
         <ul className="flex min-h-0 flex-col gap-2 overflow-y-auto pb-2">
           {tab === "shots" &&
             r.events.map((e) => (
-              <li key={e.event_id} className="flex flex-col gap-1.5 rounded-[12px] border border-border bg-surface-1 p-3.5">
+              <li key={e.event_id} className="flex flex-col gap-1.5 rounded-md border border-border bg-surface-1 p-3.5">
                 <span className="flex items-center gap-2">
                   <button
                     type="button"
@@ -85,7 +85,7 @@ export function ReportPanel(p: ReportPanelProps) {
               <Empty>Every shot the editor picked is in the edit.</Empty>
             ) : (
               r.not_used.map((n) => (
-                <li key={n.selection_ref} className="flex flex-col gap-1 rounded-[12px] border border-border bg-surface-1 p-3.5">
+                <li key={n.selection_ref} className="flex flex-col gap-1 rounded-md border border-border bg-surface-1 p-3.5">
                   <span className="flex items-center gap-2 text-caption text-text-muted">
                     <span className="mono">{n.segment_id}</span>
                     {beatTitle(n.beat_id) && <span>{beatTitle(n.beat_id)}</span>}
@@ -100,7 +100,7 @@ export function ReportPanel(p: ReportPanelProps) {
             ) : (
               <>
                 {r.rejected.items.map((x) => (
-                  <li key={x.segment_id} className="flex flex-col gap-1.5 rounded-[12px] border border-border bg-surface-1 p-3.5">
+                  <li key={x.segment_id} className="flex flex-col gap-1.5 rounded-md border border-border bg-surface-1 p-3.5">
                     <span className="flex items-center gap-2">
                       <DispositionChip value="REJECT" by={x.source} size="sm" />
                       {x.whole_clip && <Tag user>Whole clip</Tag>}
@@ -140,5 +140,5 @@ function Tag({ children, user }: { children: ReactNode; user?: boolean }) {
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <li className="rounded-[12px] border border-dashed border-border p-4 text-small text-text-muted">{children}</li>;
+  return <li className="rounded-md border border-dashed border-border p-4 text-small text-text-muted">{children}</li>;
 }

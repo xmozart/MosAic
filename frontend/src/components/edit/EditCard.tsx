@@ -43,7 +43,7 @@ const SHAPE: Record<EditCardProps["shape"], string> = {
 export function EditCard(p: EditCardProps) {
   return p.renderLink(
     <>
-      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-[12px] bg-surface-2">
+      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-md bg-surface-2">
         {p.coverUrl && (
           <img
             src={p.coverUrl}
@@ -83,7 +83,7 @@ export function EditCard(p: EditCardProps) {
         </span>
       )}
     </>,
-    "flex flex-col gap-2.5 rounded-[16px] border border-border bg-surface-1 px-3 pt-3 pb-3.5 text-left transition-colors duration-150 hover:border-text-faint focus-visible:outline-2 focus-visible:outline-accent",
+    "flex flex-col gap-2.5 rounded-lg border border-border bg-surface-1 px-3 pt-3 pb-3.5 text-left transition-colors duration-150 hover:border-text-faint focus-visible:outline-2 focus-visible:outline-accent",
   );
 }
 

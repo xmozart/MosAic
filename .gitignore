@@ -22,3 +22,4 @@ __pycache__/
 node_modules/
 master_key.txt
 /media/
+frontend/visual-diff/

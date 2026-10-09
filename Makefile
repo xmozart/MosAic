@@ -3,7 +3,7 @@
 UV ?= uv
 PYTEST = $(UV) run pytest
 
-.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker clean
+.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker docker-e2e clean
 
 help:
 	@echo "check       lint + types + unit tests (fast)"
@@ -14,6 +14,7 @@ help:
 	@echo "eval        real-corpus evaluation (uses the configured AI provider)"
 	@echo "ffmpeg      build the LGPL dev FFmpeg (macOS)"
 	@echo "docker      build the server image for this machine and smoke-test it"
+	@echo "docker-e2e  docker compose up, then the browser's API calls to a rendered preview"
 
 sync:
 	$(UV) sync --frozen
@@ -35,13 +36,14 @@ unit:
 check: lint typecheck unit
 
 NPM ?= npm
-frontend:
+frontend:  # needs Docker: the visual check renders in the pinned Playwright image (ADR 0056)
 	cd frontend && $(NPM) ci --no-audit --no-fund
 	cd frontend && $(NPM) test
 	cd frontend && $(NPM) run typecheck
 	cd frontend && $(NPM) run lint
 	cd frontend && $(NPM) run build
 	cd frontend && $(NPM) run build-storybook
+	cd frontend && $(NPM) run visual
 
 integration:
 	$(PYTEST) tests/integration -q
@@ -59,6 +61,9 @@ ffmpeg:
 
 docker:
 	./scripts/docker-smoke.sh
+
+docker-e2e:  # M2 acceptance 1 against `docker compose up` (ADR 0056)
+	./scripts/docker-e2e.sh
 
 ffmpeg-ci:
 	./scripts/fetch-ffmpeg-ci.sh

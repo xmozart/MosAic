@@ -223,7 +223,15 @@ export function LibraryScreen() {
         />
         {analyzing && (
           <div className="px-6 pt-3">
-            <Banner kind="info">Analysis is still running. Clips without a decision yet show no chip, and early edits are marked preliminary.</Banner>
+            <Banner
+              kind="info"
+              action={
+                <Button size="sm" variant="ghost" onClick={() => navigate(`/p/${pid}/analysis`)}>
+                  View progress
+                </Button>
+              }
+            >
+              Analysis is still running. Clips without a decision yet show no chip, and early edits are marked preliminary.</Banner>
           </div>
         )}
         {(hidden > 0 || v.showRejected) && !v.filters.status && (

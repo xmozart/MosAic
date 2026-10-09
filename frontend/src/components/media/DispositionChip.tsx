@@ -43,7 +43,7 @@ export function DispositionChip({ value, by, size = "md", onMedia, className }: 
       >
         <Icon aria-hidden className="size-3" strokeWidth={2.2} />
         {value}
-        <span className="ml-0.5 rounded-[3px] border border-current px-[3px] text-tag font-semibold opacity-85">
+        <span className="ml-0.5 rounded-sm border border-current px-[3px] text-tag font-semibold opacity-85">
           AI
         </span>
       </span>

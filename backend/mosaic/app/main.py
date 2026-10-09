@@ -47,10 +47,20 @@ from mosaic.storage.projects import (
 BIND_HOST = "127.0.0.1"
 
 
-def create_app(services: Services | None = None) -> FastAPI:
+def create_app(services: Services | None = None, *, supervise_workers: bool = False) -> FastAPI:
+    """``supervise_workers``: start job workers when there is work (ADR 0056); `serve` sets it."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        supervisor = None
+        if supervise_workers:  # the real server; tests run jobs on in-process workers
+            from mosaic.jobs.supervisor import WorkerSupervisor
+
+            supervisor = WorkerSupervisor(app.state.services.control)
+            supervisor.start()
         yield
+        if supervisor is not None:
+            supervisor.shutdown()
         app.state.services.leases.shutdown()  # release held project leases (ADR 0023)
 
     from mosaic.app.auth import server_mode
@@ -204,4 +214,10 @@ def bind_host() -> str:
 def serve(port: int = 8765) -> None:
     import uvicorn
 
-    uvicorn.run(create_app(), host=bind_host(), port=port, log_level="info", proxy_headers=True)
+    uvicorn.run(
+        create_app(supervise_workers=True),
+        host=bind_host(),
+        port=port,
+        log_level="info",
+        proxy_headers=True,
+    )

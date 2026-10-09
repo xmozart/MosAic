@@ -36,6 +36,19 @@ const JOBS: JobSummary[] = [
   { jobId: 2, projectId: "p2", kind: "render", state: "paused", pct: 10, stage: "render", item: null, cost: 0 },
 ];
 
+/** S0 assembled: rail, project header and a screen area, as a project opens. */
+export const AppShellScreen: Story = {
+  render: () => (
+    <div className="-m-6 flex h-[800px]">
+      <AppRail active="library" activityPct={42} links={links} renderLink={link} theme="dark" onToggleTheme={noop} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ProjectHeader name="Costa Rica 2026" placement="in_folder" status={{ state: "analyzing", pct: 42 }} aiCost="AI $1.34" onSearch={noop} onRename={noop} />
+        <div className="flex flex-1 items-center justify-center text-body text-text-muted">The project's screen renders here.</div>
+      </div>
+    </div>
+  ),
+};
+
 export const RailIdleAndRunning: Story = {
   render: () => (
     <div className="flex h-[640px] gap-8">

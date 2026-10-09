@@ -60,13 +60,33 @@ function errorText(error: unknown, fallback: string): string {
   return typeof d === "string" ? d : fallback;
 }
 
+/** S3 with trips: the heading and the two ways to open one. */
+export function HomeHeader({ onOpenFolder, onOpenProject }: { onOpenFolder: () => void; onOpenProject: () => void }) {
+  return (
+    <div className="flex items-end justify-between gap-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-display text-text">Your trips</h1>
+        <p className="text-body text-text-muted">MosAic works with your footage where it lives. Nothing is moved or changed.</p>
+      </div>
+      <div className="flex gap-3">
+        <Button size="lg" onClick={onOpenProject}>
+          Open existing project
+        </Button>
+        <Button variant="primary" size="lg" onClick={onOpenFolder}>
+          <FolderOpen /> Open footage folder
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** S3b: no projects yet. A dashed drop area with a mini collage (neutral tiles). */
 export function HomeEmpty({ onOpenFolder, onOpenProject }: { onOpenFolder: () => void; onOpenProject: () => void }) {
   return (
-    <div className="m-auto flex w-[760px] flex-col items-center gap-5 rounded-[20px] border-[1.5px] border-dashed border-border bg-surface-1 p-14 text-center">
+    <div className="m-auto flex w-[760px] flex-col items-center gap-5 rounded-lg border-[1.5px] border-dashed border-border bg-surface-1 p-14 text-center">
       <div aria-hidden className="grid grid-cols-[repeat(3,64px)] gap-1.5">
         {["opacity-90", "opacity-60", "opacity-80", "opacity-50", "opacity-90", "opacity-60"].map((o, i) => (
-          <div key={i} className={cn("h-9 w-16 rounded-[6px] bg-surface-3", o)} />
+          <div key={i} className={cn("h-9 w-16 rounded-sm bg-surface-3", o)} />
         ))}
       </div>
       <h1 className="text-title text-text">Pick a folder of trip footage</h1>
@@ -180,11 +200,6 @@ export function HomeScreen() {
     cards[Math.min(cards.length - 1, Math.max(0, i + step))]?.focus();
   };
 
-  const openFolder = (
-    <Button variant="primary" size="lg" onClick={() => setChoosing({})}>
-      <FolderOpen /> Open footage folder
-    </Button>
-  );
 
   return (
     <div className="flex flex-1 flex-col gap-8 overflow-y-auto p-8">
@@ -192,20 +207,7 @@ export function HomeScreen() {
         <HomeEmpty onOpenFolder={() => setChoosing({})} onOpenProject={() => setChoosing({})} />
       ) : (
         <>
-          <div className="flex items-end justify-between gap-6">
-            <div className="flex flex-col gap-1">
-              <h1 className="text-display text-text">Your trips</h1>
-              <p className="text-body text-text-muted">
-                MosAic works with your footage where it lives. Nothing is moved or changed.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button size="lg" onClick={() => setChoosing({})}>
-                Open existing project
-              </Button>
-              {openFolder}
-            </div>
-          </div>
+          <HomeHeader onOpenProject={() => setChoosing({})} onOpenFolder={() => setChoosing({})} />
           <div ref={grid} onKeyDown={onGridKey} className="grid grid-cols-3 gap-6">
             {rows.map((r) => (
               <div key={r.id} data-card>

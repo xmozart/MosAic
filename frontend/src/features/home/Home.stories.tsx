@@ -6,7 +6,7 @@ import { FolderBrowserView } from "@/features/open/FolderBrowserDialog";
 import { PathDialog } from "@/features/open/PathDialog";
 import { frame } from "@/stories/frames";
 
-import { HomeEmpty } from "./HomeScreen";
+import { HomeEmpty, HomeHeader } from "./HomeScreen";
 import { ProjectCard, type ProjectCardData } from "./ProjectCard";
 
 const meta: Meta = { title: "Screens/S3 Home and S4 Open folder" };
@@ -27,6 +27,20 @@ const base: ProjectCardData = {
   latestEdit: "5-min cinematic · v3",
   opened: "Today",
   missing: false,
+};
+
+export const WithTrips: Story = {
+  parameters: { layout: "fullscreen" },
+  render: () => (
+    <div className="flex w-[1180px] flex-col gap-8 p-2">
+      <HomeHeader onOpenFolder={noop} onOpenProject={noop} />
+      <div className="grid grid-cols-3 gap-6">
+        <ProjectCard data={base} onOpen={noop} onRemove={noop} />
+        <ProjectCard data={{ ...base, name: "Lisbon weekend", placement: "split_icloud", status: { state: "analyzed", mode: "quick" }, latestEdit: "60 s reel · v1", opened: "Oct 2" }} onOpen={noop} onRemove={noop} />
+        <ProjectCard data={{ ...base, name: "Banff 2025", placement: "external_drive", missing: true, photos: 0, opened: "Aug 7" }} onOpen={noop} onReconnect={noop} onRemove={noop} />
+      </div>
+    </div>
+  ),
 };
 
 export const Cards: Story = {
@@ -77,7 +91,7 @@ export const FolderBrowser: Story = {
   render: function Render() {
     const [sel, setSel] = useState<string | null>("2026/Costa_Rica_2026");
     return (
-      <div className="w-[720px] rounded-[16px] border border-border bg-surface-1 p-6">
+      <div className="w-[720px] rounded-lg border border-border bg-surface-1 p-6">
         <FolderBrowserView
           roots={[{ id: 1, label: "/media/travel" }, { id: 2, label: "/media/archive" }]}
           root={1}

@@ -177,3 +177,19 @@ it("/exports says when the trips couldn't be loaded, and tries again", async () 
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("Rendering 58%")).toBeInTheDocument();
 });
+
+it("while a render runs, only the first page polls", async () => {
+  calls.length = 0;
+  mount("/p/P1/exports");
+  expect(await screen.findByText("Rendering 58%")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+  expect(await screen.findByText("Stopped at 30%")).toBeInTheDocument();
+  const pageCalls = () => calls.filter((c) => c.path === "/api/projects/{pid}/renders");
+  const before = pageCalls().length;
+  // One real poll interval: the poll timer starts before any fake clock could take over.
+  await new Promise((r) => setTimeout(r, 2600));
+  const polled = pageCalls().slice(before);
+  expect(polled.length).toBeGreaterThan(0);
+  expect(polled.every((c) => !JSON.stringify(c.params).includes("cursor"))).toBe(true);
+  expect(screen.getByText("Stopped at 30%")).toBeInTheDocument(); // later pages stay shown
+});

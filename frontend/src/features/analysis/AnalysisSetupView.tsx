@@ -11,6 +11,7 @@ import { estimateLine, formatCost, formatWall, type Estimate } from "@/lib/estim
 import { formatDuration, plural } from "@/lib/format";
 
 import { FROM, MODES, SENSITIVITY, type Preset, type Setting, type Settings } from "./model";
+import { RadioGroup } from "@/components/ui/RadioGroup";
 
 const TILES: [number, number][] = [
   [3, 3],
@@ -107,7 +108,7 @@ export function AnalysisSetupView(p: AnalysisSetupViewProps) {
               : "Estimating from your footage…"}
           </p>
         </div>
-        <div role="radiogroup" aria-label="Analysis mode" className="grid grid-cols-3 gap-4">
+        <RadioGroup label="Analysis mode" className="grid grid-cols-3 gap-4">
           {MODES.map((m) => {
             const e = p.estimates[m.id];
             return (
@@ -123,7 +124,7 @@ export function AnalysisSetupView(p: AnalysisSetupViewProps) {
               />
             );
           })}
-        </div>
+        </RadioGroup>
         <Banner kind="info">You can start editing as soon as the first pass finishes, and deepen analysis later for the days that matter.</Banner>
         <section className="flex flex-col gap-4 rounded-lg border border-border bg-surface-1 p-5">
           <button

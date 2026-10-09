@@ -51,7 +51,7 @@ export function Transcript({ lines, now, language, onSeek }: { lines: Transcript
                           tabIndex={-1}
                           aria-current={on || undefined}
                           onClick={() => onSeek(w.start)}
-                          className={cn("rounded-[3px] px-px hover:bg-surface-3", on && "bg-accent-soft text-text underline decoration-accent underline-offset-4")}
+                          className={cn("rounded-sm px-px hover:bg-surface-3", on && "bg-accent-soft text-text underline decoration-accent underline-offset-4")}
                         >
                           {w.word}
                         </button>

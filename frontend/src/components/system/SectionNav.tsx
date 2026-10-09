@@ -25,7 +25,7 @@ export function SectionNav({ title, sections, active, onSelect }: { title: strin
             onSelect(s.id);
           }}
           className={cn(
-            "rounded-[8px] px-3 py-[9px] text-body focus-visible:outline-2 focus-visible:outline-accent",
+            "rounded-md px-3 py-[9px] text-body focus-visible:outline-2 focus-visible:outline-accent",
             s.id === active ? "bg-surface-2 text-text" : "text-text-muted hover:text-text",
             s.danger && "text-reject hover:text-reject",
           )}

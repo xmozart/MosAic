@@ -89,7 +89,7 @@ const deepen: DeepenBodyProps = {
   onStart: noop,
   onCancel: noop,
 };
-const dialog = (children: React.ReactNode) => <div className="w-[560px] rounded-[16px] border border-border bg-surface-1 p-6">{children}</div>;
+const dialog = (children: React.ReactNode) => <div className="w-[560px] rounded-lg border border-border bg-surface-1 p-6">{children}</div>;
 export const Deepen: Story = { render: () => dialog(<DeepenBody {...deepen} />) };
 export const DeepenNothingSelected: Story = { render: () => dialog(<DeepenBody {...deepen} picked={new Set()} estimate={undefined} />) };
 export const DeepenEstimating: Story = { render: () => dialog(<DeepenBody {...deepen} estimating estimate={undefined} />) };

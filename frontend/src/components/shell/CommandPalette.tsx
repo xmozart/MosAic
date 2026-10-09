@@ -52,7 +52,7 @@ export function CommandPalette({ open, onOpenChange, commands, onSearch }: Comma
         <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed top-[18%] left-1/2 z-50 w-[560px] -translate-x-1/2 overflow-hidden rounded-[16px] border border-border bg-surface-1 shadow-[0_24px_64px_rgba(0,0,0,0.5)]"
+          className="fixed top-[18%] left-1/2 z-50 w-[560px] -translate-x-1/2 overflow-hidden rounded-lg border border-border bg-surface-1 shadow-[0_24px_64px_rgba(0,0,0,0.5)]"
         >
           <Dialog.Title className="sr-only">Search or jump to</Dialog.Title>
           <div className="flex items-center gap-2.5 border-b border-border px-4">
@@ -84,7 +84,7 @@ export function CommandPalette({ open, onOpenChange, commands, onSearch }: Comma
               aria-activedescendant={items[i] ? `palette-${items[i].id}` : undefined}
               className="h-12 flex-1 bg-transparent text-body text-text outline-none placeholder:text-text-faint"
             />
-            <kbd className="mono rounded-[5px] border border-border px-1.5 text-[11px] text-text-muted">esc</kbd>
+            <kbd className="mono rounded-sm border border-border px-1.5 text-[11px] text-text-muted">esc</kbd>
           </div>
           <ul id="palette-list" role="listbox" className="max-h-80 overflow-y-auto p-1.5">
             {items.map((c, n) => (

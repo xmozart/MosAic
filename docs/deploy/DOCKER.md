@@ -47,6 +47,7 @@ A trip made on the desktop with its database in the folder is moved to split the
 | `MOSAIC_ALLOWED_HOSTS` | any | Host names browsers use, comma-separated. Set it when MosAic is reachable from a network. |
 | `MOSAIC_MASTER_KEY_FILE` / `MOSAIC_MASTER_KEY` | — | 32+ random characters. They encrypt API keys typed in Settings. Without one, keys can still come from the environment or Docker secrets. |
 | `MOSAIC_SECRET_AI_ANTHROPIC` (or the Docker secret `mosaic_ai_anthropic`) | — | An API key the deployment provides. A key typed in Settings is used instead; removing it there goes back to this one. |
+| `MOSAIC_PORT` (compose) | `8765` | The port on the host that `compose.yaml` publishes. |
 | `MOSAIC_BIND` | `0.0.0.0` | The address the server listens on, inside the container. |
 | `MOSAIC_COOKIE_SECURE` | `1` | `0` allows sign-in over plain HTTP from another machine. Use it only on a trusted test network; use TLS instead. |
 
@@ -69,7 +70,8 @@ You need the NVIDIA Container Toolkit on the host. Renders then use NVENC (`h264
 ## Health and logs
 
 - `GET /api/health` answers without sign-in. It is the container's healthcheck, and a proxy can use it too.
-- The server's logs go to the container's output (`docker compose logs -f`). The job workers log to `/data/logs/worker.log`.
+- The server's logs go to the container's output (`docker compose logs -f`). The server starts a job worker whenever there is work, and it exits after 20 s idle (ADR 0056). The workers log to `/data/logs/worker.log`.
+- The first analysis downloads its models (over 1 GB) into `/data/models`. On a home connection that took about 20 minutes once; later analyses start at once.
 - **Settings → Diagnostics** exports a redacted bundle for support.
 
 ## Building the image
@@ -84,4 +86,5 @@ The build fails if a digest doesn't match, or if the build is GPL.
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 -t mosaic:latest .   # multi-arch
 make docker                                                                # this machine's arch, plus a smoke test
+make docker-e2e                                                            # compose up, then a trip to a rendered preview over the API
 ```

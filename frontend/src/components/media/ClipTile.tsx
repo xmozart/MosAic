@@ -76,7 +76,7 @@ export function ClipTile({
   return (
     <div className={cn("relative flex min-w-0 flex-col gap-1.5", dimmed && "opacity-55")} data-testid="clip-tile">
       {similarCount > 0 && (
-        <div aria-hidden className="absolute -top-[5px] right-1.5 left-1.5 h-3 rounded-[8px] bg-surface-3" />
+        <div aria-hidden className="absolute -top-[5px] right-1.5 left-1.5 h-3 rounded-md bg-surface-3" />
       )}
       <div
         role="button"
@@ -162,7 +162,7 @@ export function ClipTile({
               <span className="inline-flex items-center gap-1.5">
                 {hasSpeech && <Mic aria-label="Has speech" className="size-3" />}
                 {similarCount > 0 && (
-                  <span className="rounded-[5px] bg-media-chip px-[5px] py-px text-tag font-semibold">
+                  <span className="rounded-sm bg-media-chip px-[5px] py-px text-tag font-semibold">
                     +{similarCount}
                   </span>
                 )}

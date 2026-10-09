@@ -24,7 +24,7 @@ The rest of the server side already existed in M2 step 3:
     - The stage fails if the build reports `--enable-gpl`. It brings NVENC and OpenH264, and never x264 or x265.
   - **Runtime:** `python:3.12-slim-bookworm`. The environment comes from `uv.lock` with `--frozen --no-dev`; PyAV stays excluded (ADR 0009).
   - The image runs as user `mosaic` (uid 1000), never root. `/data` is a volume and the footage mounts at `/media`.
-  - The image sets `MOSAIC_MODE=server`, `MOSAIC_HOME=/data`, `MOSAIC_UI_DIR=/app/ui` and `MOSAIC_MEDIA_ROOTS=/media`, and runs `mosaic serve --port 8765`. Workers start on demand inside the container, as on the desktop.
+  - The image sets `MOSAIC_MODE=server`, `MOSAIC_HOME=/data`, `MOSAIC_UI_DIR=/app/ui` and `MOSAIC_MEDIA_ROOTS=/media`, and runs `mosaic serve --port 8765`. Job workers start on demand inside the container: the server supervises them (ADR 0056).
 - **Live databases stay in `/data` (invariant 2).**
   - A bind mount doesn't reveal its storage: Docker Desktop shares host folders over `virtiofs`, which may be a NAS or a cloud-synced folder.
   - The classifier treats host-share filesystems (`virtiofs`, `fakeowner`, `grpcfuse`, `osxfs`, `vboxsf`, `prl_fs`) as network shares.

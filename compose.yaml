@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     init: true # reaps the job workers MosAic starts and passes them docker stop's signal
     ports:
-      - "8765:8765"
+      - "${MOSAIC_PORT:-8765}:8765"
     environment:
       # Host names browsers use to reach MosAic; empty: any (put a TLS reverse proxy in front).
       MOSAIC_ALLOWED_HOSTS: ${MOSAIC_ALLOWED_HOSTS:-}

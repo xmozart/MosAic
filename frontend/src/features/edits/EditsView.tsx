@@ -46,11 +46,11 @@ export function EditsView(p: EditsViewProps) {
       ) : !p.items ? (
         <div aria-label="Loading edits" className="grid grid-cols-4 gap-5">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="aspect-[4/3] animate-pulse rounded-[16px] bg-surface-1" />
+            <div key={i} className="aspect-[4/3] animate-pulse rounded-lg bg-surface-1" />
           ))}
         </div>
       ) : p.items.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 rounded-[16px] border border-dashed border-border px-8 py-16 text-center">
+        <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-border px-8 py-16 text-center">
           <Clapperboard aria-hidden className="size-8 text-text-muted" />
           <h2 className="text-heading text-text">Create your first edit</h2>
           <p className="max-w-[440px] text-body text-text-muted">Pick a length, a shape and a story. MosAic picks the shots from your analyzed library.</p>

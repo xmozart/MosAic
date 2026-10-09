@@ -1,7 +1,6 @@
 import { Check, Cloud, HardDrive, MonitorSmartphone, Plus, ShieldCheck, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { radioArrows } from "@/components/edit/radioArrows";
 import { SectionNav } from "@/components/system/SectionNav";
 import { SecretField } from "@/components/system/SecretField";
 import { SettingRow, type SettingSource } from "@/components/system/SettingRow";
@@ -27,6 +26,7 @@ import {
   type Providers,
   type SystemInfo,
 } from "./model";
+import { RadioGroup } from "@/components/ui/RadioGroup";
 
 export interface AppSettingsViewProps {
   theme: ThemeChoice;
@@ -252,7 +252,7 @@ function AIProviders(p: AppSettingsViewProps) {
           </Card>
           <div className="flex flex-col gap-2">
             <span className="text-caption text-text-muted">Privacy mode</span>
-            <div role="radiogroup" aria-label="Privacy mode" onKeyDown={radioArrows} className="grid grid-cols-2 gap-3">
+            <RadioGroup label="Privacy mode" className="grid grid-cols-2 gap-3">
               <PrivacyCard
                 selected={!localOnly}
                 title="Hybrid"
@@ -267,7 +267,7 @@ function AIProviders(p: AppSettingsViewProps) {
                 text="Nothing leaves this computer. Scene understanding and editing pause until you switch back."
                 onClick={() => p.onSetting("ai.local_only", true)}
               />
-            </div>
+            </RadioGroup>
           </div>
           <Card title={localOnly ? "What leaves this computer in Local only" : "What leaves this computer in Hybrid"}>
             <ul className="flex flex-col gap-1.5">

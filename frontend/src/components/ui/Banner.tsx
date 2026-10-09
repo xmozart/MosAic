@@ -18,7 +18,7 @@ export function Banner({ kind, children, action }: { kind: BannerKind; children:
   return (
     <div
       role={kind === "danger" ? "alert" : "status"}
-      className={cn("flex items-center gap-3 rounded-[12px] border border-border bg-surface-1 px-3.5 py-2.5", k.edge)}
+      className={cn("flex items-center gap-3 rounded-md border border-border bg-surface-1 px-3.5 py-2.5", k.edge)}
     >
       <Icon aria-hidden className={cn("size-4 shrink-0", k.tint)} />
       <span className="flex-1 text-small text-text">{children}</span>

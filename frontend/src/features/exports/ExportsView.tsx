@@ -191,7 +191,7 @@ function Row({ r, p, onDetails, onDelete }: { r: RenderRow; p: ExportsViewProps;
   const time = r.status === "failed" && r.pct != null ? `Stopped at ${r.pct}%` : r.status === "done" ? renderTime(r.seconds) : "—";
   return (
     <div role="row" className={cn(COLS, "border-b border-border px-4 py-3 last:border-b-0")}>
-      <span role="cell" className="flex aspect-video items-center justify-center overflow-hidden rounded-[8px] bg-surface-2">
+      <span role="cell" className="flex aspect-video items-center justify-center overflow-hidden rounded-md bg-surface-2">
         {r.cover_sample_id != null && <img src={p.coverUrl(r.cover_sample_id)} alt="" loading="lazy" className={cn("h-full object-cover", portrait ? "aspect-[9/16]" : "w-full")} />}
       </span>
       <span role="cell" className="flex min-w-0 flex-col gap-1">

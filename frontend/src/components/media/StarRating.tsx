@@ -1,6 +1,7 @@
 import { Star } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { RadioGroup } from "@/components/ui/RadioGroup";
 
 export interface StarRatingProps {
   value: number; // 0–5
@@ -27,7 +28,7 @@ export function StarRating({ value, onChange, size = "md" }: StarRatingProps) {
     );
   }
   return (
-    <span role="radiogroup" aria-label="Rating" className="inline-flex gap-0.5">
+    <RadioGroup label="Rating" as="span" className="inline-flex gap-0.5">
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
@@ -41,6 +42,6 @@ export function StarRating({ value, onChange, size = "md" }: StarRatingProps) {
           <Star className={cn(px, n <= value ? "fill-accent text-accent" : "text-text-faint hover:text-text-muted")} />
         </button>
       ))}
-    </span>
+    </RadioGroup>
   );
 }

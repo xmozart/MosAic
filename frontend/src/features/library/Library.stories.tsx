@@ -97,7 +97,7 @@ export const Preliminary: Story = {
   render: () => (
     <Screen
       items={Array.from({ length: 12 }, (_, i) => item(i, i > 5 ? { status_shown: null, decided_by: null, caption: null } : {}))}
-      banner={<Banner kind="info">Analysis is still running. Clips without a decision yet show no chip, and early edits are marked preliminary.</Banner>}
+      banner={<Banner kind="info" action={<Button size="sm" variant="ghost">View progress</Button>}>Analysis is still running. Clips without a decision yet show no chip, and early edits are marked preliminary.</Banner>}
     />
   ),
 };

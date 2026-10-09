@@ -73,7 +73,7 @@ export function AppRail(p: AppRailProps) {
   );
   return (
     <nav aria-label="Main" className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 border-r border-border bg-bg py-3.5">
-      <img src={mark} alt="MosAic" width={32} height={32} className="mb-3.5 rounded-[8px]" />
+      <img src={mark} alt="MosAic" width={32} height={32} className="mb-3.5 rounded-md" />
       {ITEMS.map(({ key, label, icon: Icon }) => {
         const href = p.links[key];
         const cls = cn(

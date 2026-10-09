@@ -147,7 +147,7 @@ function PhotoVariant({ clip: c, frameUrl, onDecide, onShowClip }: { clip: ClipD
                 aria-current={b.asset_id === c.asset_id || undefined}
                 onClick={() => onShowClip(b.asset_id)}
                 className={cn(
-                  "aspect-[4/3] overflow-hidden rounded-[8px] bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent",
+                  "aspect-[4/3] overflow-hidden rounded-md bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent",
                   b.best && "outline-2 outline-offset-2 outline-accent",
                   b.asset_id === c.asset_id && !b.best && "ring-2 ring-text-muted",
                 )}

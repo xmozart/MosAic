@@ -29,7 +29,7 @@ export function ConfirmDialog({ open, onOpenChange, title, body, actions, blocki
         <Dialog.Content
           onEscapeKeyDown={blocking ? (e) => e.preventDefault() : undefined}
           onPointerDownOutside={blocking ? (e) => e.preventDefault() : undefined}
-          className="fixed top-1/2 left-1/2 z-50 flex w-[480px] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-[16px] border border-border bg-surface-1 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.5)]"
+          className="fixed top-1/2 left-1/2 z-50 flex w-[480px] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-surface-1 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.5)]"
         >
           <Dialog.Title className="text-heading text-text">{title}</Dialog.Title>
           <Dialog.Description asChild>

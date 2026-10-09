@@ -2,7 +2,6 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AspectPicker, ChoiceChip, DurationChips, EditSummaryPanel, StoryPresetCard, WizardStepNav, type AspectOption } from "@/components/edit/Wizard";
-import { radioArrows } from "@/components/edit/radioArrows";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
@@ -34,6 +33,7 @@ import {
   type Preset,
   type Resolution,
 } from "./model";
+import { RadioGroup } from "@/components/ui/RadioGroup";
 
 const OPEN = STEPS.filter((s) => !s.later).map((s) => s.id);
 const TITLES: Record<number, string> = {
@@ -218,7 +218,7 @@ export function WizardView(p: WizardViewProps) {
 
         {p.step === 2 && (
           <section aria-label="Story" className="flex flex-col gap-5">
-            <div role="radiogroup" aria-label="Story" onKeyDown={radioArrows} className="grid grid-cols-4 gap-3">
+            <RadioGroup label="Story" className="grid grid-cols-4 gap-3">
               {!p.presets
                 ? [0, 1, 2, 3, 4, 5, 6, 7].map((i) => <div key={i} className="aspect-[4/3] animate-pulse rounded-lg bg-surface-1" />)
                 : [
@@ -237,17 +237,17 @@ export function WizardView(p: WizardViewProps) {
                     )),
                     <StoryPresetCard key="custom" label="Custom" frames={[]} custom selected={showOthers} onClick={() => setCustomStory(true)} />,
                   ]}
-            </div>
+            </RadioGroup>
             {showOthers && (
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-1 p-[18px]">
                 <span className="text-caption text-text-muted">More stories</span>
-                <div role="radiogroup" aria-label="More stories" onKeyDown={radioArrows} className="flex flex-wrap gap-2">
+                <RadioGroup label="More stories" className="flex flex-wrap gap-2">
                   {others.map((x) => (
                     <ChoiceChip key={x.id} selected={r.story === x.id} onClick={() => p.onChange({ story: x.id })}>
                       {x.label}
                     </ChoiceChip>
                   ))}
-                </div>
+                </RadioGroup>
                 <p className="text-caption font-normal text-text-faint">
                   {others.find((x) => x.id === r.story)?.description ?? "Pick one, then describe the rest in step 6."}
                 </p>

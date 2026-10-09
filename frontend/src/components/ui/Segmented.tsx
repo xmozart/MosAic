@@ -32,7 +32,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, c
         <ToggleGroup.Item
           key={o.value}
           value={o.value}
-          className="inline-flex items-center gap-2 rounded-[8px] px-3.5 py-[7px] text-small font-medium text-text-muted transition-colors duration-150 enabled:hover:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50 data-[state=on]:bg-surface-1 data-[state=on]:text-text data-[state=on]:shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
+          className="inline-flex items-center gap-2 rounded-md px-3.5 py-[7px] text-small font-medium text-text-muted transition-colors duration-150 enabled:hover:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50 data-[state=on]:bg-surface-1 data-[state=on]:text-text data-[state=on]:shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
         >
           {o.label}
           {o.hint && <kbd className="mono text-timecode-sm text-text-faint">{o.hint}</kbd>}
