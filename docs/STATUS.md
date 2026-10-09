@@ -97,7 +97,7 @@ Order: the owner's G6 priority first (Airshow: aircraft and the F-35 demo over c
 - Pass `allow_gpl_ffmpeg` into media_tools instead of reading storage from media/; consider integer micro-USD for usage costs.
 - Raising a paused job's cost limit is wired in the Activity popover (5c); S9 and S20 still need their own entry points.
 - `GET /jobs` and `/jobs/{id}` need a per-project permission check before multi-user work: job results can hold trip-context proposals (ADR 0040).
-- The 40-hour scale test's slowest library page is 103–151 ms (M1: 19–63 ms; budget 300 ms; one CI run failed it once under load). The 5,000-clip filter test answers in 50–112 ms. Profile the per-request project open and the first page's three status scans (M3).
+- The 40-hour scale test's slowest library page is 103–151 ms (M1: 19–63 ms; budget 300 ms; one CI run failed it once under load). The 5,000-clip filter test answers in 49–114 ms. Profile the per-request project open and the first page's three status scans (M3).
 - S21 follow-ups: the section nav could follow scrolling (IntersectionObserver); removal refusals are matched on the server's text, so give 409 bodies a machine-readable `code`; backend tests for renaming a read-only project (409) and an external-placement project (descriptor in app data).
 
 - Similarity groups are rebuilt (new ids) whenever their key changes; once dispositions or user decisions refer to groups, reference segments or give groups stable identity (invariant 10).
