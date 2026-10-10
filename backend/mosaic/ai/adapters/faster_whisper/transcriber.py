@@ -55,8 +55,13 @@ class FasterWhisperTranscriber:
                 av_shim.install()
                 from faster_whisper import WhisperModel
 
+                from mosaic.ai import local_models
+
+                # The verified local copy (S1 downloads; ADR 0058), else the HF cache.
+                m = local_models.for_choice(PROVIDER, self.name)
+                installed = m is not None and m.revision == self.revision and m.installed()
                 self._model = WhisperModel(
-                    self.name,
+                    str(m.folder) if m is not None and installed else self.name,
                     device="cpu",
                     compute_type="int8",
                     revision=self.revision,

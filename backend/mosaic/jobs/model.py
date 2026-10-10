@@ -21,6 +21,10 @@ TERMINAL = frozenset({TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.SKIPPED, Ta
 SATISFIED = frozenset({TaskStatus.DONE, TaskStatus.SKIPPED})
 
 
+# The owner of jobs that belong to the app, not to a trip (model downloads; ADR 0058).
+APP_PROJECT = "_app"
+
+
 class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -94,7 +98,11 @@ class JobProgress:
     current_item: str | None
     cost_usd: float
     eta_ms: int | None
+    # A task's own measure while it runs, e.g. bytes of a download: (done, total).
+    units: tuple[int, int] | None = None
 
     @property
     def pct(self) -> int:
+        if self.units and self.units[1] > 0 and self.done < self.total:
+            return max(0, min(99, 100 * self.units[0] // self.units[1]))
         return 100 * self.done // self.total if self.total else 0

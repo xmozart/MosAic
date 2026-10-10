@@ -45,7 +45,8 @@ export function AppShell() {
     queryFn: async () => (await api.GET("/api/projects")).data as { items: ProjectRow[] } | undefined,
   });
   const names = useMemo(
-    () => Object.fromEntries((projects.data?.items ?? []).map((p) => [p.id, p.name])),
+    // App-level jobs (model downloads; ADR 0058) belong to MosAic, not to a trip.
+    (): Record<string, string> => ({ _app: "MosAic", ...Object.fromEntries((projects.data?.items ?? []).map((p) => [p.id, p.name])) }),
     [projects.data],
   );
 

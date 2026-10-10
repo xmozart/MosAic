@@ -653,6 +653,7 @@ class JobStore:
                 current,
                 job.cost_usd or 0.0,
                 eta,
+                _units((job.result or {}).get("progress")),
             )
 
     def has_ready(self, resource_class: str) -> bool:
@@ -680,3 +681,13 @@ class JobStore:
                 created_at=now_iso(),
             )
         )
+
+
+def _units(raw: Any) -> tuple[int, int] | None:
+    if (
+        isinstance(raw, dict)
+        and isinstance(raw.get("done"), int)
+        and isinstance(raw.get("total"), int)
+    ):
+        return raw["done"], raw["total"]
+    return None

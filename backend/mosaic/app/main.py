@@ -34,6 +34,7 @@ from mosaic.app.routers import (
     system,
 )
 from mosaic.app.routers import auth as auth_router
+from mosaic.app.routers import models as models_router
 from mosaic.app.services import Services
 from mosaic.storage.lease import LeaseHeldError
 from mosaic.storage.placement import PlacementRefusedError
@@ -119,6 +120,7 @@ def create_app(
     install_security_headers(app)
     app.include_router(auth_router.router)
     app.include_router(system.router)
+    app.include_router(models_router.router)
     app.include_router(files.router)
     app.include_router(jobs.router)
     app.include_router(config.router)

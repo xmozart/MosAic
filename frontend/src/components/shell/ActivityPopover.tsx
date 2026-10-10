@@ -13,6 +13,9 @@ const KIND: Record<string, string> = {
   render: "Rendering",
   benchmark: "Measuring this computer",
   search: "Building search",
+  models: "Downloading models",
+  move: "Moving trip data",
+  storage: "Clearing previews",
 };
 
 export interface ActivityPopoverProps {

@@ -70,12 +70,21 @@ class SiglipEmbedder:
         self._tokenizer: Any = None
         self._lock = threading.Lock()
 
+    def _installed(self, rel: str) -> str | None:
+        """The file from the verified local copy (S1 downloads; ADR 0058), if installed."""
+        from mosaic.ai import local_models
+
+        m = local_models.for_choice(PROVIDER, self.variant)
+        if m is None or m.revision != REVISION or not m.installed():
+            return None
+        return str(m.folder / rel)
+
     def _load(self) -> Any:
         if self._session is None:
             import onnxruntime as ort
             from huggingface_hub import hf_hub_download
 
-            path = hf_hub_download(
+            path = self._installed(VARIANTS[self.variant]) or hf_hub_download(
                 REPO,
                 VARIANTS[self.variant],
                 revision=REVISION,
@@ -96,14 +105,14 @@ class SiglipEmbedder:
 
             cache = str(models_dir() / "siglip")
             try:
-                model = hf_hub_download(
+                model = self._installed(TEXT_VARIANTS[self.variant]) or hf_hub_download(
                     REPO,
                     TEXT_VARIANTS[self.variant],
                     revision=REVISION,
                     cache_dir=cache,
                     local_files_only=local_only,
                 )
-                tok = hf_hub_download(
+                tok = self._installed(TOKENIZER) or hf_hub_download(
                     REPO, TOKENIZER, revision=REVISION, cache_dir=cache, local_files_only=local_only
                 )
             except FileNotFoundError:  # LocalEntryNotFoundError: not downloaded yet
@@ -123,6 +132,8 @@ class SiglipEmbedder:
         """The text tower and tokenizer are on this computer (no network)."""
         from huggingface_hub import try_to_load_from_cache
 
+        if self._installed(TOKENIZER) is not None:
+            return True
         cache = str(models_dir() / "siglip")
         return all(
             isinstance(try_to_load_from_cache(REPO, f, revision=REVISION, cache_dir=cache), str)

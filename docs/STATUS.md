@@ -9,7 +9,7 @@ _(empty — the agent is working on M3)_
 ## Current
 
 - **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
-- **Step:** M3 step 2 (local models).
+- **Step:** M3 step 3 (S1 First run).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -31,7 +31,7 @@ _(empty — the agent is working on M3)_
 
 Owner at G6 (2026-10-10): tried the web UI on Docker, "so far looks good"; continue to the end. Signing and notarization need the Apple Developer ID (G1): build unsigned, ask once at the end.
 - [x] 1. Desktop API hardening: per-launch token (environment, never argv), one loopback origin for UI and API, session cookie from the token, Host and Sec-Fetch-Site checks, no CORS (acceptance 2)
-- [ ] 2. Local models: `/models/local` and resumable, checksum-verified downloads as jobs (S1 acceptance)
+- [x] 2. Local models: `/models/local` and resumable, checksum-verified downloads as jobs (S1 acceptance)
 - [ ] 3. S1 First run (welcome, AI mode and key, model downloads)
 - [ ] 4. Tauri shell: sidecar launch (random port, token, health wait), graceful shutdown, crash restart with job resume, native folder picker, menu bar pause/resume, battery-aware workers
 - [ ] 5. Bundling: standalone Python and the backend, LGPL FFmpeg with VideoToolbox, unsigned DMG, CI build with a signing step that skips without credentials, updater off
@@ -204,3 +204,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-09 · M2.11b · M2 report: acceptance 1–9 met in `make ci`, and acceptance 1 against `docker compose up`; stop at G6
 - 2026-10-10 · G6 · Owner tried the web UI on `docker compose up` with clones of the Dubai and Airshow footage: "so far looks good"; continue through the remaining milestones
 - 2026-10-10 · M3.1 · Desktop API access: per-launch token from the environment (removed before workers start, scrubbed from children), `serve --port 0` with `MOSAIC_READY port=<n>`, bearer or a token-issued session cookie with `Sec-Fetch-Site: same-origin`, loopback Host only, no CORS; the page trades the injected token once (ADR 0057)
+- 2026-10-10 · M3.2 · Local models: pinned catalog (revision, size, SHA-256) for Whisper small/medium/large-v3 and SigLIP base/quantized; resumable Range downloads verified before install; adapters prefer installed copies; app-level jobs (`_app`, `app_level` handlers) with byte progress; `/api/models/local` (ADR 0058)

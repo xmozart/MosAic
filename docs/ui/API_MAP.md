@@ -32,6 +32,13 @@ These are the REST endpoints and SSE events the screens need.
 | POST | `/secrets/{ref}/validate` | S1, S22 |
 | GET | `/models/local` · POST `/models/local/{name}/download` (job) | S1 |
 
+## Local models
+
+| Method | Path | Used by |
+|---|---|---|
+| GET | `/models/local` → `{items: [{name, label, capability, provider, model, bytes, downloaded_bytes, installed, needed, job: {job_id, state, pct} \| null}]}` (`needed`: the current provider profile uses it; ADR 0058) | S1, S22 |
+| POST | `/models/local/{name}/download` → 202 `{name, job_id, installed}` (an app-level `models` job; the running one if any; `job_id` null when installed; 404 unknown) | S1, S22 |
+
 ## Projects
 
 | Method | Path | Used by |

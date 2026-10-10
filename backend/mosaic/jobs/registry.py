@@ -41,6 +41,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.render.tasks",
     "mosaic.media.benchmark",
     "mosaic.storage.cleanup",
+    "mosaic.ai.local_models",
 )
 """Modules that register production handlers; extended as pipeline stages land."""
 
@@ -74,16 +75,22 @@ class Handler:
     # A project checkpoint follows this task: split projects snapshot their DB into the
     # folder (ARCHITECTURE.md §4, ADR 0022). Only stage-completing project tasks set it.
     checkpoint: bool = False
+    # Runs without a project (``APP_PROJECT`` jobs, e.g. model downloads; ADR 0058).
+    app_level: bool = False
 
 
 _HANDLERS: dict[str, Handler] = {}
 
 
 def task(
-    kind: str, *, is_done: IsDone | None = None, checkpoint: bool = False
+    kind: str,
+    *,
+    is_done: IsDone | None = None,
+    checkpoint: bool = False,
+    app_level: bool = False,
 ) -> Callable[[Run], Run]:
     def register(fn: Run) -> Run:
-        _HANDLERS[kind] = Handler(kind, fn, is_done, checkpoint)
+        _HANDLERS[kind] = Handler(kind, fn, is_done, checkpoint, app_level)
         return fn
 
     return register

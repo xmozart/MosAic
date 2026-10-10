@@ -17,13 +17,14 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from sqlalchemy import delete
 
 from mosaic.core.clock import now_iso
 from mosaic.core.ids import new_ulid
 from mosaic.jobs import registry
-from mosaic.jobs.context import TaskCancelledError, TaskContext
+from mosaic.jobs.context import NoProject, TaskCancelledError, TaskContext
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.model import JOB_TERMINAL, LeasedTask, ResourceClass
 from mosaic.jobs.store import LEASE_MS, JobStore, now_ms
@@ -192,7 +193,9 @@ class Worker:
         hb.start()
         try:
             handler = registry.get(task.kind)
-            project = self._project(task.project_id)
+            project = (
+                cast(Project, NoProject()) if handler.app_level else self._project(task.project_id)
+            )
             ctx = TaskContext(
                 task,
                 self.worker_id,
@@ -209,7 +212,7 @@ class Worker:
             result = handler.run(ctx)
             ms = int((time.monotonic() - started) * 1000)
             self.executor.complete(task.id, self.worker_id, result=result or {}, duration_ms=ms)
-            if handler.checkpoint:
+            if handler.checkpoint and not handler.app_level:
                 # A stage finished (analysis stage, edit commit, render): snapshot a split
                 # project's DB into its folder (§4). Never affects the task's outcome.
                 self._checkpoint(project)

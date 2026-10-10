@@ -17,6 +17,7 @@ from mosaic.app.routers.edits import _project
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
 from mosaic.jobs import diagnostics as diag
+from mosaic.jobs.model import APP_PROJECT
 from mosaic.storage import cleanup, lease
 
 router = APIRouter(prefix="/api")
@@ -114,7 +115,7 @@ def diagnostics_retry(tid: int, svc: Services = Svc, me: Principal = Me) -> dict
     task = svc.store.task(tid)
     if task is None:
         raise HTTPException(404, "No such task.")
-    if svc.control.project_root(task.project_id) is None:
+    if task.project_id != APP_PROJECT and svc.control.project_root(task.project_id) is None:
         raise HTTPException(409, "This task's project was removed from MosAic.")
     n = svc.store.retry_task(tid)
     if not n:

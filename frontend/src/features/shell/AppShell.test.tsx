@@ -50,6 +50,17 @@ describe("AppShell", () => {
     expect(screen.getByLabelText("Background activity: 42%")).toBeInTheDocument();
   });
 
+  it("names app-level jobs MosAic (model downloads; ADR 0058)", () => {
+    mount("/");
+    act(() =>
+      useActivity.getState().upsert({
+        jobId: 9, projectId: "_app", kind: "models", state: "running", pct: 30, stage: "downloading", item: null, cost: 0,
+      }),
+    );
+    fireEvent.click(screen.getByLabelText("Background activity: 30%"));
+    expect(screen.getByText("Downloading models · MosAic")).toBeInTheDocument();
+  });
+
   it("stays read-only after the lost-lease dialog is acknowledged", () => {
     mount("/p/p1/library");
     expect(screen.getByText("Costa Rica 2026")).toBeInTheDocument();
