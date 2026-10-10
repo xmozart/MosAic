@@ -12,7 +12,12 @@ def server_mode() -> bool:
 # Environment variables that hold MosAic's secrets (ADR 0036). Child processes that never
 # need them (installed AI apps, FFmpeg, probes) don't get them (invariant 11); the worker
 # does. Prefixes end with "_".
-SECRET_ENV = ("MOSAIC_MASTER_KEY", "MOSAIC_MASTER_KEY_FILE", "MOSAIC_SECRET_")
+SECRET_ENV = (
+    "MOSAIC_MASTER_KEY",
+    "MOSAIC_MASTER_KEY_FILE",
+    "MOSAIC_SECRET_",
+    "MOSAIC_DESKTOP_TOKEN",
+)
 
 
 def secret_env(name: str) -> bool:

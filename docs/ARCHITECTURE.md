@@ -55,7 +55,7 @@ tests/            unit, integration (synthetic media), evaluation
 | Concern | Server | Desktop |
 |---|---|---|
 | Bind address | Configurable, behind a reverse proxy with TLS | `127.0.0.1` only |
-| Auth | Single admin account, Argon2 password hash, HttpOnly SameSite cookie, CSRF token | Per-launch random bearer token passed from Tauri. Host-header allowlist protects against DNS rebinding. |
+| Auth | Single admin account, Argon2 password hash, HttpOnly SameSite cookie, CSRF token | Per-launch random token from Tauri (stdin), sent as a bearer header or traded once for an HttpOnly session cookie on the one loopback origin that serves UI and API. Host-header allowlist protects against DNS rebinding (ADR 0057). |
 | Folder selection | Server-side browser limited to configured media roots | Native folder picker |
 | Secrets | Env vars, Docker secrets, or an encrypted file keyed by an install master key | OS keyring via Python `keyring` (Keychain / Credential Manager); also used in development (ADR 0003) |
 | Workers | Configurable counts per resource class | Auto-sized from CPU/GPU probe (`workers.<class>` overrides; ADR 0030) |
@@ -353,7 +353,7 @@ Behaviour:
 
 - **Paths.** Canonicalize every path. Reject paths outside the project root or the configured media roots, and reject symlinks that escape them. Browser clients receive project-relative paths only.
 - **Secrets.** Redact them in logs and exceptions. Never persist Authorization headers. Pass keys to subprocesses via environment or stdin, never argv. The UI shows only `configured` and the last 4 characters.
-- **Desktop API.** Require the per-launch token on every request, allow only `127.0.0.1` and `tauri://` in CORS, and check the Host header.
+- **Desktop API** (ADR 0057). One loopback origin serves the UI and the API. Every API request carries the per-launch token (bearer), or the session cookie it issued together with `Sec-Fetch-Site: same-origin` (or `none`). The Host must be loopback. No CORS headers are sent, so no other origin can read a response.
 - **Project locks.** A lease file `MosAic/.lock` (holder installation, host, pid, expiry); the file is the single source of truth (ADR 0023). Read-only open never takes the lock. A stale lease can be taken over after expiry; a live lease can be force-unlocked only after a warning.
 
 ## 15. Packaging

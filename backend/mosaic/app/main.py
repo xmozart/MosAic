@@ -47,8 +47,14 @@ from mosaic.storage.projects import (
 BIND_HOST = "127.0.0.1"
 
 
-def create_app(services: Services | None = None, *, supervise_workers: bool = False) -> FastAPI:
-    """``supervise_workers``: start job workers when there is work (ADR 0056); `serve` sets it."""
+def create_app(
+    services: Services | None = None,
+    *,
+    supervise_workers: bool = False,
+    desktop_token: str | None = None,
+) -> FastAPI:
+    """``supervise_workers``: start job workers when there is work (ADR 0056); ``serve``
+    sets it. ``desktop_token``: the shell's per-launch token (ADR 0057)."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -75,6 +81,9 @@ def create_app(services: Services | None = None, *, supervise_workers: bool = Fa
         redoc_url=None if server else "/redoc",
     )
     app.state.services = services or Services.create()
+    from mosaic.app.desktop import DesktopAccess
+
+    app.state.desktop = None if server else DesktopAccess(desktop_token)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -211,13 +220,46 @@ def bind_host() -> str:
     return BIND_HOST
 
 
-def serve(port: int = 8765) -> None:
+READY = "MOSAIC_READY"
+
+
+def serve(port: int = 8765, *, token_stdin: bool = False) -> None:
+    """Run the API (and the UI). ``port`` 0 picks a free port and prints
+    ``MOSAIC_READY port=<n>`` once listening, for the desktop shell, which can also pass
+    its token on stdin (``token_stdin``; ADR 0057)."""
+    import socket
+    import sys
+    import threading
+    import time
+
     import uvicorn
 
-    uvicorn.run(
-        create_app(supervise_workers=True),
-        host=bind_host(),
-        port=port,
-        log_level="info",
-        proxy_headers=True,
-    )
+    from mosaic.app.desktop import ENV_TOKEN, read_token, take_token_from_env
+
+    # Before any worker could inherit it.
+    token: str | None
+    if token_stdin:
+        os.environ.pop(ENV_TOKEN, None)  # never left for workers to copy
+        token = read_token(sys.stdin)
+    else:
+        token = take_token_from_env()
+    app = create_app(supervise_workers=True, desktop_token=token)
+    host = bind_host()
+    family, kind, proto, _, addr = socket.getaddrinfo(
+        host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+    )[0]
+    sock = socket.socket(family, kind, proto)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(addr)
+    config = uvicorn.Config(app, log_level="info", proxy_headers=True)
+    server = uvicorn.Server(config)
+    bound = sock.getsockname()[1]
+
+    def _announce() -> None:  # once uvicorn accepts connections
+        while not server.started and not server.should_exit:
+            time.sleep(0.05)
+        if server.started:
+            print(f"{READY} port={bound}", flush=True)
+
+    threading.Thread(target=_announce, daemon=True, name="ready").start()
+    server.run(sockets=[sock])

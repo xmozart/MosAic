@@ -220,7 +220,13 @@ def test_every_route_but_sign_in_needs_a_session(monkeypatch: pytest.MonkeyPatch
     """Route surface guard: a router that forgets the principal dependency fails here."""
     client, _ = _client(monkeypatch, "server")
     # health: the container's healthcheck and a proxy's probe; it returns only {ok}
-    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login", "/api/health"}
+    public = {
+        "/api/auth/status",
+        "/api/auth/setup",
+        "/api/auth/login",
+        "/api/auth/desktop-session",  # desktop only (404 here); it checks the token itself
+        "/api/health",
+    }
     paths = client.app.openapi()["paths"]  # type: ignore[attr-defined]
     checked = 0
     for path, ops in paths.items():
@@ -270,7 +276,13 @@ def test_every_api_route_depends_on_the_session_check(monkeypatch: pytest.Monkey
 
     client, _ = _client(monkeypatch, "server")
     # health: the container's healthcheck and a proxy's probe; it returns only {ok}
-    public = {"/api/auth/status", "/api/auth/setup", "/api/auth/login", "/api/health"}
+    public = {
+        "/api/auth/status",
+        "/api/auth/setup",
+        "/api/auth/login",
+        "/api/auth/desktop-session",  # desktop only (404 here); it checks the token itself
+        "/api/health",
+    }
 
     def uses_principal(d: Dependant) -> bool:
         return any(sub.call is principal or uses_principal(sub) for sub in d.dependencies)

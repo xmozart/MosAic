@@ -39,6 +39,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/desktop-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Desktop Session
+         * @description Desktop: trade the shell's token (``Authorization: Bearer``) for an HttpOnly session
+         *     cookie on this origin, so media elements and the event stream are let in (ADR 0057).
+         */
+        post: operations["desktop_session_api_auth_desktop_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -1716,6 +1737,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desktop_session_api_auth_desktop_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

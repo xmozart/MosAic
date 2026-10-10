@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, HTTPException, Request
 
-from mosaic.app import auth
+from mosaic.app import auth, desktop
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
 
@@ -48,11 +48,27 @@ def same_origin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="cross-site request refused")
 
 
+def desktop_allows(request: Request) -> bool:
+    access = getattr(request.app.state, "desktop", None)
+    if access is None:
+        return True
+    return bool(
+        access.allows(
+            request.headers.get("authorization"),
+            request.cookies.get(desktop.COOKIE),
+            request.headers.get("sec-fetch-site"),
+        )
+    )
+
+
 def principal(request: Request, svc: Services = Depends(services)) -> Principal:  # noqa: B008
     host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
     allowed = allowed_hosts(request)
     if allowed is not None and host not in allowed:
         raise HTTPException(status_code=421, detail="host not allowed")
+    if not auth.server_mode() and not desktop_allows(request):
+        # The packaged app's per-launch token, or its session cookie (ADR 0057).
+        raise HTTPException(status_code=401, detail="Not allowed.")
     if auth.server_mode():
         # Signed in, and for writes the CSRF token echoed in a header (ADR 0034).
         ok = svc.auth.check(

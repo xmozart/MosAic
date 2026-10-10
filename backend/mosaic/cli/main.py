@@ -67,11 +67,13 @@ def init(folder: Path, name: str | None, placement: str | None) -> None:
 
 @cli.command()
 @click.option("--port", default=8765, show_default=True)
-def serve(port: int) -> None:
-    """Run the local API on 127.0.0.1 (M0: no auth, loopback only)."""
+@click.option("--token-stdin", is_flag=True, help="Desktop: read the shell's token from stdin.")
+def serve(port: int, token_stdin: bool) -> None:
+    """Run the API and UI. Desktop: 127.0.0.1 only, with the shell's token when set; port 0
+    picks a free port and prints MOSAIC_READY port=<n> (ADR 0057)."""
     from mosaic.app.main import serve as run_server
 
-    run_server(port)
+    run_server(port, token_stdin=token_stdin)
 
 
 @cli.command()

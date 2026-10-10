@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from mosaic.app import auth
-from mosaic.app.deps import principal, same_origin, services
+from mosaic.app import auth, desktop
+from mosaic.app.deps import desktop_allows, principal, same_origin, services
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal
 
@@ -67,7 +67,7 @@ def _error(exc: auth.AuthError) -> JSONResponse:
 def status(request: Request, svc: Services = Svc) -> dict[str, Any]:
     """Public: what the sign-in screen should show."""
     if not auth.server_mode():
-        return {"mode": "desktop", "setup_required": False, "signed_in": True}
+        return {"mode": "desktop", "setup_required": False, "signed_in": desktop_allows(request)}
     token = request.cookies.get(auth.SESSION_COOKIE)
     return {
         "mode": "server",
@@ -109,4 +109,20 @@ def logout(request: Request, svc: Services = Svc, _me: Principal = Depends(princ
     response = JSONResponse({"signed_in": False})
     response.delete_cookie(auth.SESSION_COOKIE, path="/")
     response.delete_cookie(auth.CSRF_COOKIE, path="/")
+    return response
+
+
+@router.post("/desktop-session")
+def desktop_session(request: Request) -> Response:
+    """Desktop: trade the shell's token (``Authorization: Bearer``) for an HttpOnly session
+    cookie on this origin, so media elements and the event stream are let in (ADR 0057)."""
+    access = getattr(request.app.state, "desktop", None)
+    if auth.server_mode() or access is None or not access.enforced:
+        raise HTTPException(404, "Not Found")
+    if not access.bearer_ok(request.headers.get("authorization")):
+        raise HTTPException(401, "Not allowed.")
+    response = JSONResponse({"signed_in": True})
+    response.set_cookie(
+        desktop.COOKIE, access.new_session(), httponly=True, samesite="strict", path="/"
+    )
     return response

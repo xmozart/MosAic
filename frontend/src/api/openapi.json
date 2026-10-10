@@ -908,6 +908,23 @@
         "summary": "Delete Root"
       }
     },
+    "/api/auth/desktop-session": {
+      "post": {
+        "description": "Desktop: trade the shell's token (``Authorization: Bearer``) for an HttpOnly session\ncookie on this origin, so media elements and the event stream are let in (ADR 0057).",
+        "operationId": "desktop_session_api_auth_desktop_session_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Desktop Session"
+      }
+    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",

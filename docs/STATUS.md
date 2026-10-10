@@ -4,15 +4,12 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-**G6 — M2 quality review.** The report is `docs/reports/M2.md`. Please:
-1. Run `openssl rand -base64 48 > master_key.txt`, then `MOSAIC_MEDIA=/path/to/your/trips docker compose up -d --build`. Open <http://localhost:8765>, set the admin password, and try the web UI on a real trip: Home → Open folder → Inventory → Analysis → Library → Create edit → Preview → Exports. The first analysis downloads its models once (over 1 GB).
-2. Send feedback as a list: the screen, what you did, what you expected.
-3. Optionally answer Q-2 (the Airshow must-include list), Q-3 (real Insta360, DJI and Nikon clips) and Q-1 (licensing review) in `docs/OPEN_QUESTIONS.md`.
+_(empty — the agent is working on M3)_
 
 ## Current
 
-- **Milestone:** M2 (M1 complete: `docs/reports/M1.md`)
-- **Step:** M2 complete, waiting at G6 (`docs/reports/M2.md`); next is M3 after the owner's feedback; M1 complete (trip context, L3 deep review, Airshow re-eval: aircraft 45 → 79 %, crowd 29 → 2 % by primary subject, 0 must-exclude violations; analysis modes; summaries; split/external placement; relink and leases; camera profiles; photos; clock and LUTs; search; hardware benchmark and rate limits; 40-hour scale test).
+- **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
+- **Step:** M3 step 2 (local models).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -29,6 +26,16 @@ The agent maintains this file. It is the resume point for every new session.
 - [x] 10. Editing: retrieval, planner, selector, solver, refiner, critic, versions, `mosaic edit`/`report`
 - [x] 11. Render: chunks, conform, tone mapping, pillarbox, silence, loudnorm, encoder selection
 - [ ] 12. Acceptance in `make ci`, `make eval` on the corpus, draft expectations, reports, findings → gate G6
+
+## M3 plan
+
+Owner at G6 (2026-10-10): tried the web UI on Docker, "so far looks good"; continue to the end. Signing and notarization need the Apple Developer ID (G1): build unsigned, ask once at the end.
+- [x] 1. Desktop API hardening: per-launch token (environment, never argv), one loopback origin for UI and API, session cookie from the token, Host and Sec-Fetch-Site checks, no CORS (acceptance 2)
+- [ ] 2. Local models: `/models/local` and resumable, checksum-verified downloads as jobs (S1 acceptance)
+- [ ] 3. S1 First run (welcome, AI mode and key, model downloads)
+- [ ] 4. Tauri shell: sidecar launch (random port, token, health wait), graceful shutdown, crash restart with job resume, native folder picker, menu bar pause/resume, battery-aware workers
+- [ ] 5. Bundling: standalone Python and the backend, LGPL FFmpeg with VideoToolbox, unsigned DMG, CI build with a signing step that skips without credentials, updater off
+- [ ] 6. Acceptance: clean-machine run (1), token and Host (2), Keychain (3), force-quit resume (4), desktop ↔ server folders (5); `docs/reports/M3.md` → G1 (signing)
 
 ## M2 plan
 
@@ -195,3 +202,5 @@ _(one line per commit: date · step · summary)_
 - 2026-10-08 · M2.10 · Docker: three-stage multi-arch image (UI build, BtbN LGPL FFmpeg per arch refused if GPL, python 3.12 slim with the frozen uv env), non-root, /data volume, /api/health and HEALTHCHECK, compose.yaml with the master key as a Docker secret, compose.nvidia.yaml, docs/deploy/DOCKER.md, `make docker` smoke test; npm lock pins the emnapi peers for Linux (ADR 0055)
 - 2026-10-09 · M2.11a · Acceptance suite: the browser's API flow from setup to a ranged preview with a key scan of responses, logs, app data and the media folder; OpenAPI coverage of the API map's M2 rows; 5,000-clip filters (≤ 112 ms) and an estimate budget on the 40-hour fixture; `make docker-e2e` passed against `docker compose up` (analysis 20 min with the first model download); the server now supervises job workers (jobs from the browser never ran before); Storybook screenshots in both themes compared on every `make frontend`; structural review against the mockups; radius tokens; one Tab stop per radio group; S20 polls its first page only (ADR 0056)
 - 2026-10-09 · M2.11b · M2 report: acceptance 1–9 met in `make ci`, and acceptance 1 against `docker compose up`; stop at G6
+- 2026-10-10 · G6 · Owner tried the web UI on `docker compose up` with clones of the Dubai and Airshow footage: "so far looks good"; continue through the remaining milestones
+- 2026-10-10 · M3.1 · Desktop API access: per-launch token from the environment (removed before workers start, scrubbed from children), `serve --port 0` with `MOSAIC_READY port=<n>`, bearer or a token-issued session cookie with `Sec-Fetch-Site: same-origin`, loopback Host only, no CORS; the page trades the injected token once (ADR 0057)
