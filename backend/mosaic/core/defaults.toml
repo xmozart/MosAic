@@ -8,6 +8,7 @@
 "ai.budget.per_milestone_usd" = 25.0
 "ai.budget.per_job_usd" = 5.0
 "ai.local_only" = false
+"app.first_run_done" = false  # desktop: S1 finished (ADR 0059)
 "ai.send_gps" = false
 "ai.cli.claude_path" = ""  # Claude Code app (claude-cli provider, ADR 0014); "" = find on PATH
 "ai.cli.codex_path" = ""  # Codex app (codex-cli provider); "" = find on PATH

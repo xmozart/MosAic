@@ -11,9 +11,9 @@ Full-window centered layout with a soft accent glow at the top. Three-dot progre
 
 **Step 1:** mark, wordmark, tagline "Your trip, told well.", Get started.
 
-**Step 2:** three mode cards (Cloud / Hybrid (Recommended) / Local only); a provider select (default Anthropic; ADR 0003, not in the reference artboard); `SecretField` for the selected provider; a "what's sent" explainer with three columns (Sent / Never sent / Only if you allow).
+**Step 2:** two mode cards, Hybrid (Recommended) / Local only (ADR 0059: "Cloud" would send what Hybrid sends); a provider select (default Anthropic; ADR 0003, not in the reference artboard); `SecretField` for the selected provider; a "what's sent" explainer with three columns (Sent / Never sent / Only if you allow).
 
-**Step 3:** two download cards (speech 1.5 GB, image understanding 0.8 GB) and "Continue while downloading".
+**Step 3:** two download cards (speech 1.5 GB, image understanding 0.8 GB) and "Continue while downloading". Each card shows the percentage and the bytes so far (ADR 0059).
 
 ## States
 

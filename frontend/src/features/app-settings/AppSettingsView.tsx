@@ -26,6 +26,7 @@ import {
   type Providers,
   type SystemInfo,
 } from "./model";
+import { ChoiceCard } from "@/components/system/ChoiceCard";
 import { RadioGroup } from "@/components/ui/RadioGroup";
 
 export interface AppSettingsViewProps {
@@ -253,14 +254,14 @@ function AIProviders(p: AppSettingsViewProps) {
           <div className="flex flex-col gap-2">
             <span className="text-caption text-text-muted">Privacy mode</span>
             <RadioGroup label="Privacy mode" className="grid grid-cols-2 gap-3">
-              <PrivacyCard
+              <ChoiceCard
                 selected={!localOnly}
                 title="Hybrid"
                 icon={<Cloud aria-hidden className="size-4" />}
                 text="Processing stays here; the AI sees selected frames and text."
                 onClick={() => p.onSetting("ai.local_only", false)}
               />
-              <PrivacyCard
+              <ChoiceCard
                 selected={localOnly}
                 title="Local only"
                 icon={<HardDrive aria-hidden className="size-4" />}
@@ -364,31 +365,6 @@ function TaskRow({ task, providers, options, onProvider, localOnly }: AppSetting
         )}
       </span>
     </div>
-  );
-}
-
-function PrivacyCard({ selected, title, icon, text, onClick }: { selected: boolean; title: string; icon: ReactNode; text: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      tabIndex={selected ? 0 : -1}
-      onClick={onClick}
-      className={cn(
-        "flex flex-col gap-2 rounded-lg border-[1.5px] p-[18px] text-left text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-        selected ? "border-accent bg-accent-soft" : "border-border bg-surface-1 hover:border-text-faint",
-      )}
-    >
-      <span className="flex items-center gap-2.5">
-        <span className={cn("flex size-[18px] items-center justify-center rounded-full border-[1.5px]", selected ? "border-accent" : "border-border")}>
-          {selected && <span className="size-[9px] rounded-full bg-accent" />}
-        </span>
-        <span className="text-subhead font-semibold">{title}</span>
-        <span className="ml-auto text-text-muted">{icon}</span>
-      </span>
-      <span className="text-small text-text-muted">{text}</span>
-    </button>
   );
 }
 

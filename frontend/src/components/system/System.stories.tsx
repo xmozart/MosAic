@@ -15,6 +15,9 @@ import { SettingRow } from "./SettingRow";
 import { StageList } from "./StageList";
 import { StorageBreakdown } from "./StorageBreakdown";
 import { UnsupportedRow } from "./UnsupportedRow";
+import { Lock } from "lucide-react";
+
+import { ChoiceCard } from "./ChoiceCard";
 
 const meta: Meta = { title: "System" };
 export default meta;
@@ -203,3 +206,13 @@ export const SecretFieldStates: Story = {
     </div>
   ),
 };
+
+export const ChoiceCards: Story = {
+  render: () => (
+    <div className="grid w-[760px] grid-cols-2 gap-3">
+      <ChoiceCard selected title="Hybrid" badge="Recommended" text="Processing stays on this Mac; the AI sees selected frames and text." onClick={() => {}} />
+      <ChoiceCard selected={false} title="Local only" icon={<Lock className="size-4" />} text="Most private. Story editing and scene understanding are limited." onClick={() => {}} />
+    </div>
+  ),
+};
+

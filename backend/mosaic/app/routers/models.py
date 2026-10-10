@@ -18,17 +18,13 @@ Me = Depends(principal)
 
 
 def _row(svc: Services, model: local_models.LocalModel, needed: bool) -> dict[str, Any]:
-    job_id = local_models.active_download(svc.store, model.name)
-    job = None
-    if job_id is not None:
-        prog = svc.store.progress(job_id)
-        row = svc.store.job(job_id)
-        job = {
-            "job_id": job_id,
-            "state": row.status if row else "pending",
-            "pct": prog.pct if prog else 0,
-        }
     installed = model.installed()
+    latest = local_models.latest_download(svc.store, model.name)
+    job = None
+    # A running download, or the last one when it failed (S1: "paused" with Retry).
+    if latest is not None and not installed and latest.status not in ("done", "cancelled"):
+        prog = svc.store.progress(latest.id)
+        job = {"job_id": latest.id, "state": latest.status, "pct": prog.pct if prog else 0}
     return {
         "name": model.name,
         "label": model.label,

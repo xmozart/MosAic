@@ -305,6 +305,8 @@ def test_a_failed_download_can_be_retried_from_diagnostics(monkeypatch: pytest.M
     client = TestClient(create_app(Services.create(control)), base_url="http://127.0.0.1")
     job = client.post(f"/api/models/local/{bad.name}/download").json()["job_id"]
     assert run_job(control, job, timeout=60) == "failed"
+    row = next(r for r in client.get("/api/models/local").json()["items"] if r["name"] == bad.name)
+    assert row["job"]["state"] == "failed", "S1 shows it paused, with Retry"
     task = JobStore(control.db).tasks(job)[0]
     r = client.post(f"/api/diagnostics/tasks/{task.id}/retry")
     assert r.status_code == 200, r.text

@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 
 import { api, onSignedOut } from "@/api/client";
+import { FirstRunGate } from "@/features/first-run/FirstRunScreen";
 import { startDesktopSession } from "@/lib/desktop";
 
 import { Banner } from "@/components/ui/Banner";
@@ -44,7 +45,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   if (!status.data) return null;
   const s = status.data;
-  if (s.signed_in) return <>{children}</>;
+  if (s.signed_in) return <FirstRunGate mode={s.mode}>{children}</FirstRunGate>;
   if (s.mode === "desktop") {
     return (
       <main className="flex min-h-full items-center justify-center bg-bg p-6">

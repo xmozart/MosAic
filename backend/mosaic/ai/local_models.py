@@ -31,6 +31,7 @@ from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import APP_PROJECT, JobSpec, ResourceClass, TaskSpec
 from mosaic.jobs.registry import DeferTask, task
 from mosaic.jobs.store import JobStore
+from mosaic.storage.models_control import Job
 
 HF = "https://huggingface.co"
 CHUNK = 1 << 20
@@ -358,6 +359,14 @@ def active_download(store: JobStore, name: str) -> int | None:
     for job in store.jobs(APP_PROJECT, True, kind="models", limit=50):
         if (job.params or {}).get("name") == name:
             return int(job.id)
+    return None
+
+
+def latest_download(store: JobStore, name: str) -> Job | None:
+    """The model's newest download job, running or not (S1 shows a failed one as paused)."""
+    for job in store.jobs(APP_PROJECT, None, kind="models", limit=50):
+        if (job.params or {}).get("name") == name:
+            return job
     return None
 
 
