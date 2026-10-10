@@ -9,7 +9,7 @@ _(empty — the agent is working on M3)_
 ## Current
 
 - **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
-- **Step:** M3 step 4 (Tauri shell).
+- **Step:** M3 step 5 (bundling).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -33,7 +33,7 @@ Owner at G6 (2026-10-10): tried the web UI on Docker, "so far looks good"; conti
 - [x] 1. Desktop API hardening: per-launch token (environment, never argv), one loopback origin for UI and API, session cookie from the token, Host and Sec-Fetch-Site checks, no CORS (acceptance 2)
 - [x] 2. Local models: `/models/local` and resumable, checksum-verified downloads as jobs (S1 acceptance)
 - [x] 3. S1 First run (welcome, AI mode and key, model downloads)
-- [ ] 4. Tauri shell: sidecar launch (random port, token, health wait), graceful shutdown, crash restart with job resume, native folder picker, menu bar pause/resume, battery-aware workers
+- [x] 4. Tauri shell: sidecar launch (random port, token, health wait), graceful shutdown, crash restart with job resume, native folder picker, menu bar pause/resume, battery-aware workers
 - [ ] 5. Bundling: standalone Python and the backend, LGPL FFmpeg with VideoToolbox, unsigned DMG, CI build with a signing step that skips without credentials, updater off
 - [ ] 6. Acceptance: clean-machine run (1), token and Host (2), Keychain (3), force-quit resume (4), desktop ↔ server folders (5); `docs/reports/M3.md` → G1 (signing)
 
@@ -208,3 +208,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-10 · M3.1 · Desktop API access: per-launch token from the environment (removed before workers start, scrubbed from children), `serve --port 0` with `MOSAIC_READY port=<n>`, bearer or a token-issued session cookie with `Sec-Fetch-Site: same-origin`, loopback Host only, no CORS; the page trades the injected token once (ADR 0057)
 - 2026-10-10 · M3.2 · Local models: pinned catalog (revision, size, SHA-256) for Whisper small/medium/large-v3 and SigLIP base/quantized; resumable Range downloads verified before install; adapters prefer installed copies; app-level jobs (`_app`, `app_level` handlers) with byte progress; `/api/models/local` (ADR 0058)
 - 2026-10-10 · M3.3 · S1 First run: welcome, Hybrid / Local only with the provider's key (write-only, validated) and the provider's presets for every cloud task, needed model downloads with progress, paused + Retry, continue while downloading; `app.first_run_done` gates the desktop (ADR 0059)
+- 2026-10-10 · M3.4 · Tauri shell (`desktop/`): backend sidecar with the token on stdin and a stdin lifeline, `MOSAIC_READY` + health wait, window on the backend origin with navigation locked, crash restart (new token/port, new window), quit with SIGTERM and worker grace, menu bar pause/resume (`/jobs/pause-all`, `/resume-all`), battery saver, native folder picker; real WKWebView verified: ranged `<video>`, images and SSE pass the session check; quit during a Thorough analysis left no process after 31 s and the next launch finished the job; concurrent project opens no longer race Alembic (ADR 0060)

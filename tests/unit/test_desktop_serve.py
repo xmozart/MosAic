@@ -52,7 +52,7 @@ def test_serve_announces_its_port_and_enforces_the_token(monkeypatch: pytest.Mon
     try:
         assert proc.stdin is not None
         proc.stdin.write(TOKEN + "\n")
-        proc.stdin.close()
+        proc.stdin.flush()  # kept open: closing it is the shell's "I'm gone" (lifeline)
         port = _ready(proc)
         base = f"http://127.0.0.1:{port}"
         assert _status(f"{base}/api/health") == 200

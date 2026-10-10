@@ -45,6 +45,24 @@ beforeEach(() => {
 });
 
 describe("HomeScreen", () => {
+  it("in the Mac app, Open footage folder uses the native picker (ADR 0060)", async () => {
+    const open = vi.fn().mockResolvedValue("/Users/me/Trips/Iceland");
+    window.__TAURI__ = { dialog: { open } };
+    replies["POST /api/projects/preview"] = {
+      data: { name: "Iceland", placement: "in_folder", counts: { videos: 3, photos: 0, folders: 0, complete: true }, project_id: "P1" },
+    };
+    replies["POST /api/projects"] = { data: { id: "P1", created: false } };
+    try {
+      renderHome();
+      fireEvent.click(await screen.findByRole("button", { name: /Open footage folder/ }));
+      expect(await screen.findByText("project page")).toBeInTheDocument();
+      expect(open).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
+      expect(screen.queryByLabelText("Folder")).toBeNull(); // no typed-path dialog
+    } finally {
+      delete window.__TAURI__;
+    }
+  });
+
   it("shows the empty state, and a folder that is already a project opens without confirmation", async () => {
     replies["POST /api/projects/preview"] = {
       data: { name: "Trip", placement: "in_folder", counts: { videos: 3, photos: 0, folders: 0, complete: true }, project_id: "P1" },

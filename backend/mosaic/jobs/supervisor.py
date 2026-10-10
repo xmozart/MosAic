@@ -27,6 +27,7 @@ POLL_S = 1.0
 QUICK_EXIT_S = 10.0  # a worker gone sooner than this failed to start
 MIN_BACKOFF_S = 2.0
 MAX_BACKOFF_S = 60.0
+WORKER_GRACE_S = 35.0  # the worker's own grace (30 s) plus its cleanup
 RUNNABLE = (JobStatus.PENDING.value, JobStatus.RUNNING.value)
 
 
@@ -51,11 +52,20 @@ class WorkerSupervisor:
         self._thread = threading.Thread(target=self._loop, daemon=True, name="worker-supervisor")
         self._thread.start()
 
-    def shutdown(self) -> None:
-        """Stops supervising. A running worker finishes its tasks and exits when idle."""
+    def shutdown(self, grace_s: float = WORKER_GRACE_S) -> None:
+        """Stops supervising and asks the worker it started to stop: it takes no new task
+        and lets running ones finish for a while (ADR 0060). What is left resumes from the
+        task log on the next start."""
         self.stop.set()
         if self._thread is not None:
             self._thread.join(timeout=5)
+        proc = self._proc
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=grace_s)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
     def tick(self) -> bool:
         """One check; True when it started a worker."""

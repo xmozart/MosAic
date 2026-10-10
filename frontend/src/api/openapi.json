@@ -1828,6 +1828,48 @@
         "summary": "List Jobs"
       }
     },
+    "/api/jobs/pause-all": {
+      "post": {
+        "description": "The desktop menu bar's \"Pause all work\": every waiting or running job (ADR 0060).",
+        "operationId": "pause_all_api_jobs_pause_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pause All Api Jobs Pause All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pause All"
+      }
+    },
+    "/api/jobs/resume-all": {
+      "post": {
+        "description": "\"Resume work\": jobs paused by hand. A job paused at its AI cost limit stays paused\nuntil someone raises the limit (ADR 0018).",
+        "operationId": "resume_all_api_jobs_resume_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Resume All Api Jobs Resume All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Resume All"
+      }
+    },
     "/api/jobs/{job_id}": {
       "get": {
         "operationId": "get_job_api_jobs__job_id__get",

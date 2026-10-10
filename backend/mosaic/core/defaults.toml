@@ -17,6 +17,7 @@
 "workers.gpu_encode" = 0.0
 "workers.ai_api" = 0.0
 "workers.io" = 0.0
+"workers.battery_saver" = true  # on battery, about half the worker slots (ADR 0060)
 # AI rate limits per provider (ADR 0030); 0 = the provider default in ai/ratelimit.py
 "ai.rate.anthropic.requests_per_minute" = 0.0
 "ai.rate.anthropic.tokens_per_minute" = 0.0

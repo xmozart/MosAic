@@ -67,6 +67,9 @@ def default_slots(
     return slots
 
 
+POWER_CHECK_S = 30.0
+
+
 def configured_slots(control: ControlDB) -> dict[str, int]:
     from mosaic.storage.config import ConfigService
 
@@ -83,6 +86,8 @@ class Worker:
     slots: dict[str, int] = field(default_factory=default_slots)
     lease_ms: int = LEASE_MS
     poll_s: float = 0.2
+    battery_saver: bool = False
+    stop_grace_s: float = 30.0  # SIGTERM: how long running tasks may still finish
     worker_id: str = field(
         default_factory=lambda: f"{socket.gethostname()}:{os.getpid()}:{new_ulid()[-6:]}"
     )
@@ -95,6 +100,8 @@ class Worker:
         self._projects_lock = threading.Lock()
         self._busy = 0
         self._busy_lock = threading.Lock()
+        self._power_checked = -POWER_CHECK_S
+        self._saving = False
 
     # ----------------------------------------------------------------- projects
 
@@ -232,8 +239,21 @@ class Worker:
             done.set()
             hb.join(timeout=5)
 
-    def _slot_loop(self, resource_class: str) -> None:
+    def _allowed(self, resource_class: str) -> int:
+        """Slots of this class that may lease now: about half on battery when the battery
+        saver is on (ADR 0060). The power state is read at most every half minute."""
+        n = self.slots.get(resource_class, 0)
+        now = time.monotonic()
+        if now - self._power_checked > POWER_CHECK_S:
+            self._power_checked = now
+            self._saving = self.battery_saver and bool(hardware.on_battery())
+        return max(1, (n + 1) // 2) if self._saving else n
+
+    def _slot_loop(self, resource_class: str, index: int = 0) -> None:
         while not self.stop.is_set():
+            if index >= self._allowed(resource_class):
+                self.stop.wait(POWER_CHECK_S / 6)
+                continue
             try:
                 task = self.executor.lease(self.worker_id, resource_class)
             except Exception:
@@ -283,7 +303,9 @@ class Worker:
         registry.load_handlers()
         self._register()
         threads = [
-            threading.Thread(target=self._slot_loop, args=(rc,), daemon=True, name=f"slot-{rc}-{i}")
+            threading.Thread(
+                target=self._slot_loop, args=(rc, i), daemon=True, name=f"slot-{rc}-{i}"
+            )
             for rc, n in self.slots.items()
             for i in range(n)
         ]
@@ -307,11 +329,30 @@ class Worker:
                         break
         finally:
             self.stop.set()
+            # Running tasks may finish (or reach a checkpoint) for a while; a task still
+            # running after that keeps its lease and is resumed from the task log later.
+            deadline = time.monotonic() + self.stop_grace_s
             for t in threads:
-                t.join(timeout=10)
+                t.join(timeout=max(0.1, deadline - time.monotonic()))
             self._unregister()
             for p in self._projects.values():
                 p.close()
+
+
+def _end_children() -> None:
+    """Tasks cut off by the grace limit may have left FFmpeg or a probe running. A worker
+    started on its own (the supervisor's and the CLI's: ``start_new_session``) leads its
+    process group, so it ends the group's other members on the way out. Their outputs
+    are temporary files that are only renamed into place on success (invariant 9)."""
+    if os.name != "posix" or os.getpgrp() != os.getpid():
+        return
+    previous = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    try:
+        os.killpg(os.getpgrp(), signal.SIGTERM)
+    except OSError:
+        pass
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -326,10 +367,18 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     lease_ms = int(os.environ.get(ENV_LEASE_MS, LEASE_MS))
     control = ControlDB()
-    worker = Worker(control, slots=configured_slots(control), lease_ms=lease_ms)
+    from mosaic.storage.config import ConfigService
+
+    saver = bool(ConfigService(control).get(control.local_principal, "workers.battery_saver"))
+    worker = Worker(
+        control, slots=configured_slots(control), lease_ms=lease_ms, battery_saver=saver
+    )
     log.info("worker slots: %s", worker.slots)
     signal.signal(signal.SIGTERM, lambda *_: worker.stop.set())
-    worker.run(exit_when_idle_s=args.exit_when_idle)
+    try:
+        worker.run(exit_when_idle_s=args.exit_when_idle)
+    finally:
+        _end_children()  # this process only, never an in-process (test) worker
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ from mosaic.core.time import format_display
 from mosaic.jobs.model import JOB_TERMINAL, JobProgress
 from mosaic.storage.models_control import Job
 
+RUNNABLE = ("pending", "running")
+
 router = APIRouter(prefix="/api")
 TERMINAL_STATES = frozenset(s.value for s in JOB_TERMINAL)
 
@@ -103,6 +105,37 @@ class ResumeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cost_limit_usd: float | None = Field(default=None, ge=0)
+
+
+def _active(svc: Services) -> list[Any]:
+    """Every unfinished job, a page at a time (invariant 13: ids only are kept)."""
+    out: list[Any] = []
+    cursor: int | None = None
+    while True:
+        page = svc.store.jobs(None, True, cursor=cursor, limit=500)
+        out.extend(page)
+        if len(page) < 500:
+            return out
+        cursor = page[-1].id
+
+
+@router.post("/jobs/pause-all")
+def pause_all(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """The desktop menu bar's "Pause all work": every waiting or running job (ADR 0060)."""
+    ids = [j.id for j in _active(svc) if j.status in RUNNABLE]
+    for jid in ids:
+        svc.executor.pause(me, jid)
+    return {"paused": ids}
+
+
+@router.post("/jobs/resume-all")
+def resume_all(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """ "Resume work": jobs paused by hand. A job paused at its AI cost limit stays paused
+    until someone raises the limit (ADR 0018)."""
+    ids = [j.id for j in _active(svc) if j.status == "paused"]
+    for jid in ids:
+        svc.executor.resume(me, jid)
+    return {"resumed": ids}
 
 
 @router.post("/jobs/{job_id}/{action}")

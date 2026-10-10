@@ -56,7 +56,8 @@ def take_token_from_env() -> str | None:
 
 def read_token(stream: TextIO) -> str:
     """The shell's token from the first line of stdin (``serve --token-stdin``): not in
-    the environment, where same-user tools such as ``ps eww`` could read it."""
+    the environment, where same-user tools such as ``ps eww`` could read it. The shell
+    then keeps stdin open as a lifeline: when it closes, ``serve`` stops (ADR 0060)."""
     return checked(stream.readline())
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,10 +29,16 @@ def alembic_config(tree: Tree, url: str | None = None) -> Config:
     return cfg
 
 
+# Alembic's migration context is process-global: two threads upgrading at once (two
+# requests opening a project together) corrupt each other's run.
+_MIGRATE_LOCK = threading.Lock()
+
+
 def migrate(engine: Engine, tree: Tree) -> None:
-    """Upgrade to head in one real transaction: a failure leaves the DB as it was."""
+    """Upgrade to head in one real transaction: a failure leaves the DB as it was. One
+    migration runs at a time in this process."""
     cfg = alembic_config(tree)
-    with engine.connect() as conn, migration_transaction(conn):
+    with _MIGRATE_LOCK, engine.connect() as conn, migration_transaction(conn):
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
 

@@ -69,6 +69,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/projects/{pid}/analysis/progress?job=` → `{job_id, kind, mode, deepen: {target, days, segment_ids} \| null, steps: [{key, label, state, done, failed, total, pct, note}], ready_to_browse, live: {mosaic_id, tiles, cols, rows, description, file, day} \| null, failures: {count, items: [{asset_id, file, stage, reason}]}, clips: {done, total}}` (latest analysis or deepening job without `job`; reasons are short phrases, never tool output; ADR 0041) | S9 |
 | GET | `/jobs?project=&active=` · `/jobs/{id}` (stages, current item, live sample, `cost_usd`, `cost_limit_usd`). Kinds include `move` (one `project.move` task: an in-folder trip's database and cache move to app data; S0 waits on it; ADR 0055) | S9, S0 |
 | POST | `/jobs/{id}/pause` · `/resume` (optional body `{cost_limit_usd}`: raise the AI cost limit of a job paused at it; must exceed what the job has spent; ADR 0018) · `/cancel` · `/retry-failed` | S9, S20 |
+| POST | `/jobs/pause-all` → `{paused: [id]}` (every waiting or running job) · `/jobs/resume-all` → `{resumed: [id]}` (jobs paused by hand; not those at their cost limit) — the desktop menu bar (ADR 0060) | S0 |
 | GET | `/events?project=` (SSE; without `project`: every project, for the rail's activity ring) | all |
 
 SSE event types:

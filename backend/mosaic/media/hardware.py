@@ -143,3 +143,36 @@ def probe() -> Hardware:
         memory_bytes=memory,
         hw_encoders=_hw_encoders(),
     )
+
+
+def on_battery() -> bool | None:
+    """Running on battery power: True / False, or None when it can't be told (a desktop
+    without a battery reports False; ADR 0060). Cheap enough to ask every half minute."""
+    import subprocess
+    import sys
+
+    if sys.platform == "darwin":
+        try:
+            out = subprocess.run(
+                ["pmset", "-g", "batt"], capture_output=True, text=True, timeout=5, check=False
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if "Battery Power" in out:
+            return True
+        return False if "AC Power" in out else None
+    if sys.platform.startswith("linux"):
+        from pathlib import Path
+
+        supplies = list(Path("/sys/class/power_supply").glob("*"))
+        mains = [
+            s
+            for s in supplies
+            if (s / "type").is_file() and (s / "type").read_text().strip() == "Mains"
+        ]
+        if not mains:
+            return None
+        return not any(
+            (m / "online").is_file() and (m / "online").read_text().strip() == "1" for m in mains
+        )
+    return None

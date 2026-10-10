@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderOpen } from "lucide-react";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { api } from "@/api/client";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { CreateProjectDialog, type PreviewData } from "@/features/open/CreateProjectDialog";
 import { FolderBrowserDialog, type FolderPick } from "@/features/open/FolderBrowserDialog";
 import { PathDialog } from "@/features/open/PathDialog";
+import { hasNativeFolderPicker, nativeFolder } from "@/lib/desktop";
 import { cn } from "@/lib/cn";
 import { formatOpened } from "@/lib/format";
 import { media } from "@/lib/media";
@@ -148,6 +149,21 @@ export function HomeScreen() {
     navigate(`/p/${id}`);
   };
 
+  const native = mode !== "server" && hasNativeFolderPicker();
+  useEffect(() => {
+    if (!native || choosing === null || pathError !== null) return;
+    let live = true;
+    void nativeFolder(choosing.relink ? "Find this trip's folder" : "Open a footage folder").then((path) => {
+      if (!live) return;
+      if (path) void picked({ path });
+      else setChoosing(null);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per Open, not per render
+  }, [native, choosing]);
+
   const picked = async (ref: FolderRef) => {
     const relink = choosing?.relink;
     if (relink) {
@@ -236,7 +252,9 @@ export function HomeScreen() {
         />
       ) : (
         <PathDialog
-          open={choosing !== null}
+          // In the Mac app the native picker comes first; this dialog only says why a
+          // picked folder was refused (and lets the user type another).
+          open={choosing !== null && (!native || pathError !== null)}
           error={pathError}
           onPick={(path) => void picked({ path })}
           onCancel={() => {

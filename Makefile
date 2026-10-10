@@ -3,7 +3,7 @@
 UV ?= uv
 PYTEST = $(UV) run pytest
 
-.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker docker-e2e clean
+.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker docker-e2e desktop-dev desktop-check clean
 
 help:
 	@echo "check       lint + types + unit tests (fast)"
@@ -15,6 +15,8 @@ help:
 	@echo "ffmpeg      build the LGPL dev FFmpeg (macOS)"
 	@echo "docker      build the server image for this machine and smoke-test it"
 	@echo "docker-e2e  docker compose up, then the browser's API calls to a rendered preview"
+	@echo "desktop-dev run the Mac app (Tauri) around this repository's backend"
+	@echo "desktop-check  Rust fmt, clippy and crate licenses for the Mac app"
 
 sync:
 	$(UV) sync --frozen
@@ -22,6 +24,7 @@ sync:
 lint:
 	$(UV) run ruff check backend tests scripts
 	$(UV) run ruff format --check backend tests scripts
+	@if command -v cargo >/dev/null 2>&1; then $(UV) run python scripts/check_rust_licenses.py; fi
 
 format:
 	$(UV) run ruff check --fix backend tests
@@ -64,6 +67,14 @@ docker:
 
 docker-e2e:  # M2 acceptance 1 against `docker compose up` (ADR 0056)
 	./scripts/docker-e2e.sh
+
+desktop-dev:  # the Mac shell around the repository's backend (ADR 0060)
+	cd frontend && $(NPM) run build
+	cd desktop && $(NPM) install --no-audit --no-fund && $(NPM) run tauri dev
+
+desktop-check:  # Rust format, clippy and crate licenses (macOS: needs the system webview)
+	cd desktop/src-tauri && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings
+	$(UV) run python scripts/check_rust_licenses.py
 
 ffmpeg-ci:
 	./scripts/fetch-ffmpeg-ci.sh

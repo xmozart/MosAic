@@ -223,6 +223,7 @@ def bind_host() -> str:
 
 
 READY = "MOSAIC_READY"
+SHUTDOWN_S = 5
 
 
 def serve(port: int = 8765, *, token_stdin: bool = False) -> None:
@@ -253,7 +254,11 @@ def serve(port: int = 8765, *, token_stdin: bool = False) -> None:
     sock = socket.socket(family, kind, proto)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(addr)
-    config = uvicorn.Config(app, log_level="info", proxy_headers=True)
+    # Open event streams (the app's window) end after a few seconds on shutdown, so the
+    # lifespan's cleanup (stopping the workers, releasing leases) always runs (ADR 0060).
+    config = uvicorn.Config(
+        app, log_level="info", proxy_headers=True, timeout_graceful_shutdown=SHUTDOWN_S
+    )
     server = uvicorn.Server(config)
     bound = sock.getsockname()[1]
 
@@ -264,4 +269,12 @@ def serve(port: int = 8765, *, token_stdin: bool = False) -> None:
             print(f"{READY} port={bound}", flush=True)
 
     threading.Thread(target=_announce, daemon=True, name="ready").start()
+    if token_stdin:
+        # The shell keeps our stdin open while it lives: end of file means it is gone
+        # (quit, crash, force-quit), so stop gracefully rather than run on as an orphan.
+        def _lifeline() -> None:
+            sys.stdin.read()
+            server.should_exit = True
+
+        threading.Thread(target=_lifeline, daemon=True, name="lifeline").start()
     server.run(sockets=[sock])

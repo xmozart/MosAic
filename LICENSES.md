@@ -282,6 +282,20 @@ Used as imported libraries by the backend.
 | typing-inspection | 0.4.4 | MIT |
 | uvicorn | 0.54.0 | BSD-3-Clause |
 
+### Desktop shell (Rust; bundled into the Mac app)
+
+| Crate | Version | License | Use |
+|---|---|---|---|
+| tauri | 2.12 | MIT OR Apache-2.0 | The app shell: window, menu bar, bundling (ADR 0060) |
+| tauri-plugin-dialog | 2.8 | MIT OR Apache-2.0 | The native folder picker |
+| ureq | 3.4 | MIT OR Apache-2.0 | The shell's health check and menu commands to the backend |
+| getrandom | 0.4 | MIT OR Apache-2.0 | The per-launch token |
+| libc | 0.2 | MIT OR Apache-2.0 | SIGTERM / SIGKILL to the backend |
+| serde_json | 1 | MIT OR Apache-2.0 | Quoting the token for the webview |
+| signal-hook | 0.4 | MIT OR Apache-2.0 | A quit signal to the shell takes the graceful path |
+| (transitive crates) | `desktop/src-tauri/Cargo.lock` | MIT / Apache-2.0 / BSD / ISC / Zlib / MPL-2.0 / Unlicense; ICU data crates Unicode-3.0 (ADR 0060) | Checked by `scripts/check_rust_licenses.py` |
+| @tauri-apps/cli | 2.12.1 | Apache-2.0 OR MIT | Builds the app (development only) |
+
 ### Development only (Python)
 
 Tests, lint and type checks; never shipped.
