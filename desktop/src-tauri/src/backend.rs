@@ -49,7 +49,11 @@ fn command(app: &AppHandle) -> Result<Command, String> {
     let bundled = resources.join("backend").join("bin").join("python3");
     if bundled.is_file() {
         let mut cmd = Command::new(bundled);
+        // -I: no user site-packages or PYTHON* variables from the user's shell; -B: no
+        // bytecode written into the (signed) bundle (ADR 0061).
         cmd.args([
+            "-I",
+            "-B",
             "-m",
             "mosaic.cli.main",
             "serve",
@@ -59,7 +63,6 @@ fn command(app: &AppHandle) -> Result<Command, String> {
         ]);
         cmd.env("MOSAIC_UI_DIR", resources.join("ui"));
         cmd.env("MOSAIC_FFMPEG_DIR", resources.join("ffmpeg"));
-        cmd.env("PYTHONNOUSERSITE", "1");
         return Ok(cmd);
     }
     if cfg!(debug_assertions) {

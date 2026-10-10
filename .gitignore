@@ -28,3 +28,4 @@ frontend/visual-diff/
 /desktop/node_modules/
 /desktop/src-tauri/target/
 /desktop/src-tauri/gen/
+/desktop/src-tauri/bundle-resources/

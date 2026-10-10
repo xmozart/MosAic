@@ -282,6 +282,14 @@ Used as imported libraries by the backend.
 | typing-inspection | 0.4.4 | MIT |
 | uvicorn | 0.54.0 | BSD-3-Clause |
 
+### Mac app runtime (bundled; ADR 0061)
+
+| Component | Version | License | Use |
+|---|---|---|---|
+| python-build-standalone CPython | 3.12.15 (20261003) | PSF-2.0; bundles OpenSSL (Apache-2.0), libffi and expat (MIT), SQLite and xz (public domain), zlib, bzip2, mpdecimal, ncurses, libedit and Tcl (BSD-style; Tk removed) | Runs the backend inside the app |
+| FFmpeg / ffprobe (bundle build, `scripts/build-ffmpeg-bundle.sh`) | 8.1.2 | LGPL-2.1-or-later (no `--enable-gpl`/`--enable-nonfree`) | Separate process only; VideoToolbox, AudioToolbox, static zimg |
+| zimg (static, inside the bundle FFmpeg) | 3.0.6 | WTFPL | `zscale` tone mapping |
+
 ### Desktop shell (Rust; bundled into the Mac app)
 
 | Crate | Version | License | Use |
@@ -294,6 +302,7 @@ Used as imported libraries by the backend.
 | serde_json | 1 | MIT OR Apache-2.0 | Quoting the token for the webview |
 | signal-hook | 0.4 | MIT OR Apache-2.0 | A quit signal to the shell takes the graceful path |
 | (transitive crates) | `desktop/src-tauri/Cargo.lock` | MIT / Apache-2.0 / BSD / ISC / Zlib / MPL-2.0 / Unlicense; ICU data crates Unicode-3.0 (ADR 0060) | Checked by `scripts/check_rust_licenses.py` |
+| tauri-plugin-updater (optional feature, off) | 2.13 | MIT OR Apache-2.0 | Updates for a signed release (ADR 0061); its root-certificate data `webpki-root-certs` is CDLA-Permissive-2.0 |
 | @tauri-apps/cli | 2.12.1 | Apache-2.0 OR MIT | Builds the app (development only) |
 
 ### Development only (Python)

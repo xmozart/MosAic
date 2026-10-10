@@ -1,0 +1,10 @@
+{
+  "$comment": "Overlay for a signed release build with updates (ADR 0061): tauri build --features updater --config tauri.updater.conf.json. Fill pubkey (from `tauri signer generate`) and the endpoint first; neither exists until release signing is set up (gate G1).",
+  "bundle": { "createUpdaterArtifacts": true },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_THE_RELEASE_PUBLIC_KEY",
+      "endpoints": ["https://REPLACE_WITH_THE_UPDATE_HOST/mosaic/{{target}}/{{arch}}/{{current_version}}"]
+    }
+  }
+}

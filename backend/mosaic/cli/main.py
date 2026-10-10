@@ -900,3 +900,7 @@ def search_cmd(folder: Path, query: str, mode: str, limit: int) -> None:
 
 
 cli.add_command(config_group)
+
+
+if __name__ == "__main__":  # `python -m mosaic.cli.main` (the Mac app runs the backend so)
+    cli()

@@ -13,8 +13,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.7", features = [] }
 
+[features]
+# The Tauri updater, off by default until release signing is set up (ADR 0061): build
+# with `--features updater` and the `tauri.updater.conf.json` overlay (pubkey, endpoint).
+updater = ["dep:tauri-plugin-updater"]
+
 [dependencies]
 tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
+tauri-plugin-updater = { version = "2.13", optional = true }
 tauri-plugin-dialog = "2.8"
 getrandom = "0.4"
 ureq = { version = "3.4", default-features = false }

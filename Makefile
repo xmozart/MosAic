@@ -3,7 +3,7 @@
 UV ?= uv
 PYTEST = $(UV) run pytest
 
-.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker docker-e2e desktop-dev desktop-check clean
+.PHONY: help sync lint format typecheck unit check frontend integration acceptance ci eval ffmpeg ffmpeg-ci corpus docker docker-e2e desktop-dev desktop-check desktop-bundle clean
 
 help:
 	@echo "check       lint + types + unit tests (fast)"
@@ -17,6 +17,7 @@ help:
 	@echo "docker-e2e  docker compose up, then the browser's API calls to a rendered preview"
 	@echo "desktop-dev run the Mac app (Tauri) around this repository's backend"
 	@echo "desktop-check  Rust fmt, clippy and crate licenses for the Mac app"
+	@echo "desktop-bundle MosAic.app and the DMG (unsigned without Apple credentials), checked"
 
 sync:
 	$(UV) sync --frozen
@@ -72,8 +73,12 @@ desktop-dev:  # the Mac shell around the repository's backend (ADR 0060)
 	cd frontend && $(NPM) run build
 	cd desktop && $(NPM) install --no-audit --no-fund && $(NPM) run tauri dev
 
+desktop-bundle:  # MosAic.app and the DMG, then the clean-machine check (ADR 0061)
+	./scripts/build-desktop-bundle.sh
+	./scripts/check-desktop-bundle.sh desktop/src-tauri/target/release/bundle/macos/MosAic.app
+
 desktop-check:  # Rust format, clippy and crate licenses (macOS: needs the system webview)
-	cd desktop/src-tauri && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings
+	cd desktop/src-tauri && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo clippy --locked --all-targets --features updater -- -D warnings
 	$(UV) run python scripts/check_rust_licenses.py
 
 ffmpeg-ci:

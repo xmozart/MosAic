@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# CLAUDE.md "Dependency licensing", plus Unicode-3.0 (ICU data crates; ADR 0060).
+# CLAUDE.md "Dependency licensing", plus Unicode-3.0 (ICU data crates; ADR 0060) and
+# CDLA-Permissive-2.0 (the updater's root-certificate data; ADR 0061).
 ALLOWED = {
     "MIT",
     "Apache-2.0",
@@ -26,6 +27,7 @@ ALLOWED = {
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "Apache-2.0 WITH LLVM-exception",
+    "CDLA-Permissive-2.0",
 }
 OWN = {"mosaic-desktop"}
 
@@ -82,7 +84,7 @@ def acceptable(expr: str) -> bool:
 def main() -> int:
     meta = json.loads(
         subprocess.run(
-            ["cargo", "metadata", "--format-version", "1", "--locked"],
+            ["cargo", "metadata", "--format-version", "1", "--locked", "--all-features"],
             cwd=ROOT / "desktop" / "src-tauri",
             check=True,
             capture_output=True,

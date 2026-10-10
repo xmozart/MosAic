@@ -9,7 +9,7 @@ _(empty — the agent is working on M3)_
 ## Current
 
 - **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
-- **Step:** M3 step 5 (bundling).
+- **Step:** M3 step 6 (acceptance, report, G1).
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -34,7 +34,7 @@ Owner at G6 (2026-10-10): tried the web UI on Docker, "so far looks good"; conti
 - [x] 2. Local models: `/models/local` and resumable, checksum-verified downloads as jobs (S1 acceptance)
 - [x] 3. S1 First run (welcome, AI mode and key, model downloads)
 - [x] 4. Tauri shell: sidecar launch (random port, token, health wait), graceful shutdown, crash restart with job resume, native folder picker, menu bar pause/resume, battery-aware workers
-- [ ] 5. Bundling: standalone Python and the backend, LGPL FFmpeg with VideoToolbox, unsigned DMG, CI build with a signing step that skips without credentials, updater off
+- [x] 5. Bundling: standalone Python and the backend, LGPL FFmpeg with VideoToolbox, unsigned DMG, CI build with a signing step that skips without credentials, updater off
 - [ ] 6. Acceptance: clean-machine run (1), token and Host (2), Keychain (3), force-quit resume (4), desktop ↔ server folders (5); `docs/reports/M3.md` → G1 (signing)
 
 ## M2 plan
@@ -209,3 +209,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-10 · M3.2 · Local models: pinned catalog (revision, size, SHA-256) for Whisper small/medium/large-v3 and SigLIP base/quantized; resumable Range downloads verified before install; adapters prefer installed copies; app-level jobs (`_app`, `app_level` handlers) with byte progress; `/api/models/local` (ADR 0058)
 - 2026-10-10 · M3.3 · S1 First run: welcome, Hybrid / Local only with the provider's key (write-only, validated) and the provider's presets for every cloud task, needed model downloads with progress, paused + Retry, continue while downloading; `app.first_run_done` gates the desktop (ADR 0059)
 - 2026-10-10 · M3.4 · Tauri shell (`desktop/`): backend sidecar with the token on stdin and a stdin lifeline, `MOSAIC_READY` + health wait, window on the backend origin with navigation locked, crash restart (new token/port, new window), quit with SIGTERM and worker grace, menu bar pause/resume (`/jobs/pause-all`, `/resume-all`), battery saver, native folder picker; real WKWebView verified: ranged `<video>`, images and SSE pass the session check; quit during a Thorough analysis left no process after 31 s and the next launch finished the job; concurrent project opens no longer race Alembic (ADR 0060)
+- 2026-10-11 · M3.5 · Mac app bundle: macOS 14+ Apple silicon; python-build-standalone 3.12.15 with the locked runtime deps; self-contained LGPL FFmpeg (static zimg, VideoToolbox, links only macOS); MosAic.app 466 MB, DMG 160 MB; clean-machine check (linkage + empty-environment trip to a rendered preview) passes; real MosAic.app launches its bundled backend and quits on a quit Apple Event; CI workflow signs and notarizes when the Apple secrets exist, else unsigned; updater behind an off-by-default feature; `python -m mosaic.cli.main` entry fixed (ADR 0061)

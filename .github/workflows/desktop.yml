@@ -1,0 +1,98 @@
+name: desktop
+
+# The Mac app (M3; ADR 0061): Rust checks, the bundle FFmpeg, MosAic.app and the DMG.
+# Signing and notarization run only when the Apple credentials are configured as
+# repository secrets (gate G1); otherwise the DMG is built unsigned and uploaded.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "backend/**"
+      - "frontend/**"
+      - "scripts/build-*.sh"
+      - "scripts/check-desktop-bundle.sh"
+      - "scripts/desktop_e2e.py"
+      - "scripts/check_rust_licenses.py"
+      - "uv.lock"
+      - "pyproject.toml"
+      - "Makefile"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-15  # Apple silicon
+    timeout-minutes: 90
+    env:
+      HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Build tools for FFmpeg
+        run: brew install nasm pkg-config
+      - name: Cache the bundle FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: .tools/ffmpeg-bundle
+          key: ffmpeg-bundle-${{ hashFiles('scripts/build-ffmpeg-bundle.sh') }}
+      - name: Rust checks
+        run: make desktop-check
+      - name: Import the signing certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          cert="$RUNNER_TEMP/cert.p12"
+          trap 'rm -f "$cert"' EXIT
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$cert"
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security import "$cert" -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+      - name: Build MosAic.app and the DMG (signed and notarized)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: ./scripts/build-desktop-bundle.sh
+      - name: Build MosAic.app and the DMG (unsigned)
+        if: env.HAS_SIGNING != 'true'
+        run: ./scripts/build-desktop-bundle.sh
+      - name: Verify signing and notarization
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          app=desktop/src-tauri/target/release/bundle/macos/MosAic.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl -a -vv "$app"
+          xcrun stapler validate "$app"
+          dmg=$(ls desktop/src-tauri/target/release/bundle/dmg/*.dmg)
+          codesign --verify --verbose=2 "$dmg"
+          spctl -a -t open --context context:primary-signature -vv "$dmg"
+      - name: Clean-machine check
+        run: ./scripts/check-desktop-bundle.sh desktop/src-tauri/target/release/bundle/macos/MosAic.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MosAic-dmg
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error

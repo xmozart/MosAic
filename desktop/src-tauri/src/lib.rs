@@ -39,8 +39,10 @@ type Shared = Arc<Mutex<State>>;
 
 pub fn run() {
     let shared: Shared = Arc::new(Mutex::new(State::default()));
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    #[cfg(feature = "updater")]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let app = builder
         .manage(shared.clone())
         .menu(app_menu)
         .on_menu_event(|app, event| {
