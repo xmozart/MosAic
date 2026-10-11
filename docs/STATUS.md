@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.3a, solver v2: locks keep their source range, frames and slot; infeasibility in frames.
+- **Step:** M4.3b, regenerate one beat (selector v3), the story, or everything, keeping locks.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
 ## M4 plan
@@ -21,7 +21,7 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 1. Edit request v2: arc and beats, weights, rules, photo share, shot lengths, transitions, audio, loudness, music (ADR 0066)
 - [x] 2a. A pure `resolve(selection, request, locks)` extracted from `generate_task` (solver, refiner, critic; no AI)
 - [x] 2b. Drafts and versions: storyboard ops with undo/redo, `POST /versions`, a version before every render or regenerate (ADR 0067; findings as rows move to step 10)
-- [ ] 3a. Solver v2: locks keep source in/out, frames and their slot in the beat; infeasibility in frames (also in the estimate)
+- [x] 3a. Solver v2: a lock pins the shot's source range and frames; absorbed picks; infeasibility in frames (ADR 0068; the estimate gets it with S14 in 14a)
 - [ ] 3b. Regenerate one beat (selector v3), the story, or everything
 - [ ] 4. Regeneration granularity (PRODUCT.md §8): duration changes without AI, faster/slower per beat, alternatives, more/less of a category, opening/ending
 - [ ] 5. Retrieval and prompts v3: weights, rules, photo share, itinerary beats, must-include/avoid, edit categories by tag frequency; `EDIT_VERSION` bump

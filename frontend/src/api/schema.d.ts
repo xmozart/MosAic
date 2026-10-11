@@ -1676,8 +1676,12 @@ export interface components {
         /**
          * LockShot
          * @description Lock (or unlock) a shot: a hard constraint on every later change (invariant 10).
+         *     The server fills ``pin`` (the shot's cut as the draft times it now) and ``absorb``
+         *     (picks cut together with it) when it records the op (ADR 0068).
          */
         LockShot: {
+            /** Absorb */
+            absorb?: string[];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1688,6 +1692,7 @@ export interface components {
              * @default true
              */
             locked: boolean;
+            pin?: components["schemas"]["Pin"] | null;
             /** Ref */
             ref: string;
         };
@@ -1742,6 +1747,18 @@ export interface components {
         PasswordBody: {
             /** Password */
             password: string;
+        };
+        /**
+         * Pin
+         * @description A locked shot's exact cut (ADR 0068): which segment, its source range in the
+         *     source's time base and its length at the timeline rate (invariant 3).
+         */
+        Pin: {
+            duration: components["schemas"]["TimelineTime"];
+            /** Segment Id */
+            segment_id: string;
+            source_in: components["schemas"]["SourceTime"];
+            source_out: components["schemas"]["SourceTime"];
         };
         /**
          * Placement
@@ -1869,6 +1886,20 @@ export interface components {
             values: {
                 [key: string]: unknown;
             };
+        };
+        /** SourceTime */
+        SourceTime: {
+            /** Tb */
+            tb: string;
+            /** Ticks */
+            ticks: number;
+        };
+        /** TimelineTime */
+        TimelineTime: {
+            /** Frames */
+            frames: number;
+            /** Rate */
+            rate: string;
         };
         /** ValidationError */
         ValidationError: {

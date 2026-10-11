@@ -133,3 +133,45 @@ def test_unknown_shots_beats_and_ops_are_refused() -> None:
         OP.validate_python({"kind": "trim", "ref": "b1#0"})
     with pytest.raises(ValidationError, match="greater than or equal to 0"):
         OP.validate_python({"kind": "move_beat", "beat_id": "b1", "index": -1})
+
+
+def test_locking_a_cut_of_two_picks_absorbs_the_second() -> None:
+    pin = {
+        "segment_id": "seg_000001",
+        "source_in": {"ticks": 0, "tb": "1/1000"},
+        "source_out": {"ticks": 9000, "tb": "1/1000"},
+        "duration": {"frames": 270, "rate": "30/1"},
+    }
+    locked = apply(
+        _board(),
+        OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": pin, "absorb": ["b1#1"]}),
+    )
+    first, second = locked.shot("b1#0")[2], locked.shot("b1#1")[2]
+    assert first.locked
+    assert first.pin is not None
+    assert first.pin.duration.frames == 270
+    assert second.absorbed_by == "b1#0"
+    with pytest.raises(DraftError, match="locked"):
+        apply(locked, OP.validate_python({"kind": "remove_shot", "ref": "b1#1"}))
+    with pytest.raises(DraftError, match="part of b1#0"):
+        apply(locked, OP.validate_python({"kind": "lock_shot", "ref": "b1#1", "locked": False}))
+    released = apply(
+        locked, OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "locked": False})
+    )
+    assert released.shot("b1#0")[2].pin is None
+    assert released.shot("b1#1")[2].absorbed_by is None
+
+    with pytest.raises(DraftError, match="part of b1#0"):
+        apply(
+            locked,
+            OP.validate_python({"kind": "move_shot", "ref": "b1#1", "beat_id": "b2", "index": 0}),
+        )
+    other = {**pin, "segment_id": "seg_000002"}
+    with pytest.raises(DraftError, match="changed since it was timed"):
+        apply(_board(), OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": other}))
+    backwards = {**pin, "source_out": {"ticks": 0, "tb": "1/1000"}}
+    with pytest.raises(ValidationError, match="out point is after its in point"):
+        OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": backwards})
+    mixed = {**pin, "source_out": {"ticks": 9000, "tb": "1/90000"}}
+    with pytest.raises(ValidationError, match="share one time base"):
+        OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": mixed})

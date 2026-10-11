@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,40 @@ class DraftError(ValueError):
 # ------------------------------------------------------------------- storyboard
 
 
+class SourceTime(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticks: int = Field(ge=0)
+    tb: str
+
+
+class TimelineTime(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    frames: int = Field(ge=1)
+    rate: str
+
+
+class Pin(BaseModel):
+    """A locked shot's exact cut (ADR 0068): which segment, its source range in the
+    source's time base and its length at the timeline rate (invariant 3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str
+    source_in: SourceTime
+    source_out: SourceTime
+    duration: TimelineTime
+
+    @model_validator(mode="after")
+    def _range(self) -> Pin:
+        if self.source_out.tb != self.source_in.tb:
+            raise ValueError("a pin's in and out share one time base")
+        if self.source_out.ticks <= self.source_in.ticks:
+            raise ValueError("a pin's out point is after its in point")
+        return self
+
+
 class BoardShot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -49,6 +83,9 @@ class BoardShot(BaseModel):
     reason: str
     alternatives: list[dict[str, str]] = Field(default_factory=list)
     locked: bool = False
+    pin: Pin | None = None
+    # Part of another shot's locked cut (two segments of one take, cut as one).
+    absorbed_by: str | None = None
 
 
 class BoardBeat(BaseModel):
@@ -171,12 +208,16 @@ class RemoveShot(BaseModel):
 
 
 class LockShot(BaseModel):
-    """Lock (or unlock) a shot: a hard constraint on every later change (invariant 10)."""
+    """Lock (or unlock) a shot: a hard constraint on every later change (invariant 10).
+    The server fills ``pin`` (the shot's cut as the draft times it now) and ``absorb``
+    (picks cut together with it) when it records the op (ADR 0068)."""
 
     model_config = ConfigDict(extra="forbid")
     kind: Literal["lock_shot"] = "lock_shot"
     ref: str
     locked: bool = True
+    pin: Pin | None = None
+    absorb: list[str] = Field(default_factory=list)
 
 
 class ReplaceShot(BaseModel):
@@ -199,6 +240,8 @@ def apply(board: Board, op: Op) -> Board:
     out = board.model_copy(deep=True)
     if isinstance(op, MoveShot):
         beat, i, sh = out.shot(op.ref)
+        if sh.absorbed_by:
+            raise DraftError(f"this shot is part of {sh.absorbed_by}: move that one")
         _, target = out.beat(op.beat_id)
         beat.shots.pop(i)
         target.shots.insert(min(op.index, len(target.shots)), sh)
@@ -210,16 +253,27 @@ def apply(board: Board, op: Op) -> Board:
         out.user_order = True
     elif isinstance(op, RemoveShot):
         beat, i, sh = out.shot(op.ref)
-        if sh.locked:
+        if sh.locked or sh.absorbed_by:
             raise DraftError("this shot is locked: unlock it to remove it")
         beat.shots.pop(i)
         out.exclude(sh.segment_id)
     elif isinstance(op, LockShot):
         _, _, sh = out.shot(op.ref)
+        if sh.absorbed_by:
+            raise DraftError(f"this shot is part of {sh.absorbed_by}: lock or unlock that one")
+        if op.locked and op.pin is not None and op.pin.segment_id != sh.segment_id:
+            raise DraftError("this shot changed since it was timed; lock it again")
         sh.locked = op.locked
+        sh.pin = op.pin if op.locked else None
+        for beat in out.beats:
+            for other in beat.shots:
+                if op.locked and other.ref in op.absorb:
+                    other.absorbed_by = op.ref
+                elif not op.locked and other.absorbed_by == op.ref:
+                    other.absorbed_by = None
     else:
         beat, _, sh = out.shot(op.ref)
-        if sh.locked:
+        if sh.locked or sh.absorbed_by:
             raise DraftError("this shot is locked: unlock it to replace it")
         offered = {a["segment_id"] for a in sh.alternatives} | set(beat.pool)
         if op.segment_id not in offered:
@@ -345,7 +399,7 @@ def redo(s: Session, edit_id: int) -> bool:
 
 
 def board_shots(
-    board: Board, by_ref: dict[str, Candidate]
+    board: Board, by_ref: dict[str, Candidate], rate: str
 ) -> tuple[PlanOut, list[solver.Shot], list[str]]:
     """The storyboard as a plan and solver shots. A pick whose segment is no longer a
     candidate (re-analysed, or rejected by the owner since) is left out, with a note."""
@@ -364,32 +418,56 @@ def board_shots(
     )
     shots: list[solver.Shot] = []
     notes: list[str] = []
+    absorbed: list[tuple[str, solver.Shot]] = []
     for bi, b in enumerate(board.beats):
         for oi, sh in enumerate(b.shots):
             cand = by_ref.get(sh.segment_id)
             if cand is None:
                 notes.append(f"{sh.segment_id} is no longer available; left out")
                 continue
-            shots.append(
-                solver.Shot(
-                    cand=cand,
-                    beat_id=b.beat_id,
-                    beat_index=bi,
-                    order=oi,
-                    role=sh.role,
-                    priority=sh.priority,
-                    length=sh.length,
-                    audio_intent=(
-                        "natural_sound"
-                        if sh.audio_intent == "dialogue" and not cand.has_speech
-                        else sh.audio_intent
-                    ),
-                    reason=sh.reason,
-                    alternatives=list(sh.alternatives),
-                    locked=sh.locked,
-                    ref=sh.ref,
-                )
+            pin = None
+            if sh.pin is not None:
+                p = sh.pin
+                if (p.segment_id, p.source_in.tb, p.duration.rate) == (
+                    sh.segment_id,
+                    cand.tb,
+                    rate,
+                ):
+                    pin = (p.source_in.ticks, p.source_out.ticks, p.duration.frames)
+                else:  # re-analysed, or another frame rate: kept, cut afresh
+                    notes.append(f"{sh.ref}: locked, but its cut no longer applies; re-cut")
+            shot = solver.Shot(
+                cand=cand,
+                beat_id=b.beat_id,
+                beat_index=bi,
+                order=oi,
+                role=sh.role,
+                priority=sh.priority,
+                length=sh.length,
+                audio_intent=(
+                    "natural_sound"
+                    if sh.audio_intent == "dialogue" and not cand.has_speech
+                    else sh.audio_intent
+                ),
+                reason=sh.reason,
+                alternatives=list(sh.alternatives),
+                locked=sh.locked,
+                ref=sh.ref,
+                pin=pin,
             )
+            if sh.absorbed_by:
+                absorbed.append((sh.absorbed_by, shot))
+            else:
+                shots.append(shot)
+    lockers = {sh.selection_ref: sh for sh in shots}
+    for locker_ref, shot in absorbed:
+        locker = lockers.get(locker_ref)
+        if locker is not None and locker.pin is not None:
+            locker.absorbed.append(shot)  # timed as part of the locked cut
+        else:  # its locked shot is gone or no longer pinned: timed on its own
+            notes.append(f"{shot.selection_ref}: no longer part of {locker_ref}")
+            shots.append(shot)
+    shots.sort(key=lambda sh: (sh.beat_index, sh.order))
     return plan, shots, notes
 
 
@@ -401,7 +479,7 @@ def timed(
     rejected: set[int] | None = None,
 ) -> Resolved:
     """The storyboard timed like any edit (``resolve``), with no AI call."""
-    plan, shots, notes = board_shots(board, {c.ref: c for c in inp.cands})
+    plan, shots, notes = board_shots(board, {c.ref: c for c in inp.cands}, inp.rate)
     done = resolve(
         s,
         req,
@@ -413,6 +491,10 @@ def timed(
         excluded=set(board.excluded),
     )
     done.metrics["solver"]["notes"] = notes + done.metrics["solver"]["notes"]
+    # The version keeps the whole storyboard, absorbed picks included.
+    shots_by_beat = {b.beat_id: b.shots for b in board.beats}
+    for b in done.beats:
+        b["shots"] = [sh.model_dump(mode="json") for sh in shots_by_beat.get(b["beat_id"], [])]
     if board.excluded:
         done.timeline["excluded"] = list(board.excluded)
     return done
@@ -420,6 +502,29 @@ def timed(
 
 def _digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def pinned(op: LockShot, done: Resolved, board: Board) -> LockShot:
+    """``op`` with the pin the shot has in ``done`` (``board`` timed now): its event's
+    source range and frames, and the picks the refiner cut together with it."""
+    if not op.locked:
+        return op.model_copy(update={"pin": None, "absorb": []})
+    _, _, sh = board.shot(op.ref)
+    rate = done.timeline["rate"]
+    for e in done.timeline["tracks"][0]["events"]:
+        refs = [e["origin"]["selection_ref"], *e["origin"].get("merged", [])]
+        if op.ref in refs:
+            pin = Pin(
+                segment_id=sh.segment_id,
+                source_in=SourceTime.model_validate(e["source_in"]),
+                source_out=SourceTime.model_validate(e["source_out"]),
+                duration=TimelineTime(
+                    frames=e["timeline_out"]["frames"] - e["timeline_in"]["frames"], rate=rate
+                ),
+            )
+            return op.model_copy(update={"pin": pin, "absorb": [r for r in refs if r != op.ref]})
+    # Not in the edit now (dropped to fit): locked, so the solver keeps it, but not pinned.
+    return op.model_copy(update={"pin": None, "absorb": []})
 
 
 def draft_key(

@@ -486,3 +486,95 @@ def test_jump_fixing_and_landing_properties(spec: list[tuple[int, int, int]]) ->
     assert not any(refiner.is_jump(a, b) for a, b in itertools.pairwise(out))
     for c in out:
         assert c.ua <= c.src_in < c.src_out <= c.ub
+
+
+# ------------------------------------------------------------- pinned (ADR 0068)
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    st.lists(
+        st.tuples(st.integers(2, 30), st.integers(1, 5), st.integers(0, 300)),
+        min_size=1,
+        max_size=20,
+    ),
+    st.integers(10, 120),
+)
+def test_fit_never_changes_a_pinned_shot(specs: list[tuple[int, int, int]], seconds: int) -> None:
+    """A pin is the owner's cut: whatever the target, the solver keeps its frames."""
+    pace = pace_frames("balanced", RATE)
+    shots = []
+    for i, (length, prio, pinned) in enumerate(specs):
+        s = shot(cand(i, length_s=length), beat=f"b{1 + i % 3}", order=i, priority=prio)
+        if pinned:
+            s.locked = True
+            s.pin = (0, pinned * 3003, pinned)  # whole frames of 30000/1001 at 1/90000
+        shots.append(s)
+    target = target_frames(seconds, RATE)
+    f = solver.fit(shots, {"b1": 40, "b2": 30, "b3": 30}, target, target // 20, pace, RATE)
+    for s in shots:
+        if s.pin is not None:
+            assert s in f.shots, "a pinned shot is never dropped"
+            assert s.lo == s.hi == s.frames == s.pin[2]
+    assert f.total == sum(s.frames for s in f.shots)
+
+
+@settings(max_examples=100, deadline=None)
+@given(
+    st.lists(
+        st.tuples(st.integers(1, 3), st.integers(0, 50), st.integers(1, 5), st.booleans()),
+        min_size=1,
+        max_size=12,
+    )
+)
+def test_jump_fixing_and_landing_never_touch_a_pinned_cut(
+    spec: list[tuple[int, int, int, bool]],
+) -> None:
+    pace = pace_frames("balanced", RATE)
+    cuts = []
+    for i, (asset, at, prio, pinned) in enumerate(spec):
+        start = (at // 10) * 10 if asset == 3 else at
+        c = cand(
+            100 + i, asset=asset, shot=3000 if asset == 3 else 1000 + i, start_s=start, length_s=10
+        )
+        cut = _cut(c, start + 1, start + 4, priority=prio, order=i)
+        if pinned:
+            cut.shot.locked = True
+            cut.shot.pin = (cut.src_in, cut.src_out, cut.frames)
+        cuts.append(cut)
+    pins = {id(c): (c.src_in, c.src_out, c.frames) for c in cuts if c.shot.pin is not None}
+    out, _ = refiner.fix_jump_cuts(cuts, RATE, pace)
+    assert all(id(c) in {id(x) for x in out} for c in cuts if c.shot.pin is not None)
+    for a, b in itertools.pairwise(out):
+        if refiner.is_jump(a, b):
+            assert a.shot.locked, "only locked neighbours may stay a jump"
+            assert b.shot.locked
+    refiner.land_on_target(out, sum(c.frames for c in out) + 30, RATE, pace)
+    for c in out:
+        if id(c) in pins:
+            assert (c.src_in, c.src_out, c.frames) == pins[id(c)]
+            assert c.merged_refs == [c.shot.selection_ref], "never merged"
+
+
+def test_a_pinned_cut_is_never_merged_or_moved_in_a_jump() -> None:
+    pace = pace_frames("balanced", RATE)
+    take, take2 = cand(1, length_s=30, shot=7), cand(2, length_s=30, shot=7)
+    first, second = _cut(take, 0, 3), _cut(take2, 4, 7)
+    second.shot.locked = True
+    second.shot.pin = (second.src_in, second.src_out, second.frames)
+    other = _cut(cand(3, asset=2), 0, 3)
+    out, notes = refiner.fix_jump_cuts([first, second, other], RATE, pace)
+    assert second in out
+    assert not any("merged" in n for n in notes)
+    assert (second.src_in, second.src_out) == (4 * SEC, 7 * SEC)
+    assert not any(refiner.is_jump(p, q) for p, q in itertools.pairwise(out)), (
+        "the unpinned one moved or went; the pinned one stayed"
+    )
+    # Two locked neighbours: the jump is reported and both stay as they are.
+    a, b = _cut(take, 0, 3), _cut(take2, 4, 7)
+    for c in (a, b):
+        c.shot.locked = True
+        c.shot.pin = (c.src_in, c.src_out, c.frames)
+    out, notes = refiner.fix_jump_cuts([a, b], RATE, pace)
+    assert out == [a, b]
+    assert any("jump cut between locked shots" in n for n in notes)

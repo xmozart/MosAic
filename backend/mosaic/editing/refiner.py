@@ -199,6 +199,20 @@ def align(cut: Cut, rate: str) -> None:
 
 
 def refine(shot: Shot, ctx: ClipContext, pace: PaceFrames, rate: str) -> Cut:
+    if shot.pin is not None:  # a locked shot's exact cut (ADR 0068)
+        a, b, n = shot.pin
+        c = shot.cand
+        return Cut(
+            shot,
+            a,
+            b,
+            n,
+            ctx,
+            [shot.selection_ref, *(x.selection_ref for x in shot.absorbed)],
+            merged_shots=list(shot.absorbed),
+            ua=min(a, c.usable_start),
+            ub=max(b, c.usable_end),
+        )
     a, b = place(shot, ctx, rate)
     a, b = settle(shot, ctx, a, b)
     a, b, at_end = snap_speech(shot, ctx, a, b, pace, rate)
@@ -243,11 +257,13 @@ def fix_jump_cuts(cuts: list[Cut], rate: str, pace: PaceFrames) -> tuple[list[Cu
             if not is_jump(prev, nxt):
                 continue
             changed = True
+            pinned = prev.shot.pin is not None or nxt.shot.pin is not None
             same_shot = prev.shot.cand.shot_id == nxt.shot.cand.shot_id
             span = frames_for_ticks(nxt.src_out - prev.src_in, rate, prev.tb, Rounding.FLOOR)
             limit = max(prev.shot.hi, nxt.shot.hi, pace.max)
             if (
-                same_shot
+                not pinned
+                and same_shot
                 and nxt.src_in >= prev.src_in
                 and nxt.src_out > prev.src_out
                 and span <= limit
@@ -275,7 +291,9 @@ def fix_jump_cuts(cuts: list[Cut], rate: str, pace: PaceFrames) -> tuple[list[Cu
                 (
                     j
                     for j in range(i + 2, len(out))
-                    if out[j].shot.beat_id == nxt.shot.beat_id
+                    if nxt.shot.pin is None
+                    and out[j].shot.pin is None
+                    and out[j].shot.beat_id == nxt.shot.beat_id
                     and out[j].shot.cand.asset_id != prev.shot.cand.asset_id
                     and _swap_is_clean(out, i + 1, j)
                 ),

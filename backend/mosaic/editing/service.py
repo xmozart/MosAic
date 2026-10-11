@@ -144,8 +144,22 @@ def change_draft(project: Project, edit_id: int, action: str, op: Any = None) ->
     nothing to do. Raises ``draft.DraftError`` for an op that does not fit."""
     from mosaic.editing import draft
 
+    timed_on = None
+    if action == "op" and isinstance(op, draft.LockShot):
+        # A lock keeps the shot's cut as it is now: the server records it (ADR 0068).
+        from mosaic.editing.generate import edit_inputs
+
+        with project.db.session() as s:
+            d = draft.load(s, edit_id)
+            req = EditRequest.model_validate(d.base.request)
+            op = draft.pinned(op, draft.timed(s, req, edit_inputs(s, req), d.board), d.board)
+        timed_on = (d.base.version, d.ops)
     with project.write() as s:
         if action == "op":
+            if isinstance(op, draft.LockShot):
+                now = draft.load(s, edit_id)
+                if (now.base.version, now.ops) != timed_on:
+                    raise draft.DraftChangedError("the draft changed while locking; try again")
             draft.add(s, edit_id, op)
             return True
         return draft.undo(s, edit_id) if action == "undo" else draft.redo(s, edit_id)

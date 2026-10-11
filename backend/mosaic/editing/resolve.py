@@ -147,7 +147,7 @@ def shots_from_selection(
     return shots
 
 
-def board_shot(sh: solver.Shot) -> dict[str, Any]:
+def board_shot(sh: solver.Shot, rate: str) -> dict[str, Any]:
     """A pick as the storyboard keeps it (``draft.BoardShot``)."""
     return {
         "ref": sh.selection_ref,
@@ -159,6 +159,26 @@ def board_shot(sh: solver.Shot) -> dict[str, Any]:
         "reason": sh.reason,
         "alternatives": sh.alternatives,
         "locked": sh.locked,
+        "pin": None
+        if sh.pin is None
+        else {
+            "segment_id": sh.cand.ref,
+            "source_in": {"ticks": sh.pin[0], "tb": sh.cand.tb},
+            "source_out": {"ticks": sh.pin[1], "tb": sh.cand.tb},
+            "duration": {"frames": sh.pin[2], "rate": rate},
+        },
+    }
+
+
+def lock_budget(shots: list[solver.Shot], target: int, tolerance: int) -> dict[str, Any]:
+    """What the locked shots take of the target (S14 and S16's infeasible-locks warning):
+    their frames, and how far they go past the longest edit allowed (0 when they fit)."""
+    frames = sum(sh.pin[2] for sh in shots if sh.pin is not None)
+    return {
+        "shots": sum(1 for sh in shots if sh.locked),
+        "pinned": sum(1 for sh in shots if sh.pin is not None),
+        "frames": frames,  # pinned shots only: a lock without a cut is not budgeted
+        "over_frames": max(0, frames - (target + tolerance)),
     }
 
 
@@ -190,18 +210,21 @@ def resolve(
     ``user_order``: the shots' own order (beats as given, shots as given within them)
     instead of the request's chronology, once the owner has rearranged the storyboard.
     ``excluded``: segment refs the owner took out, never brought back as alternatives."""
-    # Shallow copies: they share ``cand`` and ``alternatives``, which nothing here changes.
+    # Shallow copies: they share ``cand``, ``alternatives`` and ``absorbed``, which nothing
+    # here changes.
     shots = [dataclasses.replace(sh) for sh in shots]
     rate, pace, cands = inp.rate, inp.pace, inp.cands
     by_ref = {c.ref: c for c in cands}
     target = target_frames(req.duration_s, rate)
     tolerance = target * req.tolerance_pct // 100
     shares = {b.beat_id: b.share_percent for b in plan.beats}
+    locks = lock_budget(shots, target, tolerance)
     fit = solver.fit(shots, shares, target, tolerance, pace, rate)
     ordered = solver.order_shots(fit.shots, "story" if user_order else req.chronology)
     cuts = [refiner.refine(sh, clip_context(s, sh.cand), pace, rate) for sh in ordered]
     spares = [(sh, clip_context(s, sh.cand)) for sh in fit.dropped]
-    chosen = {sh.cand.segment_id for sh in shots}
+    picks = [*shots, *(x for sh in shots for x in sh.absorbed)]
+    chosen = {sh.cand.segment_id for sh in picks}
     for sh in shots:
         for alt in sh.alternatives:
             alt_cand = by_ref.get(alt["segment_id"])
@@ -223,6 +246,8 @@ def resolve(
             )
             spares.append((spare, clip_context(s, alt_cand)))
     notes = list(fit.notes)
+    if locks["over_frames"] > 0:
+        notes.insert(0, f"locked shots exceed the target by {locks['over_frames']} frames")
     for _ in range(4):
         cuts, jump_notes = refiner.fix_jump_cuts(cuts, rate, pace)
         notes += jump_notes
@@ -252,6 +277,7 @@ def resolve(
         [b.beat_id for b in plan.beats],
     )
     metrics["retrieval"] = inp.counts
+    metrics["locks"] = locks
     metrics["solver"] = solver.describe(fit) | {"notes": notes}
     evts = refiner.events(cuts, rate)
     in_edit = [sh for c in cuts for sh in (c.shot, *c.merged_shots)]
@@ -270,7 +296,7 @@ def resolve(
             "used": sh.cand.segment_id in used,
             "alternative_to": sh.alt_of,
         }
-        for sh in [*shots, *inserted]
+        for sh in [*picks, *inserted]
     }
     beats = [
         {
@@ -280,7 +306,7 @@ def resolve(
             "share_percent": b.share_percent,
             "pool": list(dict.fromkeys(b.candidates)),
             # The storyboard: the beat's picks in their order, dropped ones included.
-            "shots": [board_shot(sh) for sh in shots if sh.beat_id == b.beat_id],
+            "shots": [board_shot(sh, rate) for sh in shots if sh.beat_id == b.beat_id],
         }
         for b in plan.beats
     ]

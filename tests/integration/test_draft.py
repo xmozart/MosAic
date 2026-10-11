@@ -300,3 +300,60 @@ def test_render_and_regenerate_save_a_changed_draft_first(drafted: Any) -> None:
     submit_generate(LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id)
     v3 = client.get(f"/api/edits/{eid}/versions/3").json()
     assert (v3["creator"], v3["reason"]) == ("system", "Saved before regenerate")
+
+
+def test_a_locked_shot_keeps_its_cut_through_later_changes(drafted: Any) -> None:
+    """M4 step 3a (ADR 0068): locking records the shot's cut, and later ops, saves and
+    re-timings keep its source range and frames exactly."""
+    _, _, client, _, eid = _fresh(drafted, 17)
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    events = d["timeline"]["tracks"][0]["events"]
+    e = events[len(events) // 2]
+    ref = e["origin"]["selection_ref"]
+    before = (
+        e["source_in"],
+        e["source_out"],
+        e["timeline_out"]["frames"] - e["timeline_in"]["frames"],
+    )
+    sneaky = {
+        "segment_id": next(s for s in _shots(d) if s["ref"] == ref)["segment_id"],
+        "source_in": {"ticks": 0, "tb": before[0]["tb"]},
+        "source_out": {"ticks": 1, "tb": before[0]["tb"]},
+        "duration": {"frames": 1, "rate": d["timeline"]["rate"]},
+    }  # the server's pin wins
+    d = client.post(
+        f"/api/edits/{eid}/draft/ops",
+        json={"op": {"kind": "lock_shot", "ref": ref, "pin": sneaky}},
+    ).json()
+    sh = next(s for s in _shots(d) if s["ref"] == ref)
+    assert sh["pin"] == {
+        "segment_id": sh["segment_id"],
+        "source_in": before[0],
+        "source_out": before[1],
+        "duration": {"frames": before[2], "rate": d["timeline"]["rate"]},
+    }
+    absorbed = [s["ref"] for s in _shots(d) if s["absorbed_by"] == ref]
+    locked_event = next(
+        x for x in d["timeline"]["tracks"][0]["events"] if x["origin"]["selection_ref"] == ref
+    )
+    assert locked_event["origin"]["merged"] == absorbed
+    for other in [s for s in _shots(d) if s["ref"] != ref and not s["absorbed_by"]][:3]:
+        d = client.post(
+            f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "remove_shot", "ref": other["ref"]}}
+        ).json()
+    saved = client.post(f"/api/edits/{eid}/versions").json()
+    after = next(
+        x for x in saved["timeline"]["tracks"][0]["events"] if x["origin"]["selection_ref"] == ref
+    )
+    assert (
+        after["source_in"],
+        after["source_out"],
+        after["timeline_out"]["frames"] - after["timeline_in"]["frames"],
+    ) == before
+    assert after["origin"]["locked"]
+    assert saved["metrics"]["locks"]["frames"] >= before[2]
+    unlocked = client.post(
+        f"/api/edits/{eid}/draft/ops",
+        json={"op": {"kind": "lock_shot", "ref": ref, "locked": False}},
+    ).json()
+    assert next(s for s in _shots(unlocked) if s["ref"] == ref)["pin"] is None

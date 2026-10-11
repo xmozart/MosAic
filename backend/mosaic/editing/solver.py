@@ -44,6 +44,10 @@ class Shot:
     alt_of: str | None = None  # a selector-named alternative to that selection
     alt_index: int = 0
     ref: str | None = None  # a storyboard's stable id, kept when the shot moves (M4)
+    # A locked shot's exact cut (src_in, src_out, frames): kept as it is (ADR 0068).
+    pin: tuple[int, int, int] | None = None
+    # Picks the pinned cut covers (two segments of one take, locked as one).
+    absorbed: list[Shot] = field(default_factory=list)
 
     @property
     def dialogue(self) -> bool:
@@ -104,6 +108,10 @@ def fit(
     kept: list[Shot] = []
     dropped: list[Shot] = []
     for s in shots:
+        if s.pin is not None:  # its length is the owner's: never trimmed or extended
+            s.lo = s.hi = s.frames = s.pin[2]
+            kept.append(s)
+            continue
         s.lo, s.hi = bounds(s, pace, rate)
         if s.hi < pace.min and not (s.locked or s.cand.user_use):
             dropped.append(s)
