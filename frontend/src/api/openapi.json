@@ -378,6 +378,47 @@
         "title": "DevicesBody",
         "type": "object"
       },
+      "DraftOpBody": {
+        "additionalProperties": false,
+        "description": "One storyboard change (ADR 0067): ``move_shot``, ``move_beat``, ``remove_shot``,\n``lock_shot`` or ``replace_shot``.",
+        "properties": {
+          "op": {
+            "discriminator": {
+              "mapping": {
+                "lock_shot": "#/components/schemas/LockShot",
+                "move_beat": "#/components/schemas/MoveBeat",
+                "move_shot": "#/components/schemas/MoveShot",
+                "remove_shot": "#/components/schemas/RemoveShot",
+                "replace_shot": "#/components/schemas/ReplaceShot"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MoveShot"
+              },
+              {
+                "$ref": "#/components/schemas/MoveBeat"
+              },
+              {
+                "$ref": "#/components/schemas/RemoveShot"
+              },
+              {
+                "$ref": "#/components/schemas/LockShot"
+              },
+              {
+                "$ref": "#/components/schemas/ReplaceShot"
+              }
+            ],
+            "title": "Op"
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "title": "DraftOpBody",
+        "type": "object"
+      },
       "EstimateBody": {
         "additionalProperties": false,
         "properties": {
@@ -434,6 +475,90 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LockShot": {
+        "additionalProperties": false,
+        "description": "Lock (or unlock) a shot: a hard constraint on every later change (invariant 10).",
+        "properties": {
+          "kind": {
+            "const": "lock_shot",
+            "default": "lock_shot",
+            "title": "Kind",
+            "type": "string"
+          },
+          "locked": {
+            "default": true,
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "title": "LockShot",
+        "type": "object"
+      },
+      "MoveBeat": {
+        "additionalProperties": false,
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "move_beat",
+            "default": "move_beat",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id",
+          "index"
+        ],
+        "title": "MoveBeat",
+        "type": "object"
+      },
+      "MoveShot": {
+        "additionalProperties": false,
+        "description": "Move a shot to ``index`` in ``beat_id`` (its own beat or another).",
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "move_shot",
+            "default": "move_shot",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "beat_id",
+          "index"
+        ],
+        "title": "MoveShot",
         "type": "object"
       },
       "OpenBody": {
@@ -566,6 +691,26 @@
         "title": "RemoveBody",
         "type": "object"
       },
+      "RemoveShot": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "remove_shot",
+            "default": "remove_shot",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "title": "RemoveShot",
+        "type": "object"
+      },
       "RenameBody": {
         "additionalProperties": false,
         "properties": {
@@ -609,6 +754,32 @@
           "edit_id"
         ],
         "title": "RenderBody",
+        "type": "object"
+      },
+      "ReplaceShot": {
+        "additionalProperties": false,
+        "description": "Replace a shot's segment with one of its alternatives or its beat's pool.",
+        "properties": {
+          "kind": {
+            "const": "replace_shot",
+            "default": "replace_shot",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "segment_id"
+        ],
+        "title": "ReplaceShot",
         "type": "object"
       },
       "ResumeBody": {
@@ -1306,7 +1477,7 @@
     },
     "/api/edits/{eid}": {
       "get": {
-        "description": "M0 has no draft yet: the current state is the latest version.",
+        "description": "The latest version, and whether its draft has unsaved changes (``draft``).",
         "operationId": "get_edit_api_edits__eid__get",
         "parameters": [
           {
@@ -1344,6 +1515,181 @@
           }
         },
         "summary": "Get Edit"
+      }
+    },
+    "/api/edits/{eid}/draft": {
+      "get": {
+        "description": "S16's storyboard: the draft's beats and shots, undo state and current timing.",
+        "operationId": "get_draft_api_edits__eid__draft_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Draft Api Edits  Eid  Draft Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Draft"
+      }
+    },
+    "/api/edits/{eid}/draft/ops": {
+      "post": {
+        "operationId": "add_draft_op_api_edits__eid__draft_ops_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftOpBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Draft Op Api Edits  Eid  Draft Ops Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Draft Op"
+      }
+    },
+    "/api/edits/{eid}/draft/redo": {
+      "post": {
+        "operationId": "redo_draft_api_edits__eid__draft_redo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Redo Draft Api Edits  Eid  Draft Redo Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Redo Draft"
+      }
+    },
+    "/api/edits/{eid}/draft/undo": {
+      "post": {
+        "operationId": "undo_draft_api_edits__eid__draft_undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undo Draft Api Edits  Eid  Draft Undo Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Draft"
       }
     },
     "/api/edits/{eid}/generate": {
@@ -1534,6 +1880,46 @@
           }
         },
         "summary": "List Versions"
+      },
+      "post": {
+        "description": "Save the draft as a new version (S16 \"Save version\"); 409 when it has no changes.",
+        "operationId": "save_version_api_edits__eid__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Version Api Edits  Eid  Versions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Version"
       }
     },
     "/api/edits/{eid}/versions/{version}": {

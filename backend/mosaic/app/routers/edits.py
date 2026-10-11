@@ -19,6 +19,7 @@ from mosaic.ai.registry import embedder
 from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
+from mosaic.editing import draft as draft_ops
 from mosaic.editing import estimate as edit_estimate
 from mosaic.editing import presets
 from mosaic.editing.cards import PAGE, edit_cards, render_rows, version_facts
@@ -191,10 +192,101 @@ def generate(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any
 
 @router.get("/edits/{eid}")
 def get_edit(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
-    """M0 has no draft yet: the current state is the latest version."""
+    """The latest version, and whether its draft has unsaved changes (``draft``)."""
+    from mosaic.editing import draft
+
     check(me, "edits.read", eid)
     with _edit(svc, me, eid) as (project, edit_id):
-        return _version(svc, project, edit_id, None)
+        out = _version(svc, project, edit_id, None)
+        with project.db.session() as s:
+            d = draft.load(s, edit_id)
+            out["draft"] = {
+                "base_version": d.base.version,
+                "dirty": d.dirty,
+                "ops": len(d.ops),
+                "can_undo": d.can_undo,
+                "can_redo": d.can_redo,
+            }
+        return out
+
+
+# ------------------------------------------------------------------------- draft
+
+
+class DraftOpBody(BaseModel):
+    """One storyboard change (ADR 0067): ``move_shot``, ``move_beat``, ``remove_shot``,
+    ``lock_shot`` or ``replace_shot``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: draft_ops.Op
+
+
+def _draft_change(
+    svc: Services, me: Principal, eid: str, action: str, op: Any = None
+) -> dict[str, Any]:
+    from mosaic.editing import draft
+    from mosaic.editing.service import change_draft, draft_state
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            change_draft(project, edit_id, action, op)
+        except draft.DraftError as exc:
+            raise HTTPException(422, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        return draft_state(project, edit_id)
+
+
+@router.get("/edits/{eid}/draft")
+def get_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """S16's storyboard: the draft's beats and shots, undo state and current timing."""
+    from mosaic.editing.service import draft_state
+
+    check(me, "edits.read", eid)
+    with _edit(svc, me, eid) as (project, edit_id):
+        try:
+            return draft_state(project, edit_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+
+@router.post("/edits/{eid}/draft/ops")
+def add_draft_op(
+    eid: str, body: DraftOpBody, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    return _draft_change(svc, me, eid, "op", body.op)
+
+
+@router.post("/edits/{eid}/draft/undo")
+def undo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    return _draft_change(svc, me, eid, "undo")
+
+
+@router.post("/edits/{eid}/draft/redo")
+def redo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    return _draft_change(svc, me, eid, "redo")
+
+
+@router.post("/edits/{eid}/versions", status_code=201)
+def save_version(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """Save the draft as a new version (S16 "Save version"); 409 when it has no changes."""
+    from mosaic.editing.draft import DraftChangedError
+    from mosaic.editing.service import save_draft
+    from mosaic.render.service import latest_version
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            number = save_draft(project, edit_id)
+        except DraftChangedError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if number is None:
+            if latest_version(project, edit_id) is None:
+                raise HTTPException(404, "this edit has no versions yet")
+            raise HTTPException(409, "the draft has no changes to save")
+        return _version(svc, project, edit_id, number)
 
 
 def _version(svc: Services, project: Project, edit_id: int, version: int | None) -> dict[str, Any]:
@@ -266,10 +358,17 @@ def get_report(
 def _start_render(
     svc: Services, me: Principal, eid: str, version: int | None, kind: str
 ) -> dict[str, Any]:
-    from mosaic.render.service import create_render, latest_version, submit_render
+    from mosaic.editing.draft import DraftChangedError
+    from mosaic.editing.service import draft_dirty
+    from mosaic.render.service import create_render, submit_render, version_to_render
 
     with _edit(svc, me, eid, write=True) as (project, edit_id):
-        v = version or latest_version(project, edit_id)
+        if version is None and draft_dirty(project, edit_id):
+            check(me, "edits.write", eid)  # rendering the draft saves it as a version
+        try:
+            v = version_to_render(project, edit_id, version)
+        except DraftChangedError as exc:
+            raise HTTPException(409, str(exc)) from None
         if v is None:
             raise HTTPException(404, "this edit has no versions yet")
         try:

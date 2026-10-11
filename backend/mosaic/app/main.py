@@ -36,6 +36,7 @@ from mosaic.app.routers import (
 from mosaic.app.routers import auth as auth_router
 from mosaic.app.routers import models as models_router
 from mosaic.app.services import Services
+from mosaic.editing.draft import DraftChangedError
 from mosaic.storage.lease import LeaseHeldError
 from mosaic.storage.placement import PlacementRefusedError
 from mosaic.storage.projects import (
@@ -97,12 +98,14 @@ def create_app(
         # A placement the folder can't take (invariant 2): a reason, never a 500.
         return JSONResponse(status_code=422, content={"detail": str(exc)})
 
+    @app.exception_handler(DraftChangedError)
     @app.exception_handler(MoveNeededError)
     @app.exception_handler(ProjectBusyError)
     @app.exception_handler(SnapshotConflictError)
     @app.exception_handler(ReadOnlyProjectError)
     async def _conflict(_request: Request, exc: Exception) -> JSONResponse:
-        # Being moved; changed here and on another computer (ADR 0022); open read-only.
+        # Being moved; changed here and on another computer (ADR 0022); open read-only;
+        # a draft that changed while it was being saved (ADR 0067).
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(LeaseHeldError)

@@ -313,10 +313,12 @@ def backfill(
     pace: PaceFrames,
     rate: str,
     chronological: bool = True,
+    by_order: bool = False,
 ) -> tuple[list[Cut], list[str]]:
     """While the edit is short, insert spare shots (best first) inside their own beat at a
     position that creates no jump cut, as close to its place in time as possible when the
-    edit is chronological. Spares are shots the solver or the jump-cut fixer
+    edit is chronological, or to its place in the beat's order with ``by_order`` (a
+    storyboard the owner arranged). Spares are shots the solver or the jump-cut fixer
     dropped, and the selector's named alternatives."""
     notes: list[str] = []
     out = list(cuts)
@@ -342,7 +344,13 @@ def backfill(
                 later[0] if later else len(out), (later[0] if later else len(out)) + 1
             )
         positions = list(candidates)
-        if chronological and beat_positions:
+        if by_order and beat_positions:
+            ideal = next(
+                (i for i in beat_positions if out[i].shot.order > shot.order),
+                beat_positions[-1] + 1,
+            )
+            positions.sort(key=lambda p: (abs(p - ideal), p))
+        elif chronological and beat_positions:
             key = shot.cand.sort_key()
             ideal = next(
                 (i for i in beat_positions if out[i].shot.cand.sort_key() > key),

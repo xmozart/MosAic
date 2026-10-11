@@ -457,6 +457,23 @@ class EditVersion(ProjectBase):
     __table_args__ = (Index("ux_edit_version", "edit_id", "version", unique=True),)
 
 
+class EditDraftOp(ProjectBase):
+    """One storyboard change in an edit's draft (ARCHITECTURE.md §13; ADR 0067): applied
+    in ``seq`` order to ``base_version``'s storyboard. Undo marks the last applied op
+    ``undone``; a new op drops the undone ones; saving a version clears the draft."""
+
+    __tablename__ = "edit_draft_op"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    edit_id: Mapped[int] = mapped_column(ForeignKey("edit.id"), index=True)
+    base_version: Mapped[int] = mapped_column(Integer)
+    seq: Mapped[int] = mapped_column(Integer)
+    op: Mapped[dict[str, Any]] = mapped_column(JSON)
+    undone: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[str] = mapped_column(String(40))
+
+    __table_args__ = (Index("ux_edit_draft_op", "edit_id", "seq", unique=True),)
+
+
 class Render(ProjectBase):
     """A preview or final render of one edit version (ARCHITECTURE.md §10). The output file
     lives under the workspace's ``renders/``; chunks are cached artifacts."""

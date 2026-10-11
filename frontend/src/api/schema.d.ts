@@ -254,11 +254,82 @@ export interface paths {
         };
         /**
          * Get Edit
-         * @description M0 has no draft yet: the current state is the latest version.
+         * @description The latest version, and whether its draft has unsaved changes (``draft``).
          */
         get: operations["get_edit_api_edits__eid__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edits/{eid}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Draft
+         * @description S16's storyboard: the draft's beats and shots, undo state and current timing.
+         */
+        get: operations["get_draft_api_edits__eid__draft_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edits/{eid}/draft/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Draft Op */
+        post: operations["add_draft_op_api_edits__eid__draft_ops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edits/{eid}/draft/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redo Draft */
+        post: operations["redo_draft_api_edits__eid__draft_redo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edits/{eid}/draft/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Draft */
+        post: operations["undo_draft_api_edits__eid__draft_undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -326,7 +397,11 @@ export interface paths {
         /** List Versions */
         get: operations["list_versions_api_edits__eid__versions_get"];
         put?: never;
-        post?: never;
+        /**
+         * Save Version
+         * @description Save the draft as a new version (S16 "Save version"); 409 when it has no changes.
+         */
+        post: operations["save_version_api_edits__eid__versions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1561,6 +1636,15 @@ export interface components {
             /** Devices */
             devices: components["schemas"]["DeviceChange"][];
         };
+        /**
+         * DraftOpBody
+         * @description One storyboard change (ADR 0067): ``move_shot``, ``move_beat``, ``remove_shot``,
+         *     ``lock_shot`` or ``replace_shot``.
+         */
+        DraftOpBody: {
+            /** Op */
+            op: components["schemas"]["MoveShot"] | components["schemas"]["MoveBeat"] | components["schemas"]["RemoveShot"] | components["schemas"]["LockShot"] | components["schemas"]["ReplaceShot"];
+        };
         /** EstimateBody */
         EstimateBody: {
             /** Project Id */
@@ -1588,6 +1672,53 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LockShot
+         * @description Lock (or unlock) a shot: a hard constraint on every later change (invariant 10).
+         */
+        LockShot: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "lock_shot";
+            /**
+             * Locked
+             * @default true
+             */
+            locked: boolean;
+            /** Ref */
+            ref: string;
+        };
+        /** MoveBeat */
+        MoveBeat: {
+            /** Beat Id */
+            beat_id: string;
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "move_beat";
+        };
+        /**
+         * MoveShot
+         * @description Move a shot to ``index`` in ``beat_id`` (its own beat or another).
+         */
+        MoveShot: {
+            /** Beat Id */
+            beat_id: string;
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "move_shot";
+            /** Ref */
+            ref: string;
         };
         /** OpenBody */
         OpenBody: {
@@ -1642,6 +1773,16 @@ export interface components {
             /** Confirm Name */
             confirm_name: string;
         };
+        /** RemoveShot */
+        RemoveShot: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "remove_shot";
+            /** Ref */
+            ref: string;
+        };
         /** RenameBody */
         RenameBody: {
             /** Name */
@@ -1662,6 +1803,21 @@ export interface components {
             final: boolean;
             /** Version */
             version?: number | null;
+        };
+        /**
+         * ReplaceShot
+         * @description Replace a shot's segment with one of its alternatives or its beat's pool.
+         */
+        ReplaceShot: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "replace_shot";
+            /** Ref */
+            ref: string;
+            /** Segment Id */
+            segment_id: string;
         };
         /**
          * ResumeBody
@@ -2171,6 +2327,142 @@ export interface operations {
             };
         };
     };
+    get_draft_api_edits__eid__draft_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_draft_op_api_edits__eid__draft_ops_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftOpBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redo_draft_api_edits__eid__draft_redo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_draft_api_edits__eid__draft_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_api_edits__eid__generate_post: {
         parameters: {
             query?: never;
@@ -2286,6 +2578,39 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_version_api_edits__eid__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -128,6 +128,17 @@ def latest_version(project: Project, edit_id: int) -> int | None:
         )
 
 
+def version_to_render(project: Project, edit_id: int, version: int | None) -> int | None:
+    """The version a render of the edit is of: ``version``, else the latest, after a
+    changed draft is saved as a ``system`` version (ARCHITECTURE.md §13; ADR 0067)."""
+    if version is not None:
+        return version
+    from mosaic.editing.service import save_draft
+
+    save_draft(project, edit_id, creator="system", reason="Saved before render")
+    return latest_version(project, edit_id)
+
+
 def get_render(project: Project, render_id: int) -> Render | None:
     with project.db.session() as s:
         r = s.get(Render, render_id)

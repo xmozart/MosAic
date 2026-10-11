@@ -43,6 +43,7 @@ class Shot:
     hi: int = 0
     alt_of: str | None = None  # a selector-named alternative to that selection
     alt_index: int = 0
+    ref: str | None = None  # a storyboard's stable id, kept when the shot moves (M4)
 
     @property
     def dialogue(self) -> bool:
@@ -50,6 +51,8 @@ class Shot:
 
     @property
     def selection_ref(self) -> str:
+        if self.ref is not None:
+            return self.ref
         if self.alt_of is not None:
             return f"{self.alt_of}~alt{self.alt_index}"
         return f"{self.beat_id}#{self.order}"

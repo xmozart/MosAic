@@ -103,6 +103,9 @@ def submit_generate(
     edit_id: int,
     cost_limit_usd: float | None = None,
 ) -> int:
+    """Generate the edit again. A changed draft is saved first, so regenerating never
+    loses the owner's unsaved storyboard changes (ADR 0067)."""
+    save_draft(project, edit_id, creator="system", reason="Saved before regenerate")
     return executor.submit(
         principal,
         JobSpec(
@@ -123,6 +126,67 @@ def submit_generate(
             ],
         ),
     )
+
+
+def draft_state(project: Project, edit_id: int) -> dict[str, Any]:
+    """The edit's draft for S16, timed now (ADR 0067)."""
+    from mosaic.editing import draft
+    from mosaic.editing.generate import edit_inputs
+
+    with project.db.session() as s:
+        d = draft.load(s, edit_id)
+        req = EditRequest.model_validate(d.base.request)
+        return draft.as_json(d, draft.timed(s, req, edit_inputs(s, req), d.board))
+
+
+def change_draft(project: Project, edit_id: int, action: str, op: Any = None) -> bool:
+    """``op`` (an ``draft.Op``), ``undo`` or ``redo``; False when undo or redo had
+    nothing to do. Raises ``draft.DraftError`` for an op that does not fit."""
+    from mosaic.editing import draft
+
+    with project.write() as s:
+        if action == "op":
+            draft.add(s, edit_id, op)
+            return True
+        return draft.undo(s, edit_id) if action == "undo" else draft.redo(s, edit_id)
+
+
+def save_draft(
+    project: Project,
+    edit_id: int,
+    *,
+    creator: str = "user",
+    reason: str = "Saved from the storyboard",
+) -> int | None:
+    """The draft as a new version, with its JSON export (invariant 7); None when the
+    edit has no version or its draft no changes. Timed in a read session, then committed
+    under the writer (``draft.DraftChangedError`` if it changed in between)."""
+    from mosaic.editing import draft
+    from mosaic.editing.generate import edit_inputs, export_path, version_json, write_export
+
+    with project.db.session() as s:
+        if draft.latest(s, edit_id) is None:
+            return None
+        base = draft.load(s, edit_id).base
+        req = EditRequest.model_validate(base.request)
+        t = draft.time_for_save(s, project.id, edit_id, edit_inputs(s, req))
+    if t is None:
+        return None
+    with project.write() as s:
+        row = draft.commit(s, edit_id, t, creator=creator, reason=reason)
+        edit = s.get(Edit, edit_id)
+        assert edit is not None
+        number, payload = row.version, version_json(edit, row)
+    write_export(export_path(project.workspace, edit_id, number), payload)
+    project.checkpoint()  # snapshots follow edit commits (ARCHITECTURE.md §4)
+    return number
+
+
+def draft_dirty(project: Project, edit_id: int) -> bool:
+    from mosaic.editing import draft
+
+    with project.db.session() as s:
+        return draft.latest(s, edit_id) is not None and draft.load(s, edit_id).dirty
 
 
 def get_version(project: Project, edit_id: int, version: int | None = None) -> EditVersion:

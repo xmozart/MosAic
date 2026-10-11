@@ -284,6 +284,8 @@ def edit(
     except ValidationError as exc:
         msgs = "; ".join(e["msg"] for e in exc.errors())
         raise click.ClickException(msgs) from None
+    from mosaic.editing.draft import DraftChangedError
+
     control = _control()
     project = _open(control, folder)
     try:
@@ -302,6 +304,8 @@ def edit(
             f"Saved {edit_ref(edit_id)} v{v.version}. "
             f"Details: mosaic report {folder} {edit_ref(edit_id)}"
         )
+    except DraftChangedError as exc:
+        raise click.ClickException(str(exc)) from exc
     finally:
         project.close()
         control.db.dispose()
@@ -398,10 +402,11 @@ def render_cmd(
     """Render an edit (default: the most recent edit, latest version, preview)."""
     from sqlalchemy import select
 
+    from mosaic.editing.draft import DraftChangedError
     from mosaic.editing.service import EditNotFoundError, edit_ref, resolve_edit
     from mosaic.jobs.executor import LocalExecutor
     from mosaic.jobs.store import JobStore
-    from mosaic.render.service import create_render, get_render, latest_version, submit_render
+    from mosaic.render.service import create_render, get_render, submit_render, version_to_render
     from mosaic.render.tasks import output_path
     from mosaic.storage.models_project import Edit
 
@@ -416,7 +421,7 @@ def render_cmd(
             if found is None:
                 raise EditNotFoundError("no edits yet; run `mosaic edit` first")
             eid = found
-        v = version or latest_version(project, eid)
+        v = version_to_render(project, eid, version)
         if v is None:
             raise EditNotFoundError(f"{edit_ref(eid)} has no versions yet")
         kind = "final" if final else "preview"
@@ -436,7 +441,7 @@ def render_cmd(
             f"Saved {output_path(project.workspace, r)} — {m['frames']} frames at {m['rate']}, "
             f"{m['loudness_lufs']} LUFS, true peak {m['true_peak_dbtp']} dBTP"
         )
-    except (EditNotFoundError, LookupError) as exc:
+    except (EditNotFoundError, LookupError, DraftChangedError) as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
         project.close()

@@ -287,7 +287,7 @@ def version_json(edit: Edit, v: EditVersion) -> dict[str, Any]:
     }
 
 
-def _write_export(path: Path, payload: dict[str, Any]) -> None:
+def write_export(path: Path, payload: dict[str, Any]) -> None:
     """The derived JSON export (invariant 7), written atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
@@ -333,7 +333,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             if not path.is_file():  # e.g. a crash between the commit and the file write
                 edit_row = s.get(Edit, edit_id)
                 assert edit_row is not None
-                _write_export(path, version_json(edit_row, latest))
+                write_export(path, version_json(edit_row, latest))
             return {"edit_id": edit_id, "version": latest.version, "reused": True}
 
     by_ref = {c.ref: c for c in cands}
@@ -421,7 +421,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         assert edit_row is not None
         payload = version_json(edit_row, row)
     path = export_path(ctx.project.workspace, edit_id, number)
-    _write_export(path, payload)
+    write_export(path, payload)
     return {
         "edit_id": edit_id,
         "version": number,

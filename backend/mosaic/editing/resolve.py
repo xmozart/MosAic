@@ -147,6 +147,21 @@ def shots_from_selection(
     return shots
 
 
+def board_shot(sh: solver.Shot) -> dict[str, Any]:
+    """A pick as the storyboard keeps it (``draft.BoardShot``)."""
+    return {
+        "ref": sh.selection_ref,
+        "segment_id": sh.cand.ref,
+        "role": sh.role,
+        "priority": sh.priority,
+        "length": sh.length,
+        "audio_intent": sh.audio_intent,
+        "reason": sh.reason,
+        "alternatives": sh.alternatives,
+        "locked": sh.locked,
+    }
+
+
 @dataclass
 class Resolved:
     """A timed edit: its timeline, beats, metrics and findings (no AI fields)."""
@@ -164,11 +179,17 @@ def resolve(
     plan: PlanOut,
     shots: list[solver.Shot],
     rejected: set[int],
+    *,
+    user_order: bool = False,
+    excluded: set[str] | frozenset[str] = frozenset(),
 ) -> Resolved:
     """Time ``shots`` (the selection, in order) against the request: fit to the target,
     order by chronology, refine each cut, fix jump cuts, backfill from alternatives and
     land on the target; then the critic's checks and the timeline. The solver times its
-    own copies: ``shots`` are left as they were, so a caller can resolve them again."""
+    own copies: ``shots`` are left as they were, so a caller can resolve them again.
+    ``user_order``: the shots' own order (beats as given, shots as given within them)
+    instead of the request's chronology, once the owner has rearranged the storyboard.
+    ``excluded``: segment refs the owner took out, never brought back as alternatives."""
     # Shallow copies: they share ``cand`` and ``alternatives``, which nothing here changes.
     shots = [dataclasses.replace(sh) for sh in shots]
     rate, pace, cands = inp.rate, inp.pace, inp.cands
@@ -177,14 +198,14 @@ def resolve(
     tolerance = target * req.tolerance_pct // 100
     shares = {b.beat_id: b.share_percent for b in plan.beats}
     fit = solver.fit(shots, shares, target, tolerance, pace, rate)
-    ordered = solver.order_shots(fit.shots, req.chronology)
+    ordered = solver.order_shots(fit.shots, "story" if user_order else req.chronology)
     cuts = [refiner.refine(sh, clip_context(s, sh.cand), pace, rate) for sh in ordered]
     spares = [(sh, clip_context(s, sh.cand)) for sh in fit.dropped]
     chosen = {sh.cand.segment_id for sh in shots}
     for sh in shots:
         for alt in sh.alternatives:
             alt_cand = by_ref.get(alt["segment_id"])
-            if alt_cand is None or alt_cand.segment_id in chosen:
+            if alt_cand is None or alt_cand.segment_id in chosen or alt_cand.ref in excluded:
                 continue
             chosen.add(alt_cand.segment_id)
             spare = solver.Shot(
@@ -213,7 +234,8 @@ def resolve(
                 tolerance,
                 pace,
                 rate,
-                chronological=req.chronology in ("strict", "mostly"),
+                chronological=not user_order and req.chronology in ("strict", "mostly"),
+                by_order=user_order,
             )
             notes += fill_notes
         refiner.land_on_target(cuts, target, rate, pace)
@@ -257,6 +279,8 @@ def resolve(
             "intent": b.intent,
             "share_percent": b.share_percent,
             "pool": list(dict.fromkeys(b.candidates)),
+            # The storyboard: the beat's picks in their order, dropped ones included.
+            "shots": [board_shot(sh) for sh in shots if sh.beat_id == b.beat_id],
         }
         for b in plan.beats
     ]
@@ -266,5 +290,6 @@ def resolve(
         "tracks": [{"kind": "video", "events": evts}],
         "selections": selections,
         "title": plan.title,
+        "order": "user" if user_order else "request",
     }
     return Resolved(timeline, beats, metrics, findings)

@@ -347,7 +347,7 @@ Behaviour:
 - An `edit` has a **draft** (a mutable op log: trim, reorder, replace, lock and so on, with undo/redo) and **versions** (immutable snapshots).
 - A version is created on AI generation, AI revision, explicit user save, and before render.
 - Each version stores parent, creator (`user | ai | system`), reason, config snapshot hash and provenance references.
-- The edit JSON export `edits/<edit_id>/v<NNN>.json` is written on version creation.
+- The edit JSON export `edits/<edit_id>/v<NNN>.json` is written on version creation. Since M4 it also carries the storyboard the version was timed from (`beats[].shots`), the order it was timed in (`timeline.order`: the request's chronology or the owner's) and the segments the owner took out (`timeline.excluded`) (ADR 0067).
 
 ## 14. Security
 
