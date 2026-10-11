@@ -10,9 +10,7 @@ JSON export is derived from it (invariant 7).
 from __future__ import annotations
 
 import hashlib
-import itertools
 from collections.abc import Mapping
-from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -28,19 +26,21 @@ from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
 from mosaic.core.settings import ProviderChoice
 from mosaic.core.time import parse_rational
-from mosaic.editing import critic, refiner, solver
 from mosaic.editing.request import (
     STORY_PRESETS,
     EditRequest,
-    PaceFrames,
     dominant_rate,
     pace_frames,
-    target_frames,
+)
+from mosaic.editing.resolve import (
+    EditInputs,
+    rejected_segments,
+    resolve,
+    shots_from_selection,
 )
 from mosaic.editing.retrieval import Candidate, retrieve
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
-from mosaic.library import decisions
 from mosaic.library.context import TripContext
 from mosaic.library.context import load as load_context
 from mosaic.storage import provenance
@@ -54,7 +54,6 @@ from mosaic.storage.models_project import (
     EditVersion,
     TechMetric,
     TranscriptSegment,
-    TranscriptWord,
     VisualObservation,
 )
 
@@ -67,19 +66,6 @@ SELECTOR_MAX_TOKENS = 16000
 
 
 CAPABILITIES = ("planner", "selector")
-
-
-@dataclass(frozen=True)
-class EditInputs:
-    """What an edit is planned from, before any AI call: the timeline rate, pace, the
-    retrieved candidates and a digest of everything they were derived from."""
-
-    rate: str
-    pace: PaceFrames
-    cands: list[Candidate]
-    counts: dict[str, int]
-    digest: str
-    trip: TripContext
 
 
 def edit_inputs(s: Session, req: EditRequest) -> EditInputs:
@@ -223,62 +209,6 @@ def check_selection(answer: SelectOut, plan: PlanOut, refs: set[str]) -> list[st
 # ------------------------------------------------------------------- loading
 
 
-def clip_context(session: Session, c: Candidate) -> refiner.ClipContext:
-    a, b = c.start, c.end
-    words = [
-        (s, e)
-        for s, e in session.execute(
-            select(TranscriptWord.start_ticks, TranscriptWord.end_ticks)
-            .where(
-                TranscriptWord.asset_id == c.asset_id,
-                TranscriptWord.start_ticks < b,
-                TranscriptWord.end_ticks > a,
-            )
-            .order_by(TranscriptWord.start_ticks)
-        )
-    ]
-    sentences = [
-        (s, e)
-        for s, e in session.execute(
-            select(TranscriptSegment.start_ticks, TranscriptSegment.end_ticks)
-            .where(
-                TranscriptSegment.asset_id == c.asset_id,
-                TranscriptSegment.start_ticks < b,
-                TranscriptSegment.end_ticks > a,
-            )
-            .order_by(TranscriptSegment.start_ticks)
-        )
-    ]
-    motion = [
-        (s, e, v)
-        for s, e, v in session.execute(
-            select(TechMetric.start_ticks, TechMetric.end_ticks, TechMetric.value)
-            .where(
-                TechMetric.asset_id == c.asset_id,
-                TechMetric.name == "motion",
-                TechMetric.start_ticks < b,
-                TechMetric.end_ticks > a,
-            )
-            .order_by(TechMetric.start_ticks)
-        )
-    ]
-    best_time = (c.obs.get("best_frame") or {}).get("time") or {}
-    best = best_time.get("ticks") if best_time.get("tb") == c.tb else None
-    return refiner.ClipContext(words, sentences, motion, best)
-
-
-def _clip_kept(s: Session) -> set[int]:
-    """Segments of clips the owner keeps (clip USE or MAYBE, or always include): their AI
-    REJECT no longer counts."""
-    from mosaic.storage.models_project import ClipDecision, Segment
-
-    keeping = select(ClipDecision.asset_id).where(
-        (ClipDecision.include == "always")
-        | (ClipDecision.disposition.in_(("USE", "MAYBE")) & ClipDecision.include.is_(None))
-    )
-    return set(s.scalars(select(Segment.id).where(Segment.asset_id.in_(keeping))))
-
-
 def _inputs_digest(session: Session, cands: list[Candidate]) -> str:
     """Everything the candidates were derived from: observations and dispositions."""
     h = hashlib.sha256()
@@ -377,27 +307,8 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             raise PermanentError(f"edit {edit_id} not found")
         req = EditRequest.model_validate(edit.request)
         inp = edit_inputs(s, req)
-        rate, pace, cands, counts, trip = inp.rate, inp.pace, inp.cands, inp.counts, inp.trip
-        target = target_frames(req.duration_s, rate)
-        tolerance = target * req.tolerance_pct // 100
-        ai_rejected = {
-            sid
-            for sid in s.scalars(
-                select(Disposition.segment_id).where(
-                    Disposition.status == "REJECT",
-                    Disposition.source == "ai",
-                    Disposition.segment_id.is_not(None),
-                )
-            )
-            if sid is not None
-        }
-        overridden = set(
-            s.scalars(select(Disposition.segment_id).where(Disposition.source == "user"))
-        )
-        overridden |= _clip_kept(s)
-        # The owner's rejections (segment or clip), plus the analysis's where the owner
-        # decided nothing (invariant 10; ADR 0042).
-        rejected = decisions.user_rejected(s) | (ai_rejected - overridden)
+        rate, pace, cands, trip = inp.rate, inp.pace, inp.cands, inp.trip
+        rejected = rejected_segments(s)
     if not cands:
         raise PermanentError(
             "no usable clips: analyze the folder first (`mosaic analyze`), or every clip "
@@ -454,90 +365,13 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     sel = sel_res.data
     assert isinstance(sel, SelectOut)
 
-    beat_index = {b.beat_id: i for i, b in enumerate(plan.beats)}
-    shots: list[solver.Shot] = []
-    for b in sel.beats:
-        for i, x in enumerate(b.selections):
-            cand = by_ref[x.segment_id]
-            shots.append(
-                solver.Shot(
-                    cand=cand,
-                    beat_id=b.beat_id,
-                    beat_index=beat_index[b.beat_id],
-                    order=i,
-                    role=x.role,
-                    priority=x.priority,
-                    length=x.length,
-                    # "dialogue" on a clip without speech means its natural sound
-                    audio_intent=(
-                        "natural_sound"
-                        if x.audio_intent == "dialogue" and not cand.has_speech
-                        else x.audio_intent
-                    ),
-                    reason=x.reason,
-                    alternatives=[a.model_dump() for a in x.alternatives],
-                )
-            )
-    shares = {b.beat_id: b.share_percent for b in plan.beats}
+    shots = shots_from_selection(plan, sel, by_ref)
     ctx.set_stage("timing")
-    fit = solver.fit(shots, shares, target, tolerance, pace, rate)
-    ordered = solver.order_shots(fit.shots, req.chronology)
     with ctx.project.db.session() as s:
-        cuts = [refiner.refine(sh, clip_context(s, sh.cand), pace, rate) for sh in ordered]
-        spares = [(sh, clip_context(s, sh.cand)) for sh in fit.dropped]
-        chosen = {sh.cand.segment_id for sh in shots}
-        for sh in shots:
-            for alt in sh.alternatives:
-                alt_cand = by_ref.get(alt["segment_id"])
-                if alt_cand is None or alt_cand.segment_id in chosen:
-                    continue
-                chosen.add(alt_cand.segment_id)
-                spare = solver.Shot(
-                    cand=alt_cand,
-                    beat_id=sh.beat_id,
-                    beat_index=sh.beat_index,
-                    order=sh.order,
-                    alt_of=sh.selection_ref,
-                    alt_index=sum(1 for sp, _ in spares if sp.alt_of == sh.selection_ref),
-                    role="b_roll",
-                    priority=1,
-                    length="medium",
-                    audio_intent="dialogue" if alt_cand.has_speech else "natural_sound",
-                    reason=f"Alternative to {sh.cand.ref}: {alt['why_not']}",
-                )
-                spares.append((spare, clip_context(s, alt_cand)))
-    notes = list(fit.notes)
-    for _ in range(4):
-        cuts, jump_notes = refiner.fix_jump_cuts(cuts, rate, pace)
-        notes += jump_notes
-        if sum(c.frames for c in cuts) < target - tolerance:
-            cuts, fill_notes = refiner.backfill(
-                cuts,
-                spares,
-                target,
-                tolerance,
-                pace,
-                rate,
-                chronological=req.chronology in ("strict", "mostly"),
-            )
-            notes += fill_notes
-        refiner.land_on_target(cuts, target, rate, pace)
-        if not any(refiner.is_jump(a, b) for a, b in itertools.pairwise(cuts)):
-            break
-    fit.shots = [c.shot for c in cuts]
-    metrics, findings = critic.evaluate(
-        cuts,
-        target,
-        tolerance,
-        rate,
-        rejected,
-        {c.day for c in cands if c.day},
-        [b.beat_id for b in plan.beats],
-    )
-    metrics["retrieval"] = counts
+        done = resolve(s, req, inp, plan, shots, rejected)
+    metrics = done.metrics
     # Made while the library was still being analysed.
     metrics["preliminary"] = preliminary or analysing(ctx)
-    metrics["solver"] = solver.describe(fit) | {"notes": notes}
     metrics["ai"] = {
         "planner": {
             "provider": plan_res.provider,
@@ -550,42 +384,6 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             "cached": sel_res.cached,
         },
         "cost_usd": round(plan_res.cost_usd + sel_res.cost_usd, 6),
-    }
-    evts = refiner.events(cuts, rate)
-    in_edit = [sh for c in cuts for sh in (c.shot, *c.merged_shots)]
-    used = {sh.cand.segment_id for sh in in_edit}
-    inserted = [sh for sh in in_edit if sh.alt_of is not None]
-    selections = {
-        sh.selection_ref: {
-            "segment_id": sh.cand.ref,
-            "beat_id": sh.beat_id,
-            "role": sh.role,
-            "priority": sh.priority,
-            "length": sh.length,
-            "audio_intent": sh.audio_intent,
-            "reason": sh.reason,
-            "alternatives": sh.alternatives,
-            "used": sh.cand.segment_id in used,
-            "alternative_to": sh.alt_of,
-        }
-        for sh in [*shots, *inserted]
-    }
-    beats = [
-        {
-            "beat_id": b.beat_id,
-            "title": b.title,
-            "intent": b.intent,
-            "share_percent": b.share_percent,
-            "pool": list(dict.fromkeys(b.candidates)),
-        }
-        for b in plan.beats
-    ]
-    timeline = {
-        "rate": rate,
-        "duration": {"frames": sum(c.frames for c in cuts), "rate": rate},
-        "tracks": [{"kind": "video", "events": evts}],
-        "selections": selections,
-        "title": plan.title,
     }
     with ctx.write() as s:
         prov = provenance.record(
@@ -610,10 +408,10 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             key=key,
             request=req.model_dump(mode="json"),
             rate=rate,
-            beats=beats,
-            timeline=timeline,
+            beats=done.beats,
+            timeline=done.timeline,
             metrics=metrics,
-            findings=[f.as_json() for f in findings],
+            findings=[f.as_json() for f in done.findings],
             provenance_id=prov,
             created_at=now_iso(),
         )
@@ -627,7 +425,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     return {
         "edit_id": edit_id,
         "version": number,
-        "events": len(evts),
+        "events": len(done.timeline["tracks"][0]["events"]),
         "blocking_ok": metrics["blocking_ok"],
         "export": str(path),
     }

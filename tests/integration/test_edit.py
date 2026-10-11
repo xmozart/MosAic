@@ -400,3 +400,49 @@ def test_card_and_render_states_follow_their_jobs(
     store.cancel(again.json()["job_id"])
     assert row(again.json()["render_id"])["status"] == "cancelled"
     assert card()["status"] == "ready"
+
+
+def test_resolve_retimes_a_selection_without_ai(
+    edited: tuple[Project, ControlDB, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deterministic half (M4 step 2a): the plan and selection a version was made
+    from, turned into fresh shots and timed again, give the version's timeline, beats,
+    findings and metrics, and make no AI call. Timing leaves its input shots unchanged."""
+    import copy
+
+    from mosaic.ai import client as ai_client
+    from mosaic.editing import generate as gen
+    from mosaic.editing import resolve as res
+
+    project, control, _ = edited
+    seen: dict[str, Any] = {}
+
+    def shots_recording(plan: Any, sel: Any, by_ref: Any) -> Any:
+        seen["plan"], seen["sel"], seen["by_ref"] = plan, sel, by_ref
+        return res.shots_from_selection(plan, sel, by_ref)
+
+    def resolve_recording(s: Any, req: Any, inp: Any, plan: Any, shots: Any, rejected: Any) -> Any:
+        seen["req"], seen["inp"], seen["rejected"] = req, inp, rejected
+        before = copy.deepcopy(shots)
+        out = res.resolve(s, req, inp, plan, shots, rejected)
+        assert shots == before, "resolve leaves its input shots as they were"
+        return out
+
+    monkeypatch.setattr(gen, "shots_from_selection", shots_recording)
+    monkeypatch.setattr(gen, "resolve", resolve_recording)
+    edit_id = generate(project, control, EditRequest(duration_s=20, variant=7))
+    stored = get_version(project, edit_id)
+
+    def no_ai(*_: Any, **__: Any) -> None:
+        raise AssertionError("resolve called the AI")
+
+    monkeypatch.setattr(ai_client.AIClient, "structured", no_ai)
+    fresh = res.shots_from_selection(seen["plan"], seen["sel"], seen["by_ref"])
+    with project.db.session() as s:
+        again = res.resolve(s, seen["req"], seen["inp"], seen["plan"], fresh, seen["rejected"])
+    assert again.timeline == stored.timeline
+    assert again.beats == stored.beats
+    assert [f.as_json() for f in again.findings] == stored.findings
+    assert again.metrics == {
+        k: v for k, v in stored.metrics.items() if k not in ("preliminary", "ai")
+    }
