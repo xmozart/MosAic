@@ -4,17 +4,40 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-**G1 — Apple Developer ID (M3 signing and notarization).** Once the M3.6 GitHub runs (including the unsigned `desktop` workflow) are green and recorded in `docs/reports/M3.md`, M3 is complete except signing. Then, please either:
-1. Add the GitHub repository secrets `APPLE_CERTIFICATE` (base64 of the Developer ID Application `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`, then run the `desktop` workflow. Never paste them into a chat or a file. Or:
-2. Say "defer signing": the agent then continues to M4 and keeps signing as an open item.
-
-Optional: try the DMG (`make desktop-bundle`) on a second Mac without developer tools. Still open: Q-1, Q-2, Q-3 (`docs/OPEN_QUESTIONS.md`).
+Nothing blocks the work now. Coming up:
+- **G1, later (M4 acceptance 1):** a real 2–4 hour trip filmed on several cameras, for the benchmark edit. Airshow (about 90 min, GoPro only) and Dubai (about 4 min) don't qualify. Put it under the Samples folder (`eval.corpus_dir` = `/Volumes/Extreme SSD/Samples`).
+- **Signing (deferred at G1 on 2026-10-11):** add the GitHub secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` whenever you like. Never paste them into a chat or a file.
+- Optional: try the DMG on a second Mac without developer tools. Still open: Q-1, Q-2, Q-3 (`docs/OPEN_QUESTIONS.md`).
 
 ## Current
 
-- **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
-- **Step:** M3.6b's `ci` run (38108958737) passed memory (worker 483 MB) but missed two timing budgets on the slower runner (list page 330 ms, one 5,000-clip filter 318 ms); M3.6c skips the migration when a project is at head (ADR 0064). Pending the M3.6c GitHub runs. When green, record them in `docs/reports/M3.md` and wait at G1. Next: M4 after G1 or "defer signing".
-- **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
+- **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
+- **Step:** M4.2a, extracting a pure `resolve()` from `generate_task`.
+- **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
+
+## M4 plan
+
+The final gate is G6: the benchmark edits and the rubric. Real footage and real AI are needed only for acceptance 1; the rest runs in `make ci` with fakes.
+- [x] 1. Edit request v2: arc and beats, weights, rules, photo share, shot lengths, transitions, audio, loudness, music (ADR 0066)
+- [ ] 2a. A pure `resolve(selection, request, locks)` extracted from `generate_task` (solver, refiner, critic; no AI)
+- [ ] 2b. Drafts and versions: a draft op log with undo/redo, findings as rows, `POST /versions`, a version before every render
+- [ ] 3a. Solver v2: locks keep source in/out, frames and their slot in the beat; infeasibility in frames (also in the estimate)
+- [ ] 3b. Regenerate one beat (selector v3), the story, or everything
+- [ ] 4. Regeneration granularity (PRODUCT.md §8): duration changes without AI, faster/slower per beat, alternatives, more/less of a category, opening/ending
+- [ ] 5. Retrieval and prompts v3: weights, rules, photo share, itinerary beats, must-include/avoid, edit categories by tag frequency; `EDIT_VERSION` bump
+- [ ] 6a. Photos in edits: bursts and duplicates, still events, subject-aware pan/zoom from saliency (no faces)
+- [ ] 6b. Still rendering: pan/zoom, blurred fill with `gblur` (never the GPL `boxblur`), EXIF orientation
+- [ ] 7. Subject crop for non-native aspect ratios (smoothed saliency, center fallback)
+- [ ] 8. Cut refiner v2: J- and L-cuts (audio up to 1 s, in frames), speech-aware in/out, separate audio chunks
+- [ ] 9a. Transitions: dissolves and dips as transition chunks (ADR 0066 mapping)
+- [ ] 9b. Title cards from context only (Pillow and Geist PNGs; the build has no `drawtext`)
+- [ ] 9c. Music bed: one track, fades, static level, fixed ducking under speech; path checks
+- [ ] 10. Critic v2 and findings: deterministic checks, the optional AI critic (event ids only), apply/ignore/apply-all creating child versions
+- [ ] 11. Compare and revert; render reuse by assembly key (acceptance 5)
+- [ ] 12. Final render profiles and exports: H.264/HEVC hardware, ProRes 422 (VideoToolbox, then `prores_ks`), 1080p/4K, SRT, report, EDL JSON
+- [ ] 13. S24 Help me label: questions from co-occurrence, `person_link` and context records only, no face data (acceptance 7)
+- [ ] 14. Screens with stories in both themes: a S14 full, b S15, c S16, d S17 findings, e S18, f S19, g S24
+- [ ] 15. Acceptance tests, `make eval`, `docs/reports/M4.md`, then G6
 
 ## M0 plan
 
