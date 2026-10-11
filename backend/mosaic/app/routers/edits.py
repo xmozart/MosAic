@@ -250,14 +250,15 @@ def get_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, An
             out = draft_state(project, edit_id)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
-        # S16's "regenerating" beats, from the jobs still running (so a reload keeps them).
-        out["regenerating"] = sorted(
-            {
-                str(j.params["beat_id"])
-                for j in svc.store.jobs(project.id, True, kind="edit")
-                if j.params.get("edit_id") == edit_id and "beat_id" in j.params
-            }
-        )
+        # S16's "regenerating" state, from the jobs still running (so a reload keeps it):
+        # the beats being regenerated, and the story or edit as a whole (ADR 0069, 0070).
+        running = [
+            j.params
+            for j in svc.store.jobs(project.id, True, kind="edit")
+            if j.params.get("edit_id") == edit_id
+        ]
+        out["regenerating"] = sorted({str(p["beat_id"]) for p in running if "beat_id" in p})
+        out["regenerating_scope"] = next((p["scope"] for p in running if "scope" in p), None)
         return out
 
 
@@ -276,6 +277,25 @@ def undo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, A
 @router.post("/edits/{eid}/draft/redo")
 def redo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     return _draft_change(svc, me, eid, "redo")
+
+
+@router.post("/edits/{eid}/regenerate", status_code=202)
+def regenerate_edit(
+    eid: str,
+    scope: str = Query(..., pattern="^(story|all)$"),
+    svc: Services = Svc,
+    me: Principal = Me,
+) -> dict[str, Any]:
+    """Regenerate the story (new beats from the edit's own clips) or the whole edit; the
+    owner's locked shots stay (ADR 0070)."""
+    from mosaic.editing.service import submit_regenerate
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            return {"job_id": submit_regenerate(svc.executor, me, project, edit_id, scope)}
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
 
 
 @router.post("/edits/{eid}/beats/{bid}/regenerate", status_code=202)

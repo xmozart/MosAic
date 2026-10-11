@@ -108,11 +108,11 @@ SSE event types:
 | POST | `/edits/estimate` `{project_id, request}` (time, cost, plan reuse, enough footage; ADR 0047) | S14 |
 | POST | `/edits/{eid}/generate` (job; emits `edit.progress`) | S14, S15 |
 | GET | `/edits/{eid}` (latest version, its `draft` state, beats, events, facts) · `/edits/{eid}/versions/{v}` — both with `facts` and the version's `renders` (ADR 0049) | S16, S17 |
-| GET | `/edits/{eid}/draft` (the storyboard: beats and shots, undo state, timed now; ADR 0067) · `regenerating`: beat ids with a regenerate job running (ADR 0069) | S16 |
+| GET | `/edits/{eid}/draft` (the storyboard: beats and shots, undo state, timed now; ADR 0067) · `regenerating`: beat ids with a regenerate job running (ADR 0069), `regenerating_scope`: `story`/`all` while one runs (ADR 0070) | S16 |
 | POST | `/edits/{eid}/draft/ops` `{op}` (`move_shot`, `move_beat`, `remove_shot`, `lock_shot`, `replace_shot`; faster/slower in M4 step 4; trim with M8's trim handles) · `/draft/undo` · `/draft/redo` | S16 |
 | POST | `/edits/{eid}/versions` (commit draft) · GET `/edits/{eid}/versions` · `/versions/{v}` | S16, S18 |
 | GET | `/edits/{eid}/compare?a=&b=` (change list) | S18 |
-| POST | `/edits/{eid}/beats/{bid}/regenerate` (job; locks keep their cut and slot, ADR 0069) · `/edits/{eid}/regenerate?scope=story\|all` (M4 step 4) | S16 |
+| POST | `/edits/{eid}/beats/{bid}/regenerate` (job; locks keep their cut and slot, ADR 0069) · `/edits/{eid}/regenerate?scope=story\|all` (job; locks kept, ADR 0070) | S16 |
 | GET | `/edits/{eid}/shots/{evt}/alternatives` | S16 |
 | GET | `/edits/{eid}/findings` · POST `/findings/{fid}/apply` · `/ignore` · `/findings/apply-all` (the AI critic; M4, not in M2) | S17 |
 | POST | `/edits/{eid}/preview` (render job) | S16, S17 |

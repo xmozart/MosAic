@@ -9,7 +9,7 @@ import pytest
 
 from mosaic.ai.prompts.reselect.schema_v1 import Output as ReselectOut
 from mosaic.editing import regenerate
-from mosaic.editing.draft import Board, DraftError
+from mosaic.editing.draft import Board, DraftError, Pin
 from mosaic.editing.retrieval import Candidate
 
 
@@ -176,3 +176,172 @@ def test_new_refs_never_reuse_one_the_edit_had() -> None:
         "b1#13",
         "b1#14",
     ]
+
+
+def test_variants_never_collide() -> None:
+    seen = {regenerate.pair(a, b) for a in range(60) for b in range(60)}
+    assert len(seen) == 3600
+
+
+def test_the_story_is_made_from_the_edits_own_clips() -> None:
+    board = _board()
+    cands = [_cand(f"seg_{n:06d}") for n in (1, 2, 7, 8, 99)]
+    story = regenerate.scope_candidates("story", board, cands)
+    assert [c.ref for c in story] == ["seg_000001", "seg_000002", "seg_000007"]
+    everything = regenerate.scope_candidates("all", board, cands)
+    assert [c.ref for c in everything] == ["seg_000001", "seg_000002", "seg_000007", "seg_000008"]
+
+
+def _plan_and_selection(
+    picks: dict[str, list[str]], pools: dict[str, list[str]]
+) -> tuple[Any, Any]:
+    from mosaic.ai.prompts.planner.schema_v2 import Output as PlanOut
+    from mosaic.ai.prompts.selector.schema_v2 import Output as SelectOut
+
+    plan = PlanOut.model_validate(
+        {
+            "title": "New",
+            "beats": [
+                {
+                    "beat_id": b,
+                    "title": f"Beat {b}",
+                    "intent": "New intent",
+                    "share_percent": 50,
+                    "candidates": pools[b],
+                }
+                for b in picks
+            ],
+        }
+    )
+    sel = SelectOut.model_validate(
+        {
+            "beats": [
+                {
+                    "beat_id": b,
+                    "selections": [
+                        {
+                            "segment_id": r,
+                            "role": "b_roll",
+                            "priority": 3,
+                            "length": "medium",
+                            "audio_intent": "natural_sound",
+                            "reason": "New",
+                            "alternatives": [],
+                        }
+                        for r in refs
+                    ],
+                }
+                for b, refs in picks.items()
+            ]
+        }
+    )
+    return plan, sel
+
+
+def test_a_new_story_gets_refs_no_version_used() -> None:
+    plan, sel = _plan_and_selection(
+        {"b1": ["seg_000002"], "b2": ["seg_000003"]}, {"b1": ["seg_000002"], "b2": ["seg_000003"]}
+    )
+    cands = {f"seg_{n:06d}": _cand(f"seg_{n:06d}") for n in range(1, 11)}
+    board = regenerate.board_from_selection(plan, sel, cands, {"b1#0", "b1#4", "b2#0"})
+    assert [[s.ref for s in b.shots] for b in board.beats] == [["b1#5"], ["b2#1"]]
+
+
+def test_locked_shots_are_carried_into_a_new_story() -> None:
+    old = _board()  # locked: b1#0 (seg 1), b1#3 (seg 4) with b1#4 (seg 5) absorbed
+    pin = {
+        "segment_id": "seg_000004",
+        "source_in": {"ticks": 0, "tb": "1/1000"},
+        "source_out": {"ticks": 3000, "tb": "1/1000"},
+        "duration": {"frames": 90, "rate": "30/1"},
+    }
+    old.beats[0].shots[3].pin = Pin.model_validate(pin)
+    # The new selection picks seg 1 in b2, seg 5 (absorbed) on its own, not seg 4 at all.
+    plan, sel = _plan_and_selection(
+        {"b1": ["seg_000008", "seg_000005"], "b2": ["seg_000009", "seg_000001"]},
+        {"b1": ["seg_000008", "seg_000004", "seg_000005"], "b2": ["seg_000009", "seg_000001"]},
+    )
+    cands = {f"seg_{n:06d}": _cand(f"seg_{n:06d}") for n in range(1, 11)}
+    new = regenerate.carry_locks(
+        regenerate.board_from_selection(plan, sel, cands, {"b1#9"}), old, cands
+    )
+    b1, b2 = (b.shots for b in new.beats)
+    # seg 1 stays where the new selection put it, as the locked shot with its ref.
+    assert [s.segment_id for s in b2] == ["seg_000009", "seg_000001"]
+    assert b2[1].ref == "b1#0"
+    assert b2[1].locked
+    # seg 4 goes into b1 (its pool holds it) in time order, with its absorbed pick and
+    # its pin; the new selection's own pick of seg 5 is dropped.
+    assert [s.segment_id for s in b1] == ["seg_000004", "seg_000005", "seg_000008"]
+    assert b1[0].pin is not None
+    assert b1[0].pin.duration.frames == 90
+    assert b1[1].absorbed_by == "b1#3"
+    assert new.excluded == ["seg_000099"]
+    assert not new.user_order
+
+
+def test_a_lock_no_new_pool_holds_goes_to_the_beat_filmed_around_it() -> None:
+    from datetime import UTC, datetime
+
+    old = _board()
+    plan, sel = _plan_and_selection(
+        {"b1": ["seg_000002"], "b2": ["seg_000006"]},
+        {"b1": ["seg_000002"], "b2": ["seg_000006"]},
+    )
+    cands = {f"seg_{n:06d}": _cand(f"seg_{n:06d}") for n in range(1, 11)}
+    times = {
+        "seg_000002": 9,
+        "seg_000006": 30,
+        "seg_000001": 10,
+        "seg_000004": 40,
+        "seg_000005": 41,
+    }
+    for ref, minute in times.items():
+        cands[ref].capture = datetime(2026, 7, 15, 9, minute, tzinfo=UTC)
+    new = regenerate.carry_locks(
+        regenerate.board_from_selection(plan, sel, cands, set()), old, cands
+    )
+    b1, b2 = new.beats
+    # seg 1 (09:10) follows seg 2 (09:09) in b1; seg 4 and its absorbed seg 5 follow seg 6 in b2.
+    assert [s.segment_id for s in b1.shots] == ["seg_000002", "seg_000001"]
+    assert [s.segment_id for s in b2.shots] == ["seg_000006", "seg_000004", "seg_000005"]
+    assert {"seg_000004", "seg_000005"} <= set(b2.pool), "the whole locked cut is in the pool"
+    assert "seg_000001" in b1.pool
+
+
+def test_a_lock_whose_clip_is_gone_is_kept_at_the_end() -> None:
+    old = _board()
+    plan, sel = _plan_and_selection({"b1": ["seg_000002"]}, {"b1": ["seg_000002"]})
+    cands = {f"seg_{n:06d}": _cand(f"seg_{n:06d}") for n in (2,)}  # 1, 4 and 5 are gone
+    new = regenerate.carry_locks(
+        regenerate.board_from_selection(plan, sel, cands, set()), old, cands
+    )
+    assert [s.segment_id for s in new.beats[0].shots] == [
+        "seg_000002",
+        "seg_000001",
+        "seg_000004",
+        "seg_000005",
+    ]
+
+
+def test_a_pin_from_another_frame_rate_is_recut_not_kept() -> None:
+    from mosaic.editing.draft import board_shots
+
+    board = _board()
+    shot = board.beats[0].shots[3]
+    shot.pin = Pin.model_validate(
+        {
+            "segment_id": "seg_000004",
+            "source_in": {"ticks": 0, "tb": "1/1000"},
+            "source_out": {"ticks": 3000, "tb": "1/1000"},
+            "duration": {"frames": 75, "rate": "25/1"},
+        }
+    )
+    cands = {f"seg_{n:06d}": _cand(f"seg_{n:06d}") for n in range(1, 11)}
+    _, shots, notes = board_shots(board, cands, "30/1")
+    locked = next(s for s in shots if s.selection_ref == "b1#3")
+    assert locked.locked
+    assert locked.pin is None, "re-cut at the new rate"
+    assert any("no longer applies" in n for n in notes)
+    _, shots, _ = board_shots(board, cands, "25/1")
+    assert next(s for s in shots if s.selection_ref == "b1#3").pin == (0, 3000, 75)

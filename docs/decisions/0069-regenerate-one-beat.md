@@ -17,7 +17,7 @@ PRODUCT.md §8 lets the owner regenerate the whole edit, the story only, or one 
   - Locked shots, and picks absorbed into a locked cut (ADR 0068), keep their index in the beat. This is the "same relative position" of acceptance 2.
   - The new picks fill the free slots in order, and any extra picks are appended. They get new refs in the beat's numbering (`b2#7`, …), so they never take over an old pick's ref.
   - Other beats, the excluded list and the owner's order flag are unchanged.
-- **A fresh take each time.** The AI call's variant is the beat's take number (how many times it was regenerated, plus one) within the edit's own request variant. Regenerating it again asks again, and two takes of an edit (`--variant`) get their own fresh takes, while a retry of the same take replays the cache. The key, `edit.beat`, covers:
+- **A fresh take each time.** The AI call's variant pairs the beat's take number (how many times it was regenerated, plus one) with the edit's own request variant (a Cantor pairing since ADR 0070, so no two pairs collide). Regenerating it again asks again, and two takes of an edit (`--variant`) get their own fresh takes, while a retry of the same take replays the cache. The key, `edit.beat`, covers:
   - the base version's key, the beat and the take;
   - the candidates and the rejected segments;
   - the selector's provider and model, and the prompt version.

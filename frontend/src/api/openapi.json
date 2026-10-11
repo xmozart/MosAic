@@ -1909,6 +1909,58 @@
         "summary": "Preview"
       }
     },
+    "/api/edits/{eid}/regenerate": {
+      "post": {
+        "description": "Regenerate the story (new beats from the edit's own clips) or the whole edit; the\nowner's locked shots stay (ADR 0070).",
+        "operationId": "regenerate_edit_api_edits__eid__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "pattern": "^(story|all)$",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Regenerate Edit Api Edits  Eid  Regenerate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Regenerate Edit"
+      }
+    },
     "/api/edits/{eid}/report": {
       "get": {
         "operationId": "get_report_api_edits__eid__report_get",

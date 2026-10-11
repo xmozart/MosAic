@@ -238,6 +238,43 @@ def submit_regenerate_beat(
     )
 
 
+def submit_regenerate(
+    executor: Executor,
+    principal: Principal,
+    project: Project,
+    edit_id: int,
+    scope: str,
+) -> int:
+    """Regenerate the story (a new structure from the edit's own clips) or the whole edit,
+    keeping the owner's locked shots (ADR 0070). A changed draft is saved first."""
+    from mosaic.editing import draft, regenerate
+
+    if scope not in regenerate.SCOPES:
+        raise ValueError(f"scope must be one of {', '.join(regenerate.SCOPES)}")
+    with project.db.session() as s:
+        draft.load(s, edit_id)  # LookupError: no version to regenerate yet
+    save_draft(project, edit_id, creator="system", reason="Saved before regenerate")
+    return executor.submit(
+        principal,
+        JobSpec(
+            project_id=project.id,
+            kind="edit",
+            params={"edit_id": edit_id, "scope": scope},
+            cost_limit_usd=job_cost_limit(principal),
+            tasks=[
+                TaskSpec(
+                    kind="edit.regenerate",
+                    stage="edit",
+                    resource_class=ResourceClass.AI_API,
+                    params={"edit_id": edit_id, "scope": scope},
+                    label=f"regenerating the {'story' if scope == 'story' else 'edit'} of "
+                    f"{edit_ref(edit_id)}",
+                )
+            ],
+        ),
+    )
+
+
 def get_version(project: Project, edit_id: int, version: int | None = None) -> EditVersion:
     with project.db.session() as s:
         q = select(EditVersion).where(EditVersion.edit_id == edit_id)

@@ -488,3 +488,58 @@ def test_a_change_made_while_the_ai_answers_is_kept(
     assert kept["locked"], "the owner's change is kept"
     assert landed, "the op landed during the AI call"
     assert fake.CALLS.count("reselect") == calls + 1, "the redo replays the cache"
+
+
+def test_regenerating_the_edit_or_its_story_keeps_the_locks(
+    drafted: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PRODUCT.md §8 (ADR 0070): the whole edit, or the story from the edit's own clips,
+    regenerated with the owner's locked shots kept, cut and all."""
+    from mosaic.ai import client as ai_client
+    from tests.support.runner import run_job
+
+    _, control, client, _, eid = _fresh(drafted, 22, 43)
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    in_edit = [e["origin"]["selection_ref"] for e in d["timeline"]["tracks"][0]["events"]]
+    chosen = in_edit[:2]
+    for ref in chosen:
+        d = client.post(
+            f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": ref}}
+        ).json()
+    pins = {s["ref"]: s["pin"] for s in _shots(d) if s["ref"] in chosen}
+    variants: list[int] = []
+    real = ai_client.AIClient.structured
+
+    def spying(self: Any, capability: str, *args: Any, **kwargs: Any) -> Any:
+        if capability == "planner":
+            variants.append(kwargs["variant"])
+        return real(self, capability, *args, **kwargs)
+
+    monkeypatch.setattr(ai_client.AIClient, "structured", spying)
+    for scope in ("all", "story"):
+        before = client.get(f"/api/edits/{eid}/draft").json()
+        clips_before = {s["segment_id"] for s in _shots(before)}
+        started = client.post(f"/api/edits/{eid}/regenerate", params={"scope": scope})
+        assert started.status_code == 202, started.text
+        queued = client.get(f"/api/edits/{eid}/draft").json()
+        assert queued["regenerating_scope"] == scope, "a reload shows it running"
+        assert run_job(control, started.json()["job_id"]) == "done"
+        v = client.get(f"/api/edits/{eid}").json()
+        assert v["creator"] == "ai"
+        assert v["metrics"]["regenerated"]["scope"] == scope
+        after = client.get(f"/api/edits/{eid}/draft").json()
+        assert after["regenerating_scope"] is None
+        kept = {s["ref"]: s for s in _shots(after) if s["ref"] in chosen}
+        assert set(kept) == set(chosen)
+        assert all(kept[r]["locked"] and kept[r]["pin"] == pins[r] for r in chosen)
+        events = {e["origin"]["selection_ref"]: e for e in v["timeline"]["tracks"][0]["events"]}
+        for r in chosen:
+            assert events[r]["source_in"] == pins[r]["source_in"]
+            assert events[r]["source_out"] == pins[r]["source_out"]
+        if scope == "story":
+            assert {s["segment_id"] for s in _shots(after)} <= clips_before, "no new clips"
+    assert client.post(f"/api/edits/{eid}/regenerate", params={"scope": "beat"}).status_code == 422
+    assert client.post(f"/api/edits/{eid}/regenerate").status_code == 422, "scope is required"
+    assert len(variants) == 2
+    assert len(set(variants)) == 2, "a story take and an edit take never share an answer"
+    assert all(v < 0 for v in variants), "never an edit's own --variant"

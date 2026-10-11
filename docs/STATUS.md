@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.4, regeneration granularity (story/all with locks, duration without AI, faster/slower, alternatives, categories, opening/ending).
+- **Step:** M4.4b, duration changes without AI, faster/slower per beat, alternatives.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
 ## M4 plan
@@ -23,7 +23,9 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 2b. Drafts and versions: storyboard ops with undo/redo, `POST /versions`, a version before every render or regenerate (ADR 0067; findings as rows move to step 10)
 - [x] 3a. Solver v2: a lock pins the shot's source range and frames; absorbed picks; infeasibility in frames (ADR 0068; the estimate gets it with S14 in 14a)
 - [x] 3b. Regenerate one beat around its locks (`reselect` v1; ADR 0069; acceptance 2)
-- [ ] 4. Regeneration granularity (PRODUCT.md §8): the story or everything keeping locks, duration changes without AI, faster/slower per beat, alternatives, more/less of a category, opening/ending
+- [x] 4a. Regenerate the story (from the edit's own clips) or the whole edit, keeping locks (ADR 0070)
+- [ ] 4b. Duration changes without AI (acceptance 3), faster/slower per beat, a shot's alternatives
+- [ ] 4c. More/less of a category, stronger opening, different ending
 - [ ] 5. Retrieval and prompts v3: weights, rules, photo share, itinerary beats, must-include/avoid, edit categories by tag frequency; `EDIT_VERSION` bump
 - [ ] 6a. Photos in edits: bursts and duplicates, still events, subject-aware pan/zoom from saliency (no faces)
 - [ ] 6b. Still rendering: pan/zoom, blurred fill with `gblur` (never the GPL `boxblur`), EXIF orientation
