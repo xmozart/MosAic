@@ -37,8 +37,12 @@ def _classify(ffmpeg_bin: FFmpegBinaries, path: Path) -> tuple[str, str]:
 
 
 def _videos(trip: str, pattern: str) -> list[Path]:
+    """The trip's clips; hidden files (macOS ``._`` sidecars on exFAT drives) are not
+    clips, as the scan also skips them."""
     folder = REAL / trip
-    return sorted(p for p in folder.glob(pattern) if p.is_file()) if folder.is_dir() else []
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.glob(pattern) if p.is_file() and not p.name.startswith("."))
 
 
 @pytest.mark.skipif(not _videos("Airshow", "GX*.MP4"), reason="no real GoPro footage here")

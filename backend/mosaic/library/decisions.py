@@ -15,8 +15,9 @@ segments in: its best segment is forced (the editor's ``user_use``), the others 
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from sqlalchemy import Select, case, delete, func, select
 from sqlalchemy.orm import Session
@@ -77,8 +78,32 @@ def for_segments(s: Session, asset: Asset, segments: list[Segment]) -> dict[int,
     return resolve(segments, effective(s, [g.id for g in segments]), s.get(ClipDecision, asset.id))
 
 
+class SegmentFields(Protocol):
+    """What ``resolve`` reads of a segment (a ``Segment``, or a row of its columns)."""
+
+    @property
+    def id(self) -> int: ...
+    @property
+    def group_best(self) -> bool: ...
+    @property
+    def quality(self) -> float | None: ...
+
+
+class DispositionFields(Protocol):
+    """What ``resolve`` reads of a disposition (a ``Disposition``, or a row of it)."""
+
+    @property
+    def source(self) -> str: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def reasons(self) -> list[Any]: ...
+
+
 def resolve(
-    segments: list[Segment], rows: dict[int, Disposition], clip: ClipDecision | None
+    segments: Sequence[SegmentFields],
+    rows: Mapping[int, DispositionFields],
+    clip: ClipDecision | None,
 ) -> dict[int, SegmentDecision]:
     """``for_segments`` on preloaded rows (the segments' effective dispositions and the
     clip's decision), for callers that batch many clips."""

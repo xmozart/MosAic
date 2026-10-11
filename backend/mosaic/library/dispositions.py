@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import statistics
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, NamedTuple
@@ -197,8 +197,38 @@ def decide(reasons: list[Reason]) -> str:
 
 def effective(session: Session, segment_ids: list[int]) -> dict[int, Disposition]:
     """The disposition in force per segment: the user's if there is one, else the AI's."""
-    out: dict[int, Disposition] = {}
-    for row in session.scalars(select(Disposition).where(Disposition.segment_id.in_(segment_ids))):
+    return _in_force(
+        session.scalars(select(Disposition).where(Disposition.segment_id.in_(segment_ids)))
+    )
+
+
+class InForce(NamedTuple):
+    """The columns of a disposition that decide a segment's status."""
+
+    segment_id: int | None
+    source: str
+    status: str
+    reasons: list[Any]
+
+
+def effective_for_clips(session: Session, asset_ids: list[int]) -> dict[int, InForce]:
+    """``effective`` for every segment of these clips, in one query, as plain rows."""
+    return _in_force(
+        InForce(*row)
+        for row in session.execute(
+            select(
+                Disposition.segment_id,
+                Disposition.source,
+                Disposition.status,
+                Disposition.reasons,
+            ).where(Disposition.asset_id.in_(asset_ids), Disposition.segment_id.is_not(None))
+        )
+    )
+
+
+def _in_force[R: (Disposition, InForce)](rows: Iterable[R]) -> dict[int, R]:
+    out: dict[int, R] = {}
+    for row in rows:
         assert row.segment_id is not None
         current = out.get(row.segment_id)
         if current is None or row.source == "user":
@@ -276,9 +306,9 @@ def segment_facts(
     if segments is None:
         segments = session.scalars(select(Segment).where(Segment.asset_id == asset.id))
     for seg in segments:
-        a, b = seg.usable_start_ticks, seg.usable_end_ticks
-        if b <= a:
-            a, b = seg.start_ticks, seg.end_ticks
+        a, b = metric_window(
+            seg.start_ticks, seg.end_ticks, seg.usable_start_ticks, seg.usable_end_ticks
+        )
         at_sample: dict[str, list[_Metric]] = {}
         in_range: dict[str, list[_Metric]] = {}
         if a == b:  # a photo's segment is the one frame at 0
@@ -306,6 +336,61 @@ def segment_facts(
             frozen_fraction=frozen / (b - a) if b > a else 0.0,
             still=asset.kind in ("photo", "live_photo"),
         )
+    return out
+
+
+def metric_window(start: int, end: int, usable_start: int, usable_end: int) -> tuple[int, int]:
+    """The ticks a segment's metrics are read over: its usable range, else all of it."""
+    if usable_end <= usable_start:
+        return start, end
+    return usable_start, usable_end
+
+
+GYRO_BATCH = 500  # clips per telemetry lookup (bound parameters)
+
+
+def shake_percentiles(
+    session: Session, windows: Mapping[int, Sequence[tuple[int, int, int]]]
+) -> dict[int, list[float]]:
+    """Per segment, the known percentiles of its clip's shake ranges that overlap it: the
+    percentiles of ``segment_facts``'s ``shake``, read for a few segments without loading
+    their clips' every range (``windows``: asset id → (segment id, start, end) as
+    ``metric_window`` gives them). One query per clip, on the clip's ranges of one metric
+    in time order (``ix_tech_metric_asset_name_start``). Retrieval reads these for its
+    final candidates only (ADR 0065)."""
+    assets = list(windows)
+    gyro: set[int] = set()
+    for n in range(0, len(assets), GYRO_BATCH):
+        gyro.update(
+            session.scalars(
+                select(TechMetric.asset_id)
+                .where(
+                    TechMetric.asset_id.in_(assets[n : n + GYRO_BATCH]),
+                    TechMetric.name == "shake_gyro",
+                )
+                .distinct()
+            )
+        )
+    out: dict[int, list[float]] = {}
+    for aid, ws in windows.items():
+        for sid, _, _ in ws:
+            out[sid] = []
+        lo, hi = min(a for _, a, _ in ws), max(b for _, _, b in ws)
+        name = shake_metric_name({"shake_gyro"} if aid in gyro else set())
+        for start, end, pct in session.execute(
+            select(TechMetric.start_ticks, TechMetric.end_ticks, TechMetric.percentile).where(
+                TechMetric.asset_id == aid,
+                TechMetric.name == name,
+                TechMetric.sample_id.is_(None),
+                TechMetric.start_ticks < hi,
+                TechMetric.end_ticks > lo,
+            )
+        ):
+            if pct is None:
+                continue
+            for sid, a, b in ws:
+                if start < b and end > a:
+                    out[sid].append(pct)
     return out
 
 

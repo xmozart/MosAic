@@ -54,7 +54,7 @@ def _reference(s: Any, asset: Asset) -> dict[int, dict[str, Any]]:
 
 @pytest.mark.parametrize("seed", range(6))
 def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
-    from mosaic.library.dispositions import segment_facts
+    from mosaic.library.dispositions import metric_window, segment_facts, shake_percentiles
     from mosaic.library.quality import SHAKE_METRICS
 
     rnd = random.Random(seed)
@@ -172,6 +172,20 @@ def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
                         provenance_id=prov,
                     )
                 )
+        if shake_name == "shake_gyro":
+            # Optical shake beside the gyro's: both readers must ignore it.
+            for lo in range(0, 60_000, 7_000):
+                s.add(
+                    TechMetric(
+                        asset_id=asset.id,
+                        start_ticks=lo,
+                        end_ticks=lo + 3_000,
+                        name="shake",
+                        value=rnd.random(),
+                        percentile=rnd.random(),
+                        provenance_id=prov,
+                    )
+                )
     with p.db.session() as s:
         asset = s.scalars(select(Asset)).one()
         want = _reference(s, asset)
@@ -179,9 +193,25 @@ def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
         shake_only = segment_facts(s, asset, only=SHAKE_METRICS)
         loaded = list(s.scalars(select(Segment).where(Segment.asset_id == asset.id)))
         given = segment_facts(s, asset, only=SHAKE_METRICS, segments=loaded)
+        # Retrieval's final candidates read only their shake percentiles (ADR 0065).
+        windows = {
+            asset.id: [
+                (
+                    g.id,
+                    *metric_window(
+                        g.start_ticks, g.end_ticks, g.usable_start_ticks, g.usable_end_ticks
+                    ),
+                )
+                for g in loaded
+            ]
+        }
+        few = shake_percentiles(s, windows)
     # Retrieval reads only shake: the same values, read from far fewer rows.
     assert {k: v.shake for k, v in shake_only.items()} == {k: v.shake for k, v in got.items()}
     assert given == shake_only  # with the segments retrieval already loaded
+    assert {k: sorted(v) for k, v in few.items()} == {
+        k: sorted(pc for _, pc in v.shake if pc is not None) for k, v in got.items()
+    }
     assert all(not v.sharpness and not v.clip_low for v in shake_only.values())
     assert set(got) == set(want)
     for sid, w in want.items():

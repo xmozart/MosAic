@@ -180,6 +180,18 @@ def install_security_headers(app: FastAPI) -> None:
         return response
 
 
+def settle_heap() -> None:
+    """Move what the server holds once its app is built (imported modules, routes,
+    settings) out of the garbage collector's view: a full collection then scans only what
+    requests allocate, so its pause stays short however much is loaded (ADR 0065).
+    Garbage is collected first, so nothing collectable is frozen with it. Once per
+    process: ``serve`` calls it, and so do the tests that time requests as it serves them."""
+    import gc
+
+    gc.collect()
+    gc.freeze()
+
+
 def ui_dir() -> Path | None:
     """The built web UI: ``$MOSAIC_UI_DIR``, else the repo's ``frontend/dist``."""
     env = os.environ.get("MOSAIC_UI_DIR")
@@ -247,6 +259,7 @@ def serve(port: int = 8765, *, token_stdin: bool = False) -> None:
     else:
         token = take_token_from_env()
     app = create_app(supervise_workers=True, desktop_token=token)
+    settle_heap()  # before serving: what the app holds is never scanned again
     host = bind_host()
     family, kind, proto, _, addr = socket.getaddrinfo(
         host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE

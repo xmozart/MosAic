@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Table, insert, select
 
+from tests.support.heap import as_served
 from tests.support.runner import run_job
 
 pytestmark = [pytest.mark.acceptance, pytest.mark.models]
@@ -191,11 +192,12 @@ def test_five_thousand_clips_filter_in_under_300_ms(
         {"status": "MAYBE", "min_stars": 3, "day": day},
     ]
     times: dict[str, float] = {}
-    for f in filters:
-        t0 = time.perf_counter()  # one request, as one filter change makes
-        r = client.get(url, params={"limit": 100, **f})
-        times[json.dumps(f)] = time.perf_counter() - t0
-        assert r.status_code == 200, (f, r.text)
+    with as_served():  # the server's heap, not this process's analysis leftovers
+        for f in filters:
+            t0 = time.perf_counter()  # one request, as one filter change makes
+            r = client.get(url, params={"limit": 100, **f})
+            times[json.dumps(f)] = time.perf_counter() - t0
+            assert r.status_code == 200, (f, r.text)
     worst = max(times.values())
     print("LIBRARY5K", json.dumps({k: round(v * 1000, 1) for k, v in times.items()}))
     assert worst < FILTER_S, times

@@ -7,26 +7,31 @@ distinct footage is shorter than ``FALLBACK_FACTOR`` × the requested duration, 
 members of similarity groups come back as candidates (marked as similar to their group's
 pick; the critic still checks repetition). When more than ``MAX_CANDIDATES`` remain, each
 day keeps a share proportional to its footage, best first, so the planner sees the whole
-trip. Assets are read one at a time (invariant 13).
+trip. Clips are read a batch at a time (invariant 13).
 """
 
 from __future__ import annotations
 
 import statistics
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mosaic.core.time import parse_rational
 from mosaic.library import decisions
-from mosaic.library.dispositions import segment_facts
-from mosaic.library.quality import SHAKE_METRICS
+from mosaic.library.dispositions import (
+    effective_for_clips,
+    metric_window,
+    shake_percentiles,
+)
 from mosaic.storage.models_project import (
     Asset,
+    ClipDecision,
     DeepReview,
     Segment,
     TranscriptSegment,
@@ -186,18 +191,114 @@ def trip_day(capture_time: str | None, offset_s: Fraction, first: date | None) -
     return ((start + timedelta(seconds=float(offset_s))).date() - first).days + 1
 
 
-def _transcript(session: Session, asset_id: int, a: int, b: int) -> str:
-    texts = session.scalars(
-        select(TranscriptSegment.text)
-        .where(
-            TranscriptSegment.asset_id == asset_id,
-            TranscriptSegment.start_ticks < b,
-            TranscriptSegment.end_ticks > a,
+CLIP_BATCH = 64  # clips read together: a few queries per batch, memory bounded by it
+
+
+class _Seg(NamedTuple):
+    """The segment columns retrieval reads (rows, not ORM objects: a 40-hour library has
+    over 11,000 segments)."""
+
+    id: int
+    asset_id: int
+    shot_id: int
+    start_ticks: int
+    end_ticks: int
+    usable_start_ticks: int
+    usable_end_ticks: int
+    has_speech: bool
+    quality: float | None
+    similarity_group_id: int | None
+    group_best: bool
+
+
+_SEG_COLUMNS = tuple(getattr(Segment, f) for f in _Seg._fields)
+
+
+@dataclass
+class _Clip:
+    """One clip's segments with what retrieval reads about them."""
+
+    asset: Asset
+    segments: list[_Seg]
+    rules: dict[int, decisions.SegmentDecision]  # the decision in force per segment
+    obs: dict[int, dict[str, Any]]
+
+
+def _clips(session: Session, assets: list[Asset]) -> Iterator[_Clip]:
+    """The clips with segments, in order, read ``CLIP_BATCH`` at a time (invariant 13):
+    a handful of queries per batch rather than per clip (ADR 0065)."""
+    for n in range(0, len(assets), CLIP_BATCH):
+        batch = assets[n : n + CLIP_BATCH]
+        ids = [a.id for a in batch]
+        segs: dict[int, list[_Seg]] = {}
+        for row in session.execute(
+            select(*_SEG_COLUMNS).where(Segment.asset_id.in_(ids)).order_by(Segment.id)
+        ):
+            g = _Seg(*row)
+            segs.setdefault(g.asset_id, []).append(g)
+        if not segs:
+            continue
+        rows = effective_for_clips(session, ids)
+        clip_rules = {
+            d.asset_id: d
+            for d in session.scalars(select(ClipDecision).where(ClipDecision.asset_id.in_(ids)))
+        }
+        in_batch = select(Segment.id).where(Segment.asset_id.in_(ids))
+        seen = {
+            o.segment_id: o.data
+            for o in session.scalars(
+                select(VisualObservation).where(VisualObservation.segment_id.in_(in_batch))
+            )
+        }
+        seen |= {  # L3 (full resolution) supersedes L2
+            r.segment_id: r.data
+            for r in session.scalars(select(DeepReview).where(DeepReview.segment_id.in_(in_batch)))
+        }
+        for asset in batch:
+            gs = segs.get(asset.id)
+            if not gs:
+                continue
+            yield _Clip(
+                asset,
+                gs,
+                # The owner's decisions first: on the segment, then on the clip (ADR 0042).
+                decisions.resolve(gs, rows, clip_rules.get(asset.id)),
+                {g.id: seen[g.id] for g in gs if g.id in seen},
+            )
+
+
+def _describe(session: Session, cands: list[Candidate]) -> None:
+    """Fill in what only the final candidates need: their shake and their words. Ranking
+    and capping never read them, so a 40-hour library reads them for 200 segments, not
+    for every one (ADR 0065)."""
+    windows: dict[int, list[tuple[int, int, int]]] = {}
+    for c in cands:
+        windows.setdefault(c.asset_id, []).append(
+            (c.segment_id, *metric_window(c.start, c.end, c.usable_start, c.usable_end))
         )
-        .order_by(TranscriptSegment.start_ticks)
-    )
-    joined = " ".join(t.strip() for t in texts if t.strip())
-    return joined[:TRANSCRIPT_CHARS]
+    shake = shake_percentiles(session, windows)
+    for c in cands:
+        found = shake.get(c.segment_id)
+        c.shake_percentile = statistics.median(found) if found else None
+    speaking = sorted({c.asset_id for c in cands if c.has_speech})
+    speech: dict[int, list[tuple[int, int, str]]] = {}
+    for n in range(0, len(speaking), CLIP_BATCH):
+        for aid, start, end, text in session.execute(
+            select(
+                TranscriptSegment.asset_id,
+                TranscriptSegment.start_ticks,
+                TranscriptSegment.end_ticks,
+                TranscriptSegment.text,
+            )
+            .where(TranscriptSegment.asset_id.in_(speaking[n : n + CLIP_BATCH]))
+            .order_by(TranscriptSegment.start_ticks, TranscriptSegment.id)
+        ):
+            speech.setdefault(aid, []).append((start, end, text))
+    for c in cands:
+        if c.has_speech:
+            a, b = c.usable_start, c.usable_end
+            texts = (t.strip() for st, en, t in speech.get(c.asset_id, []) if st < b and en > a)
+            c.transcript = " ".join(t for t in texts if t)[:TRANSCRIPT_CHARS]
 
 
 def retrieve(
@@ -216,6 +317,7 @@ def retrieve(
     }
     assets = list(session.scalars(select(Asset).where(Asset.kind == "video").order_by(Asset.id)))
     first_day = min(capture_dates(assets).values(), default=None)
+    eligible = []
     for asset in assets:
         if asset.tb is None:
             continue
@@ -224,24 +326,11 @@ def retrieve(
             # until reframing exists (MEDIA_SUPPORT.md §2, ADR 0024).
             counts["analysis_only"] += 1
             continue
+        eligible.append(asset)
+    for clip in _clips(session, eligible):
+        asset, segs, disp, obs = clip.asset, clip.segments, clip.rules, clip.obs
+        assert asset.tb is not None
         tb = parse_rational(asset.tb)
-        segs = list(session.scalars(select(Segment).where(Segment.asset_id == asset.id)))
-        if not segs:
-            continue
-        ids = [g.id for g in segs]
-        # The owner's decisions first: on the segment, then on the clip (ADR 0042).
-        disp = decisions.for_segments(session, asset, segs)
-        obs = {
-            o.segment_id: o.data
-            for o in session.scalars(
-                select(VisualObservation).where(VisualObservation.segment_id.in_(ids))
-            )
-        }
-        obs |= {  # L3 (full resolution) supersedes L2
-            r.segment_id: r.data
-            for r in session.scalars(select(DeepReview).where(DeepReview.segment_id.in_(ids)))
-        }
-        facts = segment_facts(session, asset, only=SHAKE_METRICS, segments=segs)  # only shake
         base = _capture(asset)
         for g in segs:
             counts["segments"] += 1
@@ -260,8 +349,6 @@ def retrieve(
                 base + timedelta(seconds=float(Fraction(g.start_ticks) * tb)) if base else None
             )
             day = trip_day(asset.capture_time, Fraction(g.start_ticks) * tb, first_day)
-            f = facts.get(g.id)
-            shake = [p for _, p in f.shake if p is not None] if f else []
             (similar if duplicate else found).append(
                 Candidate(
                     segment_id=g.id,
@@ -280,12 +367,7 @@ def retrieve(
                     day=day,
                     quality=g.quality,
                     group_id=g.similarity_group_id,
-                    shake_percentile=statistics.median(shake) if shake else None,
-                    transcript=_transcript(
-                        session, asset.id, g.usable_start_ticks, g.usable_end_ticks
-                    )
-                    if g.has_speech
-                    else "",
+                    shake_percentile=None,  # read for the final candidates only
                     obs=obs.get(g.id, {}),
                     similar_to=best_of.get(g.similarity_group_id or -1) if duplicate else None,
                 )
@@ -295,6 +377,7 @@ def retrieve(
         found += similar
         counts["duplicate_fallback"] = len(similar)
     capped = cap_by_day(found, MAX_CANDIDATES)
+    _describe(session, capped)
     counts["candidates"] = len(capped)
     counts["capped"] = len(found) - len(capped)
     return sorted(capped, key=Candidate.sort_key), counts

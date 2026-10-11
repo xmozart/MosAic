@@ -221,7 +221,7 @@ class TechMetric(ProjectBase):
 
     __tablename__ = "tech_metric"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"))  # indexed below
     sample_id: Mapped[int | None] = mapped_column(ForeignKey("sample_frame.id"), index=True)
     start_ticks: Mapped[int] = mapped_column(BigInteger)
     end_ticks: Mapped[int] = mapped_column(BigInteger)
@@ -229,6 +229,8 @@ class TechMetric(ProjectBase):
     value: Mapped[float] = mapped_column(Float)
     percentile: Mapped[float | None] = mapped_column(Float)
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+    # One clip's ranges of a metric in time order: a segment's shake (ADR 0065).
+    __table_args__ = (Index("ix_tech_metric_asset_name_start", "asset_id", "name", "start_ticks"),)
 
 
 # ------------------------------------------------------------------------ audio

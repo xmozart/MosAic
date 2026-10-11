@@ -30,6 +30,7 @@ from mosaic.storage.config import ConfigService
 from mosaic.storage.control import ControlDB
 from mosaic.storage.models_project import Asset, SampleFrame, Segment
 from mosaic.storage.projects import init_project
+from tests.support.heap import as_served
 
 pytestmark = pytest.mark.acceptance
 
@@ -115,8 +116,9 @@ def test_forty_hours_l0_l1_bounded_memory_and_fast_list(
     assert segments > 5_000
     assert samples > 20_000
 
-    times = _list_pages(control, pid)
-    estimates = _estimates(control, pid)
+    with as_served():
+        times = _list_pages(control, pid)
+        estimates = _estimates(control, pid)
     report = {
         "hours": SPEC.hours,
         "clips": SPEC.clips,
