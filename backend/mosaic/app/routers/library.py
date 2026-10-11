@@ -56,12 +56,11 @@ def library(
             found = browse.page(s, group, cursor, limit, f)
         except browse.BadCursorError as exc:
             raise HTTPException(422, str(exc)) from None
-        hidden = browse.rejected_hidden(s, f) if cursor is None else None
     return {
         "items": found.items,
         "next_cursor": found.next_cursor,
         "groups": found.groups,
-        "rejected_hidden": hidden,
+        "rejected_hidden": found.rejected_hidden,
     }
 
 

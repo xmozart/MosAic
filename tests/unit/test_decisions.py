@@ -164,7 +164,21 @@ def test_library_filters_and_tile_status(tmp_path: Path) -> None:
         page = browse.page(s, "day", None, 50)
         shown = {i["asset_id"]: (i["status_shown"], i["decided_by"]) for i in page.items}
         assert shown == {ids["a"]: ("USE", "ai"), ids["b"]: ("USE", "user")}, "rejected hidden"
-        assert browse.rejected_hidden(s, browse.Filters()) == 1
+        # The first page counts the hidden rejected clips in its groups pass and leaves
+        # them out of the group totals.
+        assert page.rejected_hidden == 1
+        assert page.groups is not None
+        assert [(g["key"], g["count"]) for g in page.groups] == [("2026-07-15", 2)]
+        assert browse.page(s, "camera", None, 50).rejected_hidden == 1
+        for nothing_hidden in (
+            browse.Filters(show_rejected=True),
+            browse.Filters(status="REJECT"),
+            browse.Filters(day="2026-07-15"),
+        ):
+            assert browse.page(s, "day", None, 50, nothing_hidden).rejected_hidden == 0
+        later = browse.page(s, "day", browse.page(s, "day", None, 1).next_cursor, 1)
+        assert later.rejected_hidden is None
+        assert later.groups is None
         everything = browse.page(s, "day", None, 50, browse.Filters(show_rejected=True))
         assert len(everything.items) == 3
         assert everything.groups is not None

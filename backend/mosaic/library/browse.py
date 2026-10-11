@@ -155,24 +155,12 @@ def filtered(q: Any, f: Filters, st: Any) -> Any:
     return q
 
 
-def rejected_hidden(session: Session, f: Filters) -> int:
-    """Clips the default view hides as rejected ("Show rejected (n)")."""
-    if f.show_rejected or f.status is not None:
-        return 0
-    st = status_table()
-    q = filtered(
-        select(func.count(Asset.id)).select_from(Asset),
-        Filters(**{**f.__dict__, "status": "REJECT"}),
-        st,
-    )
-    return session.scalar(q) or 0
-
-
 @dataclass(frozen=True)
 class Page:
     items: list[dict[str, Any]]
     next_cursor: str | None
     groups: list[dict[str, Any]] | None  # first page only
+    rejected_hidden: int | None = None  # first page only
 
 
 def _time() -> ColumnElement[str]:
@@ -255,22 +243,40 @@ def shown(asset: Asset) -> bool:
 def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[str, Any]]:
     """The groups of the (filtered) library with their totals: clips, photos and footage
     seconds (display). Day groups carry their trip day number and the trip context's place."""
+    return _groups(session, group, f or Filters())[0]
+
+
+def _groups(session: Session, group: str, f: Filters) -> tuple[list[dict[str, Any]], int]:
+    """``groups`` and ``rejected_hidden`` from one pass over the clips' status: the
+    hidden rejected clips are counted in the same grouped query, then left out."""
+    from sqlalchemy import case
+
     from mosaic.core.time import parse_rational
     from mosaic.library.context import load as load_context
 
-    f = f or Filters()
+    counts_hidden = not f.show_rejected and f.status is None
     st = status_table()
     key = _group_key(group)
+    hidden_flag = case((st.c.p == PRIORITY["REJECT"], 1), else_=0)
     totals: dict[Any, dict[str, Any]] = {}
-    for k, kind, tb, n, ticks in session.execute(
+    hidden = 0
+    for k, kind, tb, n, ticks, rejected in session.execute(
         filtered(
             select(
-                key, Asset.kind, Asset.tb, func.count(Asset.id), func.sum(Asset.duration_ticks)
+                key,
+                Asset.kind,
+                Asset.tb,
+                func.count(Asset.id),
+                func.sum(Asset.duration_ticks),
+                hidden_flag,
             ).select_from(Asset),
-            f,
+            Filters(**{**f.__dict__, "show_rejected": True}) if counts_hidden else f,
             st,
-        ).group_by(key, Asset.kind, Asset.tb)
+        ).group_by(key, Asset.kind, Asset.tb, hidden_flag)
     ):
+        if counts_hidden and rejected:
+            hidden += n
+            continue
         t = totals.setdefault(k, {"count": 0, "clips": 0, "photos": 0, "seconds": 0.0})
         t["count"] += n
         if kind == "video":
@@ -294,7 +300,7 @@ def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[
         return [
             {"key": str(dev), "label": labels.get(dev) or "Unknown camera", **stats(dev)}
             for dev in sorted(totals)
-        ]
+        ], hidden
     if group == "similar":
         out = []
         for i, k in enumerate(sorted(totals)):
@@ -306,7 +312,7 @@ def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[
                     **stats(k),
                 }
             )
-        return out
+        return out, hidden
     numbers = day_numbers(session)
     places = {d.date: d.place for d in load_context(session).days if d.place}
     out = []
@@ -322,7 +328,7 @@ def groups(session: Session, group: str, f: Filters | None = None) -> list[dict[
                 **stats(day),
             }
         )
-    return out
+    return out, hidden
 
 
 def camera_json(a: Asset, labels: Mapping[int, str | None]) -> dict[str, str]:
@@ -520,4 +526,7 @@ def page(
         )
     nk = len(keys)
     next_cursor = encode_cursor([*rows[-1][1 : 1 + nk], assets[-1].id]) if more and rows else None
-    return Page(items, next_cursor, groups(session, group, f) if cursor is None else None)
+    if cursor is not None:
+        return Page(items, next_cursor, None)
+    found, hidden = _groups(session, group, f)
+    return Page(items, next_cursor, found, hidden)
