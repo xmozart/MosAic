@@ -34,6 +34,10 @@ class DraftError(ValueError):
     """An op that does not fit the storyboard (unknown shot, a locked shot changed)."""
 
 
+class UnknownBeatError(DraftError, LookupError):
+    """No beat with that id in the edit."""
+
+
 # ------------------------------------------------------------------- storyboard
 
 
@@ -122,7 +126,7 @@ class Board(BaseModel):
         for i, beat in enumerate(self.beats):
             if beat.beat_id == beat_id:
                 return i, beat
-        raise DraftError(f"no beat {beat_id!r} in this edit")
+        raise UnknownBeatError(f"no beat {beat_id!r} in this edit")
 
     def segments(self) -> set[str]:
         return {sh.segment_id for b in self.beats for sh in b.shots}
@@ -585,9 +589,12 @@ def commit(
     *,
     creator: str = "user",
     reason: str = "Saved from the storyboard",
+    extra_metrics: dict[str, Any] | None = None,
+    input_keys: list[str] | None = None,
 ) -> EditVersion:
     """``t`` as a new immutable version; the draft then starts again from it. Refused
-    (``DraftChangedError``) when a version or op came in since ``t`` was timed."""
+    (``DraftChangedError``) when a version or op came in since ``t`` was timed.
+    ``extra_metrics`` and ``input_keys`` add to the version's metrics and provenance."""
     from mosaic.editing.generate import EDIT_VERSION
 
     now = load(s, edit_id)
@@ -599,13 +606,17 @@ def commit(
         provenance.ProvenanceInfo(
             kind="edit",
             algorithm_version=EDIT_VERSION,
-            input_keys=[d.base.key, t.key],
+            input_keys=[d.base.key, t.key, *(input_keys or [])],
         ),
     )
-    metrics = done.metrics | {
-        "preliminary": d.base.metrics.get("preliminary", False),
-        "draft": {"base_version": d.base.version, "ops": len(d.ops)},
-    }
+    metrics = (
+        done.metrics
+        | {
+            "preliminary": d.base.metrics.get("preliminary", False),
+            "draft": {"base_version": d.base.version, "ops": len(d.ops)},
+        }
+        | (extra_metrics or {})
+    )
     row = EditVersion(
         edit_id=edit_id,
         version=d.base.version + 1,

@@ -203,6 +203,41 @@ def draft_dirty(project: Project, edit_id: int) -> bool:
         return draft.latest(s, edit_id) is not None and draft.load(s, edit_id).dirty
 
 
+def submit_regenerate_beat(
+    executor: Executor,
+    principal: Principal,
+    project: Project,
+    edit_id: int,
+    beat_id: str,
+) -> int:
+    """A fresh take on one beat, keeping its locked shots (ADR 0069). A changed draft is
+    saved first; ``draft.DraftError`` when the beat has no free slot, ``LookupError``
+    for an unknown edit or beat."""
+    from mosaic.editing import draft, regenerate
+
+    with project.db.session() as s:
+        regenerate.slots(draft.load(s, edit_id).board, beat_id)  # refuse before saving
+    save_draft(project, edit_id, creator="system", reason="Saved before regenerate")
+    return executor.submit(
+        principal,
+        JobSpec(
+            project_id=project.id,
+            kind="edit",
+            params={"edit_id": edit_id, "beat_id": beat_id},
+            cost_limit_usd=job_cost_limit(principal),
+            tasks=[
+                TaskSpec(
+                    kind="edit.regenerate_beat",
+                    stage="edit",
+                    resource_class=ResourceClass.AI_API,
+                    params={"edit_id": edit_id, "beat_id": beat_id},
+                    label=f"regenerating {beat_id} of {edit_ref(edit_id)}",
+                )
+            ],
+        ),
+    )
+
+
 def get_version(project: Project, edit_id: int, version: int | None = None) -> EditVersion:
     with project.db.session() as s:
         q = select(EditVersion).where(EditVersion.edit_id == edit_id)

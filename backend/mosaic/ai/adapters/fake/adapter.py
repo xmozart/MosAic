@@ -225,6 +225,38 @@ def _selector(request: StructuredRequest) -> dict[str, Any]:
     return {"beats": beats}
 
 
+@responder("reselect")
+def _reselect(request: StructuredRequest) -> dict[str, Any]:
+    """A fresh take on one beat: round-robin over the pool, starting after the clips the
+    beat has now, so the take differs where the pool allows; a little more than asked."""
+    ctx = request.context
+    speech = set(ctx.get("speech_refs", []))
+    assets: dict[str, int] = ctx.get("candidate_assets", {})
+    current: list[str] = ctx.get("current_refs", [])
+    pool = [r for r in ctx["pool_refs"] if r not in current] + [
+        r for r in ctx["pool_refs"] if r in current
+    ]
+    picked = _round_robin(pool, assets)[: ctx["free_slot_count"] + 1]
+    spare = [r for r in ctx["pool_refs"] if r not in picked]
+    return {
+        "beat_id": ctx["beat_id"],
+        "selections": [
+            {
+                "segment_id": r,
+                "role": "b_roll",
+                "priority": 3,
+                "length": "medium",
+                "audio_intent": "dialogue" if r in speech else "natural_sound",
+                "reason": f"Fresh take, shot {n + 1}.",
+                "alternatives": [
+                    {"segment_id": a, "why_not": "Kept as a spare."} for a in spare[:1]
+                ],
+            }
+            for n, r in enumerate(picked)
+        ],
+    }
+
+
 @responder("review")
 def _review(request: StructuredRequest) -> dict[str, Any]:
     """A neutral full-resolution observation that keeps the quick description."""

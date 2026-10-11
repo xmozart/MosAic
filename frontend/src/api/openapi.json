@@ -1601,6 +1601,57 @@
         "summary": "Get Edit"
       }
     },
+    "/api/edits/{eid}/beats/{bid}/regenerate": {
+      "post": {
+        "description": "A fresh take on one beat; its locked shots keep their cut and slot (ADR 0069).",
+        "operationId": "regenerate_beat_api_edits__eid__beats__bid__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "title": "Bid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Regenerate Beat Api Edits  Eid  Beats  Bid  Regenerate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Regenerate Beat"
+      }
+    },
     "/api/edits/{eid}/draft": {
       "get": {
         "description": "S16's storyboard: the draft's beats and shots, undo state and current timing.",

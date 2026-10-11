@@ -247,9 +247,18 @@ def get_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, An
     check(me, "edits.read", eid)
     with _edit(svc, me, eid) as (project, edit_id):
         try:
-            return draft_state(project, edit_id)
+            out = draft_state(project, edit_id)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+        # S16's "regenerating" beats, from the jobs still running (so a reload keeps them).
+        out["regenerating"] = sorted(
+            {
+                str(j.params["beat_id"])
+                for j in svc.store.jobs(project.id, True, kind="edit")
+                if j.params.get("edit_id") == edit_id and "beat_id" in j.params
+            }
+        )
+        return out
 
 
 @router.post("/edits/{eid}/draft/ops")
@@ -267,6 +276,23 @@ def undo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, A
 @router.post("/edits/{eid}/draft/redo")
 def redo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     return _draft_change(svc, me, eid, "redo")
+
+
+@router.post("/edits/{eid}/beats/{bid}/regenerate", status_code=202)
+def regenerate_beat(eid: str, bid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """A fresh take on one beat; its locked shots keep their cut and slot (ADR 0069)."""
+    from mosaic.editing.service import submit_regenerate_beat
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            return {"job_id": submit_regenerate_beat(svc.executor, me, project, edit_id, bid)}
+        except draft_ops.UnknownBeatError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except draft_ops.DraftError as exc:
+            raise HTTPException(422, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
 
 
 @router.post("/edits/{eid}/versions", status_code=201)
