@@ -175,3 +175,35 @@ def test_locking_a_cut_of_two_picks_absorbs_the_second() -> None:
     mixed = {**pin, "source_out": {"ticks": 9000, "tb": "1/90000"}}
     with pytest.raises(ValidationError, match="share one time base"):
         OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": mixed})
+
+
+def test_setting_the_length() -> None:
+    board = apply(_board(), OP.validate_python({"kind": "set_duration", "duration_s": 90}))
+    assert board.duration_s == 90
+    with pytest.raises(ValidationError):
+        OP.validate_python({"kind": "set_duration", "duration_s": 2})
+
+
+def test_a_beat_faster_or_slower_moves_every_free_shot_one_step() -> None:
+    board = apply(_board(), OP.validate_python({"kind": "lock_shot", "ref": "b1#0"}))
+    faster = apply(board, OP.validate_python({"kind": "pace_beat", "beat_id": "b1"}))
+    assert [s.length for s in faster.beat("b1")[1].shots] == ["medium", "short"], "locked kept"
+    with pytest.raises(DraftError, match="already as fast as it gets"):
+        apply(faster, OP.validate_python({"kind": "pace_beat", "beat_id": "b1"}))
+    slower = apply(
+        board, OP.validate_python({"kind": "pace_beat", "beat_id": "b2", "faster": False})
+    )
+    assert [s.length for s in slower.beat("b2")[1].shots] == ["long", "long"]
+    assert [s.length for s in slower.beat("b1")[1].shots] == ["medium", "medium"]
+
+
+def test_pacing_skips_locked_absorbed_and_speech_shots() -> None:
+    board = _board()
+    beat = board.beats[1]
+    beat.shots[0].audio_intent = "dialogue"
+    beat.shots[1].absorbed_by = "b2#0"
+    with pytest.raises(DraftError, match="no free shot to pace"):
+        apply(board, OP.validate_python({"kind": "pace_beat", "beat_id": "b2"}))
+    beat.shots[0].audio_intent = "natural_sound"
+    paced = apply(board, OP.validate_python({"kind": "pace_beat", "beat_id": "b2"}))
+    assert [s.length for s in paced.beat("b2")[1].shots] == ["short", "medium"]

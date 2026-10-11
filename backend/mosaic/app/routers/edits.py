@@ -315,6 +315,56 @@ def regenerate_beat(eid: str, bid: str, svc: Services = Svc, me: Principal = Me)
             raise HTTPException(404, str(exc)) from None
 
 
+class DurationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    duration_s: StrictInt  # bounds: draft_ops.SetDuration's
+
+
+@router.post("/edits/{eid}/duration", status_code=201)
+def change_duration(
+    eid: str, body: DurationBody, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """ "Make it N seconds": a new version re-timed to that length, with no AI call
+    (M4 acceptance 3; ADR 0071). 409 when the length is already that."""
+    from mosaic.editing.draft import DraftChangedError
+    from mosaic.editing.service import set_duration
+
+    check(me, "edits.write", eid)
+    try:
+        draft_ops.SetDuration(duration_s=body.duration_s)
+    except ValidationError as exc:
+        raise HTTPException(422, exc.errors(include_url=False)) from None
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            number = set_duration(project, edit_id, body.duration_s)
+        except DraftChangedError as exc:
+            raise HTTPException(409, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        if number is None:
+            raise HTTPException(409, f"the edit is already {body.duration_s} s")
+        return _version(svc, project, edit_id, number)
+
+
+@router.get("/edits/{eid}/shots/{shot}/alternatives")
+def shot_alternatives(
+    eid: str, shot: str, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """S16's ShotPopover: what this shot can be replaced with (``replace_shot``)."""
+    from mosaic.editing.service import alternatives
+
+    check(me, "edits.read", eid)
+    with _edit(svc, me, eid) as (project, edit_id):
+        try:
+            items, locked = alternatives(project, edit_id, shot)
+            return {"items": items, "locked": locked}
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except draft_ops.DraftError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+
 @router.post("/edits/{eid}/versions", status_code=201)
 def save_version(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     """Save the draft as a new version (S16 "Save version"); 409 when it has no changes."""

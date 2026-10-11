@@ -131,12 +131,11 @@ def submit_generate(
 def draft_state(project: Project, edit_id: int) -> dict[str, Any]:
     """The edit's draft for S16, timed now (ADR 0067)."""
     from mosaic.editing import draft
-    from mosaic.editing.generate import edit_inputs
 
     with project.db.session() as s:
         d = draft.load(s, edit_id)
-        req = EditRequest.model_validate(d.base.request)
-        return draft.as_json(d, draft.timed(s, req, edit_inputs(s, req), d.board))
+        req, inp = draft.inputs(s, d)
+        return draft.as_json(d, draft.timed(s, req, inp, d.board))
 
 
 def change_draft(project: Project, edit_id: int, action: str, op: Any = None) -> bool:
@@ -147,12 +146,10 @@ def change_draft(project: Project, edit_id: int, action: str, op: Any = None) ->
     timed_on = None
     if action == "op" and isinstance(op, draft.LockShot):
         # A lock keeps the shot's cut as it is now: the server records it (ADR 0068).
-        from mosaic.editing.generate import edit_inputs
-
         with project.db.session() as s:
             d = draft.load(s, edit_id)
-            req = EditRequest.model_validate(d.base.request)
-            op = draft.pinned(op, draft.timed(s, req, edit_inputs(s, req), d.board), d.board)
+            req, inp = draft.inputs(s, d)
+            op = draft.pinned(op, draft.timed(s, req, inp, d.board), d.board)
         timed_on = (d.base.version, d.ops)
     with project.write() as s:
         if action == "op":
@@ -176,14 +173,13 @@ def save_draft(
     edit has no version or its draft no changes. Timed in a read session, then committed
     under the writer (``draft.DraftChangedError`` if it changed in between)."""
     from mosaic.editing import draft
-    from mosaic.editing.generate import edit_inputs, export_path, version_json, write_export
+    from mosaic.editing.generate import export_path, version_json, write_export
 
     with project.db.session() as s:
         if draft.latest(s, edit_id) is None:
             return None
-        base = draft.load(s, edit_id).base
-        req = EditRequest.model_validate(base.request)
-        t = draft.time_for_save(s, project.id, edit_id, edit_inputs(s, req))
+        _, inp = draft.inputs(s, draft.load(s, edit_id))
+        t = draft.time_for_save(s, project.id, edit_id, inp)
     if t is None:
         return None
     with project.write() as s:
@@ -273,6 +269,66 @@ def submit_regenerate(
             ],
         ),
     )
+
+
+def duration_words(seconds: int) -> str:
+    """90 → "90 s", 150 → "2:30" (display)."""
+    return f"{seconds} s" if seconds < 120 else f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def set_duration(project: Project, edit_id: int, seconds: int) -> int | None:
+    """ "Make it N seconds" (PRODUCT.md §8; M4 acceptance 3; ADR 0071): the storyboard
+    re-timed to the new length, with no AI call, saved as a new version. None (nothing
+    saved) when the edit is that length and nothing is pending. Unsaved changes are saved
+    first as a version of their own, unless a length change is among them: then they all
+    go into this one."""
+    from mosaic.editing import draft
+
+    with project.db.session() as s:
+        d = draft.load(s, edit_id)
+        base_s = EditRequest.model_validate(d.base.request).duration_s
+        now = draft.request_of(EditRequest.model_validate(d.base.request), d.board).duration_s
+    if now == seconds == base_s:
+        return None
+    pending_length = any(op.get("kind") == "set_duration" for op in d.ops)
+    if d.dirty and not pending_length:
+        save_draft(project, edit_id, creator="system", reason="Saved before a length change")
+    if now != seconds:
+        change_draft(project, edit_id, "op", draft.SetDuration(duration_s=seconds))
+    return save_draft(project, edit_id, reason=f"Made it {duration_words(seconds)}")
+
+
+def alternatives(project: Project, edit_id: int, ref: str) -> tuple[list[dict[str, Any]], bool]:
+    """What a shot can be replaced with (S16's ShotPopover): the selector's alternatives
+    first, with why each was not chosen, then the rest of its beat's pool that the edit
+    does not use; only clips that are still candidates. And whether the shot is locked
+    (then ``replace_shot`` is refused until it is unlocked)."""
+    from mosaic.editing import draft
+
+    with project.db.session() as s:
+        d = draft.load(s, edit_id)
+        beat, _, sh = d.board.shot(ref)
+        by_ref = {c.ref: c for c in draft.inputs(s, d)[1].cands}
+    taken = d.board.segments() | set(d.board.excluded)
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    named = [(a["segment_id"], a.get("why_not")) for a in sh.alternatives]
+    for seg, why in [*named, *((r, None) for r in beat.pool)]:
+        if seg in seen or seg in taken or seg not in by_ref:
+            continue
+        seen.add(seg)
+        c = by_ref[seg]
+        out.append(
+            {
+                "segment_id": seg,
+                "asset_id": f"ast_{c.asset_id:04d}",
+                "why_not": why,
+                "line": c.line(),
+                "usable": {"ticks": c.usable_end - c.usable_start, "tb": c.tb},
+                "has_speech": c.has_speech,
+            }
+        )
+    return out, sh.locked or bool(sh.absorbed_by)
 
 
 def get_version(project: Project, edit_id: int, version: int | None = None) -> EditVersion:

@@ -257,7 +257,6 @@ def regenerate_beat_task(ctx: TaskContext) -> dict[str, Any]:
 def _attempt(ctx: TaskContext, edit_id: int, beat_id: str) -> dict[str, Any]:
     from mosaic.editing.generate import (
         EDIT_VERSION,
-        edit_inputs,
         export_path,
         version_json,
         write_export,
@@ -270,8 +269,7 @@ def _attempt(ctx: TaskContext, edit_id: int, beat_id: str) -> dict[str, Any]:
     save_draft(ctx.project, edit_id, creator="system", reason="Saved before regenerate")
     with ctx.project.db.session() as s:
         d = draft.load(s, edit_id)
-        req = EditRequest.model_validate(d.base.request)
-        inp = edit_inputs(s, req)
+        req, inp = draft.inputs(s, d)
         try:
             sl = slots(d.board, beat_id)
         except DraftError as exc:
@@ -525,7 +523,6 @@ def _regenerate(ctx: TaskContext, edit_id: int, scope: str) -> dict[str, Any]:
         SELECTOR_MAX_TOKENS,
         check_plan,
         check_selection,
-        edit_inputs,
         export_path,
         planner_context,
         selector_context,
@@ -539,8 +536,7 @@ def _regenerate(ctx: TaskContext, edit_id: int, scope: str) -> dict[str, Any]:
     save_draft(ctx.project, edit_id, creator="system", reason="Saved before regenerate")
     with ctx.project.db.session() as s:
         d = draft.load(s, edit_id)
-        req = EditRequest.model_validate(d.base.request)
-        inp = edit_inputs(s, req)
+        req, inp = draft.inputs(s, d)
         cands = scope_candidates(scope, d.board, inp.cands)
         refs = known_refs(s, edit_id)
         take = take_of_scope(s, edit_id, scope)

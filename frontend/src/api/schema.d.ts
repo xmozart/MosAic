@@ -356,6 +356,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/edits/{eid}/duration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Duration
+         * @description "Make it N seconds": a new version re-timed to that length, with no AI call
+         *     (M4 acceptance 3; ADR 0071). 409 when the length is already that.
+         */
+        post: operations["change_duration_api_edits__eid__duration_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/edits/{eid}/generate": {
         parameters: {
             query?: never;
@@ -420,6 +441,26 @@ export interface paths {
         };
         /** Get Report */
         get: operations["get_report_api_edits__eid__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edits/{eid}/shots/{shot}/alternatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shot Alternatives
+         * @description S16's ShotPopover: what this shot can be replaced with (``replace_shot``).
+         */
+        get: operations["shot_alternatives_api_edits__eid__shots__shot__alternatives_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1684,7 +1725,12 @@ export interface components {
          */
         DraftOpBody: {
             /** Op */
-            op: components["schemas"]["MoveShot"] | components["schemas"]["MoveBeat"] | components["schemas"]["RemoveShot"] | components["schemas"]["LockShot"] | components["schemas"]["ReplaceShot"];
+            op: components["schemas"]["MoveShot"] | components["schemas"]["MoveBeat"] | components["schemas"]["RemoveShot"] | components["schemas"]["LockShot"] | components["schemas"]["ReplaceShot"] | components["schemas"]["SetDuration"] | components["schemas"]["PaceBeat"];
+        };
+        /** DurationBody */
+        DurationBody: {
+            /** Duration S */
+            duration_s: number;
         };
         /** EstimateBody */
         EstimateBody: {
@@ -1778,6 +1824,25 @@ export interface components {
              * @default false
              */
             take_over: boolean;
+        };
+        /**
+         * PaceBeat
+         * @description Make a beat faster (shorter shots) or slower (longer ones): every free shot's
+         *     length moves one step; locked shots keep their cut.
+         */
+        PaceBeat: {
+            /** Beat Id */
+            beat_id: string;
+            /**
+             * Faster
+             * @default true
+             */
+            faster: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "pace_beat";
         };
         /** ParseBody */
         ParseBody: {
@@ -1920,6 +1985,20 @@ export interface components {
         SecretBody: {
             /** Value */
             value: string;
+        };
+        /**
+         * SetDuration
+         * @description A new length for the edit ("Make it 90 seconds"): the storyboard is re-timed to it
+         *     with no AI call (PRODUCT.md §8; ADR 0071).
+         */
+        SetDuration: {
+            /** Duration S */
+            duration_s: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_duration";
         };
         /** SettingsPatch */
         SettingsPatch: {
@@ -2569,6 +2648,43 @@ export interface operations {
             };
         };
     };
+    change_duration_api_edits__eid__duration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DurationBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_api_edits__eid__generate_post: {
         parameters: {
             query?: never;
@@ -2679,6 +2795,40 @@ export interface operations {
             header?: never;
             path: {
                 eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shot_alternatives_api_edits__eid__shots__shot__alternatives_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+                shot: string;
             };
             cookie?: never;
         };

@@ -388,8 +388,10 @@
                 "lock_shot": "#/components/schemas/LockShot",
                 "move_beat": "#/components/schemas/MoveBeat",
                 "move_shot": "#/components/schemas/MoveShot",
+                "pace_beat": "#/components/schemas/PaceBeat",
                 "remove_shot": "#/components/schemas/RemoveShot",
-                "replace_shot": "#/components/schemas/ReplaceShot"
+                "replace_shot": "#/components/schemas/ReplaceShot",
+                "set_duration": "#/components/schemas/SetDuration"
               },
               "propertyName": "kind"
             },
@@ -408,6 +410,12 @@
               },
               {
                 "$ref": "#/components/schemas/ReplaceShot"
+              },
+              {
+                "$ref": "#/components/schemas/SetDuration"
+              },
+              {
+                "$ref": "#/components/schemas/PaceBeat"
               }
             ],
             "title": "Op"
@@ -417,6 +425,20 @@
           "op"
         ],
         "title": "DraftOpBody",
+        "type": "object"
+      },
+      "DurationBody": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_s": {
+            "title": "Duration S",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "duration_s"
+        ],
+        "title": "DurationBody",
         "type": "object"
       },
       "EstimateBody": {
@@ -593,6 +615,32 @@
           }
         },
         "title": "OpenBody",
+        "type": "object"
+      },
+      "PaceBeat": {
+        "additionalProperties": false,
+        "description": "Make a beat faster (shorter shots) or slower (longer ones): every free shot's\nlength moves one step; locked shots keep their cut.",
+        "properties": {
+          "beat_id": {
+            "title": "Beat Id",
+            "type": "string"
+          },
+          "faster": {
+            "default": true,
+            "title": "Faster",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "pace_beat",
+            "default": "pace_beat",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beat_id"
+        ],
+        "title": "PaceBeat",
         "type": "object"
       },
       "ParseBody": {
@@ -967,6 +1015,29 @@
           "value"
         ],
         "title": "SecretBody",
+        "type": "object"
+      },
+      "SetDuration": {
+        "additionalProperties": false,
+        "description": "A new length for the edit (\"Make it 90 seconds\"): the storyboard is re-timed to it\nwith no AI call (PRODUCT.md \u00a78; ADR 0071).",
+        "properties": {
+          "duration_s": {
+            "maximum": 14400.0,
+            "minimum": 5.0,
+            "title": "Duration S",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "set_duration",
+            "default": "set_duration",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "duration_s"
+        ],
+        "title": "SetDuration",
         "type": "object"
       },
       "SettingsPatch": {
@@ -1827,6 +1898,58 @@
         "summary": "Undo Draft"
       }
     },
+    "/api/edits/{eid}/duration": {
+      "post": {
+        "description": "\"Make it N seconds\": a new version re-timed to that length, with no AI call\n(M4 acceptance 3; ADR 0071). 409 when the length is already that.",
+        "operationId": "change_duration_api_edits__eid__duration_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DurationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Change Duration Api Edits  Eid  Duration Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Duration"
+      }
+    },
     "/api/edits/{eid}/generate": {
       "post": {
         "operationId": "generate_api_edits__eid__generate_post",
@@ -2026,6 +2149,57 @@
           }
         },
         "summary": "Get Report"
+      }
+    },
+    "/api/edits/{eid}/shots/{shot}/alternatives": {
+      "get": {
+        "description": "S16's ShotPopover: what this shot can be replaced with (``replace_shot``).",
+        "operationId": "shot_alternatives_api_edits__eid__shots__shot__alternatives_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "shot",
+            "required": true,
+            "schema": {
+              "title": "Shot",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Shot Alternatives Api Edits  Eid  Shots  Shot  Alternatives Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Shot Alternatives"
       }
     },
     "/api/edits/{eid}/versions": {

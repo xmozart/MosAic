@@ -543,3 +543,135 @@ def test_regenerating_the_edit_or_its_story_keeps_the_locks(
     assert len(variants) == 2
     assert len(set(variants)) == 2, "a story take and an edit take never share an answer"
     assert all(v < 0 for v in variants), "never an edit's own --variant"
+
+
+def _within(m: dict[str, Any], pct: int) -> bool:
+    return abs(m["total_frames"] - m["target_frames"]) <= m["target_frames"] * pct // 100
+
+
+def test_make_it_shorter_reuses_the_analysis_with_no_ai_call(drafted: Any) -> None:
+    """M4 acceptance 3 (ADR 0071): a new length is a new version within tolerance, timed
+    from the storyboard: no vision call, no AI call at all."""
+    from mosaic.editing.service import create_edit
+
+    project, control, client, edit_id, eid = _fresh(drafted, 23, 60)
+    calls = len(fake.CALLS)
+    made = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 30})
+    assert made.status_code == 201, made.text
+    v = made.json()
+    assert v["reason"] == "Made it 30 s"
+    assert v["creator"] == "user"
+    assert v["request"]["duration_s"] == 30
+    assert v["metrics"]["target_frames"] == 899  # 30 s at 30000/1001
+    assert _within(v["metrics"], v["request"]["tolerance_pct"])
+    assert len(fake.CALLS) == calls, "no AI call, vision or any other"
+    # The draft reloads with the very candidates the version was timed with.
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    assert d["timeline"] == v["timeline"]
+    assert not any("no longer available" in n for n in d["metrics"]["solver"]["notes"])
+    listed = client.get(f"/api/projects/{project.id}/edits").json()["items"]
+    card = next(e for e in listed if e["edit_id"] == eid)
+    assert card["request"]["duration_s"] == 30, "the edit's request is its current one"
+    assert card["name"].endswith("· 30 s"), "a default name follows the length"
+    # `mosaic edit` with the old request makes a new edit; with the new one, finds this.
+    old = EditRequest(duration_s=60, variant=23)
+    assert create_edit(project, old, control, control.local_principal) != edit_id
+    now = EditRequest(duration_s=30, variant=23)
+    assert create_edit(project, now, control, control.local_principal) == edit_id
+    assert client.post(f"/api/edits/{eid}/duration", json={"duration_s": 30}).status_code == 409
+    assert client.post(f"/api/edits/{eid}/duration", json={"duration_s": 1}).status_code == 422
+    # As a draft op it is undoable like any other.
+    d = client.post(
+        f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "set_duration", "duration_s": 45}}
+    ).json()
+    assert d["target"]["frames"] == 1349
+    back = client.post(f"/api/edits/{eid}/draft/undo").json()
+    assert back["target"]["frames"] == 899
+
+
+def test_make_it_90_seconds(drafted: Any) -> None:
+    """Acceptance 3 as written: longer, from the storyboard and its alternatives, with
+    no AI call; within tolerance, or reported as short of footage (ADR 0071)."""
+    _, _, client, _, eid = _fresh(drafted, 25, 60)
+    calls = len(fake.CALLS)
+    v = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 90}).json()
+    assert v["reason"] == "Made it 90 s"
+    assert v["metrics"]["target_frames"] == 2697
+    assert len(fake.CALLS) == calls, "no AI call"
+    m = v["metrics"]
+    assert _within(m, v["request"]["tolerance_pct"])
+    assert not m["solver"]["underfilled"]
+
+
+def test_a_length_the_footage_cannot_fill_is_reported_not_sent_to_the_ai(drafted: Any) -> None:
+    _, _, client, _, eid = _fresh(drafted, 27, 30)
+    calls = len(fake.CALLS)
+    m = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 3600}).json()["metrics"]
+    assert len(fake.CALLS) == calls
+    assert m["solver"]["underfilled"]
+    assert any("not enough usable footage" in n for n in m["solver"]["notes"])
+
+
+def test_the_same_length_saves_one_version_at_most(drafted: Any) -> None:
+    _, _, client, _, eid = _fresh(drafted, 26)
+    count = len(client.get(f"/api/edits/{eid}/versions").json()["items"])
+    # A pending change back to the base length: one version, not a detour.
+    client.post(
+        f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "set_duration", "duration_s": 45}}
+    )
+    back = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 30})
+    assert back.status_code == 201
+    assert back.json()["request"]["duration_s"] == 30
+    count += 1
+    ref = _shots(client.get(f"/api/edits/{eid}/draft").json())[0]["ref"]
+    client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": ref}})
+    assert client.post(f"/api/edits/{eid}/duration", json={"duration_s": 30}).status_code == 409
+    assert len(client.get(f"/api/edits/{eid}/versions").json()["items"]) == count, "nothing saved"
+    client.post(
+        f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "set_duration", "duration_s": 40}}
+    )
+    made = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 40})
+    assert made.status_code == 201
+    assert made.json()["reason"] == "Made it 40 s"
+    assert len(client.get(f"/api/edits/{eid}/versions").json()["items"]) == count + 1
+
+
+def test_a_beat_faster_and_a_shots_alternatives(drafted: Any) -> None:
+    _, _, client, _, eid = _fresh(drafted, 24)
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    beat = d["board"]["beats"][0]
+    faster = client.post(
+        f"/api/edits/{eid}/draft/ops",
+        json={"op": {"kind": "pace_beat", "beat_id": beat["beat_id"]}},
+    ).json()
+    after = next(b for b in faster["board"]["beats"] if b["beat_id"] == beat["beat_id"])
+    assert [s["length"] for s in after["shots"]] != [s["length"] for s in beat["shots"]]
+
+    def mean_frames(state: dict[str, Any]) -> float:
+        frames = [
+            e["timeline_out"]["frames"] - e["timeline_in"]["frames"]
+            for e in state["timeline"]["tracks"][0]["events"]
+            if e["beat_id"] == beat["beat_id"]
+        ]
+        return sum(frames) / len(frames)
+
+    assert mean_frames(faster) < mean_frames(d), "its shots are shorter on the timeline"
+    ref = beat["shots"][0]["ref"]
+    from urllib.parse import quote
+
+    # A ref holds "#": percent-encoded in the path.
+    got = client.get(f"/api/edits/{eid}/shots/{quote(ref, safe='')}/alternatives").json()
+    alts = got["items"]
+    assert got["locked"] is False
+    used = {s["segment_id"] for s in _shots(d)}
+    assert alts, "the beat's pool offers something"
+    assert all(a["segment_id"] not in used for a in alts)
+    named = [a["segment_id"] for a in beat["shots"][0]["alternatives"]]
+    offered = [a["segment_id"] for a in alts]
+    assert offered[: len([n for n in named if n in offered])] == [n for n in named if n in offered]
+    swapped = client.post(
+        f"/api/edits/{eid}/draft/ops",
+        json={"op": {"kind": "replace_shot", "ref": ref, "segment_id": offered[0]}},
+    )
+    assert swapped.status_code == 200, swapped.text
+    assert client.get(f"/api/edits/{eid}/shots/nope/alternatives").status_code == 404

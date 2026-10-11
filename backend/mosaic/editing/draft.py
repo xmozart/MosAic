@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from sqlalchemy import delete, func, select
@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from mosaic.ai.prompts.planner.schema_v2 import Beat as PlanBeat
 from mosaic.ai.prompts.planner.schema_v2 import Output as PlanOut
+from mosaic.ai.prompts.selector.schema_v2 import Length
 from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
 from mosaic.editing import solver
@@ -27,7 +28,7 @@ from mosaic.editing.request import EditRequest
 from mosaic.editing.resolve import EditInputs, Resolved, rejected_segments, resolve
 from mosaic.editing.retrieval import Candidate
 from mosaic.storage import provenance
-from mosaic.storage.models_project import EditDraftOp, EditVersion
+from mosaic.storage.models_project import Edit, EditDraftOp, EditVersion
 
 
 class DraftError(ValueError):
@@ -111,6 +112,7 @@ class Board(BaseModel):
     user_order: bool = False  # the owner rearranged it: its order, not the chronology's
     # Segments the owner took out (removed or replaced): never brought back as a spare.
     excluded: list[str] = Field(default_factory=list)
+    duration_s: int | None = None  # the length asked for, when the owner changed it (M4.4b)
 
     def exclude(self, segment_id: str) -> None:
         self.excluded = sorted({*self.excluded, segment_id})
@@ -224,6 +226,28 @@ class LockShot(BaseModel):
     absorb: list[str] = Field(default_factory=list)
 
 
+class SetDuration(BaseModel):
+    """A new length for the edit ("Make it 90 seconds"): the storyboard is re-timed to it
+    with no AI call (PRODUCT.md §8; ADR 0071)."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["set_duration"] = "set_duration"
+    duration_s: int = Field(ge=5, le=4 * 3600)
+
+
+class PaceBeat(BaseModel):
+    """Make a beat faster (shorter shots) or slower (longer ones): every free shot's
+    length moves one step; locked shots keep their cut."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["pace_beat"] = "pace_beat"
+    beat_id: str
+    faster: bool = True
+
+
+LENGTHS: tuple[str, ...] = get_args(Length)  # short → hold, the selector's length classes
+
+
 class ReplaceShot(BaseModel):
     """Replace a shot's segment with one of its alternatives or its beat's pool."""
 
@@ -234,7 +258,8 @@ class ReplaceShot(BaseModel):
 
 
 Op = Annotated[
-    MoveShot | MoveBeat | RemoveShot | LockShot | ReplaceShot, Field(discriminator="kind")
+    MoveShot | MoveBeat | RemoveShot | LockShot | ReplaceShot | SetDuration | PaceBeat,
+    Field(discriminator="kind"),
 ]
 OP: TypeAdapter[Op] = TypeAdapter(Op)
 
@@ -261,6 +286,28 @@ def apply(board: Board, op: Op) -> Board:
             raise DraftError("this shot is locked: unlock it to remove it")
         beat.shots.pop(i)
         out.exclude(sh.segment_id)
+    elif isinstance(op, SetDuration):
+        out.duration_s = op.duration_s
+    elif isinstance(op, PaceBeat):
+        _, beat = out.beat(op.beat_id)
+        step = -1 if op.faster else 1
+        # Locked cuts are the owner's; dialogue runs to the end of its sentence anyway.
+        free = [
+            sh
+            for sh in beat.shots
+            if not (sh.locked or sh.absorbed_by) and sh.audio_intent != "dialogue"
+        ]
+        if not free:
+            raise DraftError(f"{beat.title} has no free shot to pace: they are locked or speech")
+        moved = False
+        for sh in free:
+            i = min(len(LENGTHS) - 1, max(0, LENGTHS.index(sh.length) + step))
+            moved |= LENGTHS[i] != sh.length
+            sh.length = LENGTHS[i]
+        if not moved:
+            raise DraftError(
+                f"{beat.title} is already as {'fast' if op.faster else 'slow'} as it gets"
+            )
     elif isinstance(op, LockShot):
         _, _, sh = out.shot(op.ref)
         if sh.absorbed_by:
@@ -475,6 +522,23 @@ def board_shots(
     return plan, shots, notes
 
 
+def request_of(req: EditRequest, board: Board) -> EditRequest:
+    """The request the storyboard is timed to: its own length, if the owner changed it."""
+    if board.duration_s is None or board.duration_s == req.duration_s:
+        return req
+    return req.model_copy(update={"duration_s": board.duration_s})
+
+
+def inputs(s: Session, d: Draft) -> tuple[EditRequest, EditInputs]:
+    """The request the draft is timed to (its own length) and the candidates for it: one
+    candidate set for timing, saving and reloading, since retrieval depends on the
+    length (ADR 0071)."""
+    from mosaic.editing.generate import edit_inputs
+
+    req = request_of(EditRequest.model_validate(d.base.request), d.board)
+    return req, edit_inputs(s, req)
+
+
 def timed(
     s: Session,
     req: EditRequest,
@@ -482,7 +546,9 @@ def timed(
     board: Board,
     rejected: set[int] | None = None,
 ) -> Resolved:
-    """The storyboard timed like any edit (``resolve``), with no AI call."""
+    """The storyboard timed like any edit (``resolve``), with no AI call, to its own
+    length when the owner changed it."""
+    req = request_of(req, board)
     plan, shots, notes = board_shots(board, {c.ref: c for c in inp.cands}, inp.rate)
     done = resolve(
         s,
@@ -624,7 +690,9 @@ def commit(
         creator=creator,
         reason=reason,
         key=t.key,
-        request=d.base.request,
+        request=request_of(EditRequest.model_validate(d.base.request), t.draft.board).model_dump(
+            mode="json"
+        ),
         rate=d.base.rate,
         beats=done.beats,
         timeline=done.timeline,
@@ -634,6 +702,14 @@ def commit(
         created_at=now_iso(),
     )
     s.add(row)
+    edit = s.get(Edit, edit_id)
+    if edit is not None and edit.request.get("duration_s") != row.request["duration_s"]:
+        # The edit's request is its current one: a later regeneration keeps the length,
+        # and a default name follows it (ADR 0071).
+        old_s, new_s = edit.request.get("duration_s"), row.request["duration_s"]
+        if edit.name.endswith(f" · {old_s} s"):
+            edit.name = f"{edit.name[: -len(f' · {old_s} s')]} · {new_s} s"
+        edit.request = {**edit.request, "duration_s": new_s}
     s.execute(delete(EditDraftOp).where(EditDraftOp.edit_id == edit_id))
     s.flush()
     return row
