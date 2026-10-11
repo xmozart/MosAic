@@ -57,9 +57,9 @@ from mosaic.storage.models_project import (
     VisualObservation,
 )
 
-EDIT_VERSION = "edit/1"  # solver + refiner + critic algorithm version
-PLANNER = ("planner", 2)  # v2: trip context (M1)
-SELECTOR = ("selector", 2)
+EDIT_VERSION = "edit/2"  # 2: M4 request (arc, weights, rules) in retrieval and prompts
+PLANNER = ("planner", 3)  # v2: trip context (M1); v3: arc, custom beats, preferences (M4)
+SELECTOR = ("selector", 3)  # v3: preferences, categories (M4)
 POOL_FACTOR = 3
 PLANNER_MAX_TOKENS = 8000
 SELECTOR_MAX_TOKENS = 16000
@@ -112,6 +112,75 @@ def edit_key(
 # ------------------------------------------------------------------ contexts
 
 
+ARCS = {
+    "classic_travel": "Classic travel arc: arrival and the setting first, exploration "
+    "building to the trip's high points, then a calm, reflective close.",
+    "fast_highlight": "Fast highlight: open on a high point, keep the energy up "
+    "throughout, end on the single best moment.",
+    "documentary": "Documentary: let places, people and speech explain the trip in order; "
+    "context before detail.",
+}
+WEIGHT_WORDS = {
+    "strong": "Strongly prefer",
+    "more": "More of",
+    "less": "Less of",
+    "avoid": "Avoid",
+}
+
+
+def arc_text(req: EditRequest) -> str:
+    """The story's arc for the planner (PRODUCT.md §4): a template, or the owner's own
+    beats, which the plan must follow exactly (ADR 0073)."""
+    if req.arc == "custom":
+        listed = "; ".join(f"{i}. {b}" for i, b in enumerate(req.beats, 1))
+        return (
+            f"Custom beats, exactly these {len(req.beats)}, in this order, each titled as "
+            f"given: {listed}"
+        )
+    return ARCS[req.arc]
+
+
+def preferences_text(req: EditRequest) -> str:
+    """The owner's content weights, editing rules, sound and shot-length choices as
+    prompt lines (PRODUCT.md §4; ADR 0073)."""
+    lines = []
+    for weight, words in WEIGHT_WORDS.items():
+        cats = [c.replace("_", " ") for c, w in req.weights.items() if w == weight]
+        if cats:
+            lines.append(f"{words}: {', '.join(cats)}.")
+    r = req.rules
+    if r.avoid_repetition:
+        lines.append("Avoid repetition: no near-identical shots or subjects back to back.")
+    if r.allow_imperfect:
+        lines.append("Imperfect but emotional moments are welcome (a MAYBE clip may stay).")
+    lines.append(
+        "Prefer unique moments over technical quality."
+        if r.unique_over_quality
+        else "Prefer technically clean shots over rarer but flawed moments."
+    )
+    if r.drone_openers:
+        lines.append("Open the edit and its beats with a drone shot where one fits.")
+    if r.remove_dead_time:
+        lines.append("Remove dead time aggressively: skip clips where little happens.")
+    if r.long_holds:
+        lines.append("Long cinematic holds are welcome on the strongest shots.")
+    a = req.audio
+    if a.keep_dialogue:
+        lines.append("Keep dialogue: never cut someone mid-sentence.")
+    if a.natural_sound:
+        lines.append("Prioritize natural sound (waterfalls, waves, laughter).")
+    if a.reduce_wind:
+        lines.append("Prefer clips without wind or handling noise when the sound is heard.")
+    if req.shot_lengths is not None:
+        sl = req.shot_lengths
+        lines.append(
+            f"Shot lengths: about {sl.preferred_ds / 10:g} s, from {sl.min_ds / 10:g} s "
+            f"to {sl.max_ds / 10:g} s (display); dialogue, reactions and hero shots may "
+            "run longer."
+        )
+    return "\n".join(lines) or "(none)"
+
+
 def request_summary(req: EditRequest) -> str:
     return (
         f"{req.duration_s} s, story {req.story} ({STORY_PRESETS[req.story]}), "
@@ -135,11 +204,36 @@ def planner_context(
         "speech_refs": [c.ref for c in cands if c.has_speech],
         "candidate_assets": {c.ref: c.asset_id for c in cands},
         "duration_s": req.duration_s,
+        "arc": arc_text(req),
+        "preferences": preferences_text(req),
+        "custom_beats": list(req.beats) if req.arc == "custom" else [],
     }
 
 
-def check_plan(answer: PlanOut, refs: set[str]) -> list[str]:
+def owners_titles(plan: PlanOut, req: EditRequest) -> PlanOut:
+    """A custom arc's beats keep the owner's titles exactly as typed (``check_plan``
+    compares them case aside); user decisions override AI (invariant 10)."""
+    if req.arc != "custom":
+        return plan
+    return plan.model_copy(
+        update={
+            "beats": [
+                b.model_copy(update={"title": t})
+                for b, t in zip(plan.beats, req.beats, strict=True)
+            ]
+        }
+    )
+
+
+def check_plan(answer: PlanOut, refs: set[str], req: EditRequest | None = None) -> list[str]:
     errors = []
+    if req is not None and req.arc == "custom":
+        got = [b.title.strip().casefold() for b in answer.beats]
+        want = [b.casefold() for b in req.beats]
+        if got != want:
+            errors.append(
+                "plan exactly the owner's beats, in order, titled as given: " + "; ".join(req.beats)
+            )
     ids = [b.beat_id for b in answer.beats]
     if len(set(ids)) != len(ids):
         errors.append("beat_id values must be unique")
@@ -178,6 +272,7 @@ def selector_context(
         "request": request_summary(req),
         "instructions": req.instructions or "(none)",
         "pace": f"{req.pace} (preferred shot about {float(pace_pref_s):.1f} s)",
+        "preferences": preferences_text(req),
         "beats": "\n\n".join(blocks),
         "beat_pools": pools,
         "speech_refs": [r for r, c in by_ref.items() if c.has_speech],
@@ -353,10 +448,11 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         pctx,
         max_tokens=PLANNER_MAX_TOKENS,
         variant=req.variant,
-        validate=lambda a: check_plan(a, set(by_ref)),
+        validate=lambda a: check_plan(a, set(by_ref), req),
     )
     plan = plan_res.data
     assert isinstance(plan, PlanOut)
+    plan = owners_titles(plan, req)
     pref_s = Fraction(pace.preferred) / parse_rational(rate)
     sctx = selector_context(req, plan, by_ref, pref_s, trip)
     ctx.set_stage("selecting shots")

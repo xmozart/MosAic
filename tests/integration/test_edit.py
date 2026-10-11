@@ -446,3 +446,44 @@ def test_resolve_retimes_a_selection_without_ai(
     assert again.metrics == {
         k: v for k, v in stored.metrics.items() if k not in ("preliminary", "ai")
     }
+
+
+def test_the_m4_request_reaches_the_plan(
+    analyzed_session: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Planner and selector v3 (ADR 0073): the owner's custom beats are the edit's beats,
+    an avoided category stays out, and the prompts carry the preferences."""
+    from mosaic.ai import client as ai_client
+
+    project, control = analyzed_session
+    sent: dict[str, Any] = {}
+    real = ai_client.AIClient.structured
+
+    def spying(
+        self: Any, capability: str, name: str, version: int, ctx: Any, *a: Any, **k: Any
+    ) -> Any:
+        sent[name] = (version, ctx)
+        return real(self, capability, name, version, ctx, *a, **k)
+
+    monkeypatch.setattr(ai_client.AIClient, "structured", spying)
+    req = EditRequest(
+        duration_s=30,
+        arc="custom",
+        beats=["Arrival", "The middle", "Home"],
+        weights={"conversations": "avoid", "landscapes": "more"},
+    )
+    edit_id = generate(project, control, req)
+    v = get_version(project, edit_id)
+    assert [b["title"] for b in v.beats] == ["Arrival", "The middle", "Home"]
+    assert sent["planner"][0] == 3
+    assert "Avoid: conversations." in sent["planner"][1]["preferences"]
+    assert "exactly these 3" in sent["planner"][1]["arc"]
+    assert sent["selector"][0] == 3
+    assert "More of: landscapes." in sent["selector"][1]["preferences"]
+    picked = {sel["segment_id"] for sel in v.timeline["selections"].values() if sel.get("used")}
+    with project.db.session() as s:
+        speech = {
+            f"seg_{sid:06d}"
+            for sid in s.scalars(select(Segment.id).where(Segment.has_speech.is_(True)))
+        }
+    assert not picked & speech, "the avoided category stays out"

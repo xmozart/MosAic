@@ -524,6 +524,7 @@ def _regenerate(ctx: TaskContext, edit_id: int, scope: str) -> dict[str, Any]:
         check_plan,
         check_selection,
         export_path,
+        owners_titles,
         planner_context,
         selector_context,
         version_json,
@@ -556,9 +557,9 @@ def _regenerate(ctx: TaskContext, edit_id: int, scope: str) -> dict[str, Any]:
         planner_context(req, cands, inp.trip),
         max_tokens=PLANNER_MAX_TOKENS,
         variant=variant,
-        validate=lambda a: check_plan(a, set(by_ref)),
+        validate=lambda a: check_plan(a, set(by_ref), req),
     )
-    plan = cast(PlanOut, plan_res.data)
+    plan = owners_titles(cast(PlanOut, plan_res.data), req)
     ctx.set_stage("selecting shots")
     pref_s = Fraction(inp.pace.preferred) / parse_rational(inp.rate)
     sel_res = client.structured(

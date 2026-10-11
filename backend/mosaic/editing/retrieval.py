@@ -122,6 +122,8 @@ class Candidate:
             parts.append("speech")
         if self.similar_to is not None:
             parts.append(f"similar to {seg_ref(self.similar_to)}")
+        if self.categories:  # content categories, for the owner's weights (ADR 0073)
+            parts.append(", ".join(sorted(c.replace("_", " ") for c in self.categories)))
         parts.append(o.get("description", "(no description)"))
         return " · ".join(parts)
 

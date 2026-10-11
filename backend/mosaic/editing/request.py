@@ -213,8 +213,8 @@ class EditRequest(BaseModel):
     @classmethod
     def _beats(cls, v: list[str]) -> list[str]:
         beats = [b.strip() for b in v]
-        if any(not b or len(b) > 80 for b in beats):
-            raise ValueError("each beat is 1–80 characters")
+        if any(not 2 <= len(b) <= 60 for b in beats):
+            raise ValueError("each beat is 2–60 characters (a beat title)")
         return beats
 
     @field_validator("weights")
@@ -225,8 +225,9 @@ class EditRequest(BaseModel):
 
     @model_validator(mode="after")
     def _arc(self) -> EditRequest:
-        if self.arc == "custom" and not self.beats:
-            raise ValueError("a custom arc needs at least one beat")
+        if self.arc == "custom" and len(self.beats) < 2:
+            # A beat's share is at most 80 % of the edit (planner schema).
+            raise ValueError("a custom arc needs at least two beats")
         if self.arc != "custom" and self.beats:
             raise ValueError("beats are for a custom arc")
         return self

@@ -163,10 +163,16 @@ def _planner(request: StructuredRequest) -> dict[str, Any]:
     size = -(-len(refs) // k)
     shares = [100 // k] * k
     shares[-1] += 100 - sum(shares)
+    custom: list[str] = list(request.context.get("custom_beats") or [])
+    if custom:  # the owner's own beats, in order (planner v3)
+        k = len(custom)
+        size = -(-len(refs) // k)
+        shares = [100 // k] * k
+        shares[-1] += 100 - sum(shares)
     beats = [
         {
             "beat_id": f"b{i + 1}",
-            "title": f"Part {i + 1}",
+            "title": custom[i] if custom else f"Part {i + 1}",
             "intent": f"Part {i + 1} of the trip, in order.",
             "share_percent": shares[i],
             "candidates": refs[i * size : (i + 1) * size] or refs[-1:],

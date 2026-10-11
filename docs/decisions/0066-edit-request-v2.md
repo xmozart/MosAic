@@ -11,7 +11,7 @@ M4 makes the whole wizard real (PRODUCT.md §4, S14): arc and custom beats, cont
 
 - **Every new field has the wizard's default:**
   - `arc`: `classic_travel`;
-  - `beats`: `[]` (a custom arc only, 1–12 beats of 1–80 characters, in order);
+  - `beats`: `[]` (a custom arc only, 2–12 beats of 2–60 characters, in order; since M4 step 5b these are the planner's own bounds, because the owner's beats become the plan's beat titles and a beat's share of the edit is at most 80 %);
   - `weights`: `{}`;
   - `rules`: avoid repetition and unique over quality on, the rest off;
   - `photo_share`: `some`;
