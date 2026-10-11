@@ -241,7 +241,7 @@ def retrieve(
             r.segment_id: r.data
             for r in session.scalars(select(DeepReview).where(DeepReview.segment_id.in_(ids)))
         }
-        facts = segment_facts(session, asset, only=SHAKE_METRICS)  # only shake is read
+        facts = segment_facts(session, asset, only=SHAKE_METRICS, segments=segs)  # only shake
         base = _capture(asset)
         for g in segs:
             counts["segments"] += 1

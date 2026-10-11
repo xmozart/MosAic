@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import subprocess
-import sys
-from typing import Any
-
 import pytest
 
 from mosaic.jobs.client import live_worker, wait_for_job
@@ -96,40 +92,3 @@ def test_dead_worker_is_restarted(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(TimeoutError):
         client.wait_for_job(store, job, poll_s=0.05, timeout_s=0.3, control=control, worker=Dead())  # type: ignore[arg-type]
     assert starts
-
-
-# Workers start with a bounded malloc on Linux (ADR 0062).
-
-
-@pytest.mark.parametrize(
-    ("platform", "preset", "want"),
-    [("linux", None, "2"), ("linux", "8", "8"), ("darwin", None, None)],
-)
-def test_worker_env(
-    monkeypatch: pytest.MonkeyPatch, platform: str, preset: str | None, want: str | None
-) -> None:
-    from mosaic.jobs import client
-
-    monkeypatch.setattr(sys, "platform", platform)
-    if preset is None:
-        monkeypatch.delenv("MALLOC_ARENA_MAX", raising=False)
-    else:
-        monkeypatch.setenv("MALLOC_ARENA_MAX", preset)
-    assert client.worker_env().get("MALLOC_ARENA_MAX") == want
-
-
-def test_started_workers_get_that_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The supervisor and the CLI start workers through start_worker."""
-    from mosaic.jobs import client
-
-    seen: dict[str, Any] = {}
-
-    def fake_popen(argv: list[str], **kw: Any) -> object:
-        seen.update(kw)
-        return object()
-
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.delenv("MALLOC_ARENA_MAX", raising=False)
-    monkeypatch.setattr(subprocess, "Popen", fake_popen)
-    client.start_worker()
-    assert seen["env"]["MALLOC_ARENA_MAX"] == "2"

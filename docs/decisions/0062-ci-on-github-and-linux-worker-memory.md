@@ -1,6 +1,6 @@
 # 0062 — GitHub CI is the reference; Linux worker memory
 
-- Status: accepted (M3 step 6)
+- Status: accepted (M3 step 6). The "Workers on Linux" decision is superseded by ADR 0063: the memory was a measurement error, and the arena cap is removed.
 - Deciders: agent (autonomous; no human gate)
 
 ## Context

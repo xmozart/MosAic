@@ -219,13 +219,17 @@ class _Metric(NamedTuple):
 
 
 def segment_facts(
-    session: Session, asset: Asset, only: frozenset[str] | None = None
+    session: Session,
+    asset: Asset,
+    only: frozenset[str] | None = None,
+    segments: Iterable[Segment] | None = None,
 ) -> dict[int, SegmentFacts]:
     """Each segment's metrics: per-sample ones whose frame lies in its usable range, and
     range ones that overlap it. The metrics are indexed by time once per asset, so a
     segment looks at its own range only (the 40-hour estimate spent 11 s here comparing
     every segment with every metric). Lists keep the metrics' stored order. ``only`` reads
-    just those metrics (the others' lists stay empty)."""
+    just those metrics (the others' lists stay empty); ``segments`` are the asset's
+    segments when the caller has them loaded already."""
     assert asset.tb is not None
     tb = parse_rational(asset.tb)
     asset_seconds = Fraction(asset.duration_ticks or 0) * tb
@@ -245,12 +249,16 @@ def segment_facts(
             .order_by(TechMetric.id)
         )
     ]
-    sample_ticks = {
-        sid: t
-        for sid, t in session.execute(
-            select(SampleFrame.id, SampleFrame.ticks).where(SampleFrame.asset_id == asset.id)
-        )
-    }
+    sample_ticks = (
+        {
+            sid: t
+            for sid, t in session.execute(
+                select(SampleFrame.id, SampleFrame.ticks).where(SampleFrame.asset_id == asset.id)
+            )
+        }
+        if any(m.sample_id is not None for m in metrics)
+        else {}  # range metrics only (retrieval's shake)
+    )
     shake_name = shake_metric_name({m.name for m in metrics})
     # (time, stored position) for per-sample metrics; (start, position) for range ones.
     at = sorted(
@@ -261,8 +269,13 @@ def segment_facts(
     at_times = [t for t, _ in at]
     ranged = sorted((m.start_ticks, i) for i, m in enumerate(metrics) if m.sample_id is None)
     ranged_starts = [t for t, _ in ranged]
+    # A range that overlaps [a, b) starts after a minus the longest range, so a segment
+    # skips the ranges that ended before it (per-second shake: ~360 per six-minute clip).
+    longest = max((metrics[i].end_ticks - t for t, i in ranged), default=0)
     out: dict[int, SegmentFacts] = {}
-    for seg in session.scalars(select(Segment).where(Segment.asset_id == asset.id)):
+    if segments is None:
+        segments = session.scalars(select(Segment).where(Segment.asset_id == asset.id))
+    for seg in segments:
         a, b = seg.usable_start_ticks, seg.usable_end_ticks
         if b <= a:
             a, b = seg.start_ticks, seg.end_ticks
@@ -274,9 +287,8 @@ def segment_facts(
             hits = [i for _, i in at[bisect_left(at_times, a) : bisect_left(at_times, b)]]
         for i in sorted(hits):
             at_sample.setdefault(metrics[i].name, []).append(metrics[i])
-        overlapping = [
-            i for _, i in ranged[: bisect_left(ranged_starts, b)] if metrics[i].end_ticks > a
-        ]
+        window = ranged[bisect_left(ranged_starts, a - longest) : bisect_left(ranged_starts, b)]
+        overlapping = [i for _, i in window if metrics[i].end_ticks > a]
         for i in sorted(overlapping):
             in_range.setdefault(metrics[i].name, []).append(metrics[i])
         frozen = sum(

@@ -13,7 +13,7 @@ Optional: try the DMG (`make desktop-bundle`) on a second Mac without developer 
 ## Current
 
 - **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
-- **Step:** M3.6 committed; pending its GitHub runs (`ci`, `desktop`, ADR 0062). When green, record them in `docs/reports/M3.md` and wait at G1. Next: M4 after G1 or "defer signing".
+- **Step:** M3.6 committed; its `ci` run was red again. The scale test read pytest's memory, not the worker's (ADR 0063, fixed in M3.6b). Pending the M3.6b GitHub runs (`ci`, `desktop`). If the S14 estimate or list-page budget fails there, make retrieval cheaper per asset (ADR 0063, consequences). When green, record them in `docs/reports/M3.md` and wait at G1. Next: M4 after G1 or "defer signing".
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan

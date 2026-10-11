@@ -157,13 +157,31 @@ def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
                         provenance_id=prov,
                     )
                 )
+        # One range across the whole clip (it starts long before most segments) and an
+        # empty one: the scan's window must not drop either (ADR 0063).
+        for lo, hi in ((0, 60_000), (30_000, 30_000)):
+            for name in (shake_name, "freeze"):
+                s.add(
+                    TechMetric(
+                        asset_id=asset.id,
+                        start_ticks=lo,
+                        end_ticks=hi,
+                        name=name,
+                        value=rnd.random(),
+                        percentile=rnd.random(),
+                        provenance_id=prov,
+                    )
+                )
     with p.db.session() as s:
         asset = s.scalars(select(Asset)).one()
         want = _reference(s, asset)
         got = segment_facts(s, asset)
         shake_only = segment_facts(s, asset, only=SHAKE_METRICS)
+        loaded = list(s.scalars(select(Segment).where(Segment.asset_id == asset.id)))
+        given = segment_facts(s, asset, only=SHAKE_METRICS, segments=loaded)
     # Retrieval reads only shake: the same values, read from far fewer rows.
     assert {k: v.shake for k, v in shake_only.items()} == {k: v.shake for k, v in got.items()}
+    assert given == shake_only  # with the segments retrieval already loaded
     assert all(not v.sharpness and not v.clip_low for v in shake_only.values())
     assert set(got) == set(want)
     for sid, w in want.items():

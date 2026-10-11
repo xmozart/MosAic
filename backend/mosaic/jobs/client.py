@@ -37,17 +37,6 @@ def live_worker(control: ControlDB) -> WorkerRecord | None:
     return None
 
 
-def worker_env() -> dict[str, str]:
-    """A worker's environment. On Linux, glibc gives each thread its own malloc arena (up
-    to 8 per core): a worker's many slot threads then hold far more memory than they use
-    (the 40-hour run peaked at 1.7 GB on a 4-core runner against 0.5 GB on macOS). Two
-    arenas keep it bounded (invariant 13); an explicit MALLOC_ARENA_MAX wins."""
-    env = os.environ.copy()
-    if sys.platform.startswith("linux"):
-        env.setdefault("MALLOC_ARENA_MAX", "2")
-    return env
-
-
 def start_worker(exit_when_idle_s: float = 20.0) -> subprocess.Popen[bytes]:
     """Start a detached worker process that exits when idle. Logs go to app-data/logs."""
     logs = app_data_dir() / "logs"
@@ -59,7 +48,7 @@ def start_worker(exit_when_idle_s: float = 20.0) -> subprocess.Popen[bytes]:
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
-            env=worker_env(),
+            env=os.environ.copy(),
         )
 
 

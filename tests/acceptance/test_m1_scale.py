@@ -42,13 +42,18 @@ LIST_PAGE_S = 0.300
 # retrieval in the request (ADR 0047). M2 step 11 budget on this fixture.
 ESTIMATE_S = 2.0
 
-# Runs the worker in this process and prints its peak RSS (bytes) as the last line.
+# Runs the worker in this process and prints its peak RSS (bytes) as the last line. On
+# Linux, ru_maxrss also holds the parent's peak: the child is forked from pytest, and exec
+# keeps the old memory's high-water mark (ADR 0063). VmHWM is the worker's own.
 WORKER = """
 import resource, sys
 from mosaic.jobs.worker import main
 main(["--exit-when-idle", "5"])
-peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-print(peak if sys.platform == "darwin" else peak * 1024)  # Linux reports KiB
+if sys.platform == "darwin":
+    print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+else:
+    hwm = next(l for l in open("/proc/self/status") if l.startswith("VmHWM:"))
+    print(int(hwm.split()[1]) * 1024)  # kB
 """
 
 
@@ -85,14 +90,8 @@ def test_forty_hours_l0_l1_bounded_memory_and_fast_list(
     project.close()
 
     started = time.monotonic()
-    from mosaic.jobs.client import worker_env
-
-    proc = subprocess.run(  # started as the server starts it (environment included)
-        [sys.executable, "-c", WORKER],
-        capture_output=True,
-        text=True,
-        timeout=3300,
-        env=worker_env(),
+    proc = subprocess.run(
+        [sys.executable, "-c", WORKER], capture_output=True, text=True, timeout=3300
     )
     elapsed = time.monotonic() - started
     assert proc.returncode == 0, proc.stderr[-3000:]
