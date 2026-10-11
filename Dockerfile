@@ -61,6 +61,8 @@ COPY LICENSES.md /app/LICENSES.md
 # database (MOSAIC_FOLDER_DB=never: a bind mount can't be trusted to reveal whether a NAS or
 # a cloud-synced folder backs it; invariant 2, ADR 0055). /media: the footage, mounted by
 # compose (the media root people can open).
+# MALLOC_ARENA_MAX: glibc keeps two malloc arenas, not 8 per core, so the threaded
+# workers stay small (ADR 0062).
 ENV PATH=/opt/venv/bin:$PATH \
     MOSAIC_MODE=server \
     MOSAIC_HOME=/data \
@@ -68,7 +70,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     MOSAIC_MEDIA_ROOTS=/media \
     MOSAIC_BIND=0.0.0.0 \
     MOSAIC_FOLDER_DB=never \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2
 RUN useradd --uid 1000 --user-group --create-home mosaic \
  && mkdir -p /data /media \
  && chown mosaic:mosaic /data

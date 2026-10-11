@@ -84,10 +84,13 @@ export function TripContextScreen() {
   };
 
   const save = useMutation({
-    mutationFn: async () => {
+    // The body comes with the click: exactly what is on screen then. (The mutation's own
+    // function is refreshed after render, so a click right after a merge could otherwise
+    // save the state from before it.)
+    mutationFn: async (body: ReturnType<typeof forSave>) => {
       const { data, error } = await api.PUT("/api/projects/{pid}/trip-context", {
         params: { path: { pid } },
-        body: forSave(value) as unknown as Record<string, unknown>,
+        body: body as unknown as Record<string, unknown>,
       });
       if (error || !data) throw new Error("not saved");
       return data;
@@ -115,7 +118,7 @@ export function TripContextScreen() {
       parseError={parseError}
       onParse={() => void parse()}
       saving={save.isPending}
-      onSave={() => save.mutate()}
+      onSave={() => save.mutate(forSave(value))}
       onSkip={() => navigate(`/p/${pid}/analyze`)}
     />
   );

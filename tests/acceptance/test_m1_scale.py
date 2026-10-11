@@ -85,8 +85,14 @@ def test_forty_hours_l0_l1_bounded_memory_and_fast_list(
     project.close()
 
     started = time.monotonic()
-    proc = subprocess.run(
-        [sys.executable, "-c", WORKER], capture_output=True, text=True, timeout=3300
+    from mosaic.jobs.client import worker_env
+
+    proc = subprocess.run(  # started as the server starts it (environment included)
+        [sys.executable, "-c", WORKER],
+        capture_output=True,
+        text=True,
+        timeout=3300,
+        env=worker_env(),
     )
     elapsed = time.monotonic() - started
     assert proc.returncode == 0, proc.stderr[-3000:]

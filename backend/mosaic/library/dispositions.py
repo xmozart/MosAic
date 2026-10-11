@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, NamedTuple
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, true
 from sqlalchemy.orm import Session
 
 from mosaic.core.clock import now_iso
@@ -218,11 +218,14 @@ class _Metric(NamedTuple):
     percentile: float | None
 
 
-def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
+def segment_facts(
+    session: Session, asset: Asset, only: frozenset[str] | None = None
+) -> dict[int, SegmentFacts]:
     """Each segment's metrics: per-sample ones whose frame lies in its usable range, and
     range ones that overlap it. The metrics are indexed by time once per asset, so a
     segment looks at its own range only (the 40-hour estimate spent 11 s here comparing
-    every segment with every metric). Lists keep the metrics' stored order."""
+    every segment with every metric). Lists keep the metrics' stored order. ``only`` reads
+    just those metrics (the others' lists stay empty)."""
     assert asset.tb is not None
     tb = parse_rational(asset.tb)
     asset_seconds = Fraction(asset.duration_ticks or 0) * tb
@@ -238,6 +241,7 @@ def segment_facts(session: Session, asset: Asset) -> dict[int, SegmentFacts]:
                 TechMetric.percentile,
             )
             .where(TechMetric.asset_id == asset.id)
+            .where(TechMetric.name.in_(sorted(only)) if only is not None else true())
             .order_by(TechMetric.id)
         )
     ]

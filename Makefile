@@ -78,6 +78,8 @@ desktop-bundle:  # MosAic.app and the DMG, then the clean-machine check (ADR 006
 	./scripts/check-desktop-bundle.sh desktop/src-tauri/target/release/bundle/macos/MosAic.app
 
 desktop-check:  # Rust format, clippy and crate licenses (macOS: needs the system webview)
+	# Tauri's build script wants the bundle's resource folders; empty ones do for checks.
+	mkdir -p desktop/src-tauri/bundle-resources/backend desktop/src-tauri/bundle-resources/ui desktop/src-tauri/bundle-resources/ffmpeg
 	cd desktop/src-tauri && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo clippy --locked --all-targets --features updater -- -D warnings
 	$(UV) run python scripts/check_rust_licenses.py
 

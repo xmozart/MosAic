@@ -4,12 +4,16 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-_(empty — the agent is working on M3)_
+**G1 — Apple Developer ID (M3 signing and notarization).** Once the M3.6 GitHub runs (including the unsigned `desktop` workflow) are green and recorded in `docs/reports/M3.md`, M3 is complete except signing. Then, please either:
+1. Add the GitHub repository secrets `APPLE_CERTIFICATE` (base64 of the Developer ID Application `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`, then run the `desktop` workflow. Never paste them into a chat or a file. Or:
+2. Say "defer signing": the agent then continues to M4 and keeps signing as an open item.
+
+Optional: try the DMG (`make desktop-bundle`) on a second Mac without developer tools. Still open: Q-1, Q-2, Q-3 (`docs/OPEN_QUESTIONS.md`).
 
 ## Current
 
 - **Milestone:** M3 (M2 complete: `docs/reports/M2.md`; G6 passed 2026-10-10)
-- **Step:** M3 step 6 (acceptance, report, G1).
+- **Step:** M3.6 committed; pending its GitHub runs (`ci`, `desktop`, ADR 0062). When green, record them in `docs/reports/M3.md` and wait at G1. Next: M4 after G1 or "defer signing".
 - **Dev setup for a fresh session:** `uv sync`; LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin` (rebuild with `make ffmpeg` if missing); `make ci` must pass.
 
 ## M0 plan
@@ -35,7 +39,7 @@ Owner at G6 (2026-10-10): tried the web UI on Docker, "so far looks good"; conti
 - [x] 3. S1 First run (welcome, AI mode and key, model downloads)
 - [x] 4. Tauri shell: sidecar launch (random port, token, health wait), graceful shutdown, crash restart with job resume, native folder picker, menu bar pause/resume, battery-aware workers
 - [x] 5. Bundling: standalone Python and the backend, LGPL FFmpeg with VideoToolbox, unsigned DMG, CI build with a signing step that skips without credentials, updater off
-- [ ] 6. Acceptance: clean-machine run (1), token and Host (2), Keychain (3), force-quit resume (4), desktop ↔ server folders (5); `docs/reports/M3.md` → G1 (signing)
+- [x] 6. Acceptance: clean-machine run (1), token and Host (2), Keychain (3), force-quit resume (4), desktop ↔ server folders (5); `docs/reports/M3.md` → G1 (signing)
 
 ## M2 plan
 
@@ -210,3 +214,4 @@ _(one line per commit: date · step · summary)_
 - 2026-10-10 · M3.3 · S1 First run: welcome, Hybrid / Local only with the provider's key (write-only, validated) and the provider's presets for every cloud task, needed model downloads with progress, paused + Retry, continue while downloading; `app.first_run_done` gates the desktop (ADR 0059)
 - 2026-10-10 · M3.4 · Tauri shell (`desktop/`): backend sidecar with the token on stdin and a stdin lifeline, `MOSAIC_READY` + health wait, window on the backend origin with navigation locked, crash restart (new token/port, new window), quit with SIGTERM and worker grace, menu bar pause/resume (`/jobs/pause-all`, `/resume-all`), battery saver, native folder picker; real WKWebView verified: ranged `<video>`, images and SSE pass the session check; quit during a Thorough analysis left no process after 31 s and the next launch finished the job; concurrent project opens no longer race Alembic (ADR 0060)
 - 2026-10-11 · M3.5 · Mac app bundle: macOS 14+ Apple silicon; python-build-standalone 3.12.15 with the locked runtime deps; self-contained LGPL FFmpeg (static zimg, VideoToolbox, links only macOS); MosAic.app 466 MB, DMG 160 MB; clean-machine check (linkage + empty-environment trip to a rendered preview) passes; real MosAic.app launches its bundled backend and quits on a quit Apple Event; CI workflow signs and notarizes when the Apple secrets exist, else unsigned; updater behind an off-by-default feature; `python -m mosaic.cli.main` entry fixed (ADR 0061)
+- 2026-10-11 · M3.6 · GitHub CI had been red since M2.8d (ADR 0062): S7 save race fixed, Linux worker malloc arenas capped (MALLOC_ARENA_MAX=2), desktop-check without built resources; from now on GitHub runs must be green. M3 acceptance 2–5 against the real backend process (other-page refusal, keyring persistence across restart with no key in any file, force-quit mid-analysis then resume, desktop ↔ server folders without migration); acceptance 1 by the bundle check; report; stop at G1

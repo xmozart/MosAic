@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from mosaic.core.time import parse_rational
 from mosaic.library import decisions
 from mosaic.library.dispositions import segment_facts
+from mosaic.library.quality import SHAKE_METRICS
 from mosaic.storage.models_project import (
     Asset,
     DeepReview,
@@ -240,7 +241,7 @@ def retrieve(
             r.segment_id: r.data
             for r in session.scalars(select(DeepReview).where(DeepReview.segment_id.in_(ids)))
         }
-        facts = segment_facts(session, asset)
+        facts = segment_facts(session, asset, only=SHAKE_METRICS)  # only shake is read
         base = _capture(asset)
         for g in segs:
             counts["segments"] += 1

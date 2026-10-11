@@ -55,8 +55,11 @@ def _reference(s: Any, asset: Asset) -> dict[int, dict[str, Any]]:
 @pytest.mark.parametrize("seed", range(6))
 def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
     from mosaic.library.dispositions import segment_facts
+    from mosaic.library.quality import SHAKE_METRICS
 
     rnd = random.Random(seed)
+    shake_name = "shake_gyro" if seed % 2 else "shake"  # telemetry clips: gyro shake
+    names = tuple(shake_name if n == "shake" else n for n in NAMES)
     control = ControlDB()
     p = init_project(control, control.local_principal, tmp_path)
     with p.write() as s:
@@ -126,8 +129,8 @@ def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
             samples.append(sf)
         s.flush()
         for _ in range(400):
-            name = rnd.choice(NAMES)
-            if name in ("shake", "freeze"):
+            name = rnd.choice(names)
+            if name in (shake_name, "freeze"):
                 lo = rnd.randrange(60_000)
                 s.add(
                     TechMetric(
@@ -158,6 +161,10 @@ def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
         asset = s.scalars(select(Asset)).one()
         want = _reference(s, asset)
         got = segment_facts(s, asset)
+        shake_only = segment_facts(s, asset, only=SHAKE_METRICS)
+    # Retrieval reads only shake: the same values, read from far fewer rows.
+    assert {k: v.shake for k, v in shake_only.items()} == {k: v.shake for k, v in got.items()}
+    assert all(not v.sharpness and not v.clip_low for v in shake_only.values())
     assert set(got) == set(want)
     for sid, w in want.items():
         g = got[sid]
@@ -166,7 +173,7 @@ def test_indexed_facts_equal_the_plain_scan(tmp_path: Path, seed: int) -> None:
         assert g.exposure == [v for v, _ in at.get("exposure_mean", [])]
         assert g.obstruction == [v for v, _ in at.get("obstruction", [])]
         assert g.sharpness == at.get("sharpness", [])
-        assert g.shake == [(v, pc) for v, pc, _, _ in rng.get("shake", [])]
+        assert g.shake == [(v, pc) for v, pc, _, _ in rng.get(shake_name, [])]
         a, b = w["a"], w["b"]
         frozen = sum(min(b, e) - max(a, st) for _, _, st, e in rng.get("freeze", []))
         assert g.frozen_fraction == (frozen / (b - a) if b > a else 0.0)

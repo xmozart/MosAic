@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+# Every shake metric `shake_metric_name` chooses from (retrieval reads only these).
+SHAKE_METRICS = frozenset({"shake", "shake_gyro"})
+
 
 def shake_metric_name(names: set[str]) -> str:
     """Gyro shake (``shake_gyro``) when the asset has telemetry, optical-flow ``shake``
