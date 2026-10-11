@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.4c, more/less of a category, stronger opening, different ending.
+- **Step:** M4.5b, planner and selector v3 (arc, custom beats, weights, rules).
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
 ## M4 plan
@@ -25,8 +25,9 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 3b. Regenerate one beat around its locks (`reselect` v1; ADR 0069; acceptance 2)
 - [x] 4a. Regenerate the story (from the edit's own clips) or the whole edit, keeping locks (ADR 0070)
 - [x] 4b. Duration changes without AI (acceptance 3), faster/slower per beat, a shot's alternatives (ADR 0071)
-- [ ] 4c. More/less of a category, stronger opening, different ending
-- [ ] 5. Retrieval and prompts v3: weights, rules, photo share, itinerary beats, must-include/avoid, edit categories by tag frequency; `EDIT_VERSION` bump
+- [x] 5a. Content categories (derived, no AI), weights in retrieval, `/edit-categories` by library frequency (ADR 0072)
+- [ ] 5b. Prompts v3: arc and custom beats, weights, rules, itinerary beats, must-include/avoid; `EDIT_VERSION` bump
+- [ ] 4c. More/less of a category (weights + regenerate), stronger opening, different ending (after 5b)
 - [ ] 6a. Photos in edits: bursts and duplicates, still events, subject-aware pan/zoom from saliency (no faces)
 - [ ] 6b. Still rendering: pan/zoom, blurred fill with `gblur` (never the GPL `boxblur`), EXIF orientation
 - [ ] 7. Subject crop for non-native aspect ratios (smoothed saliency, center fallback)

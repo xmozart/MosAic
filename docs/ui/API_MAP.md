@@ -105,6 +105,7 @@ SSE event types:
 |---|---|---|
 | GET/POST | `/projects/{pid}/edits` (GET: S13 cards with status, cover, versions, preliminary; ADR 0047) | S13, S14 |
 | GET | `/projects/{pid}/presets` (16 story presets, 7 featured) · `/projects/{pid}/presets/{id}/collage` → `{frames: [sample_id]}` (ADR 0047) | S14 |
+| GET | `/projects/{pid}/edit-categories` (the 22 content categories with clip counts, most frequent first; ADR 0072) | S14 |
 | POST | `/edits/estimate` `{project_id, request}` (time, cost, plan reuse, enough footage; ADR 0047) | S14 |
 | POST | `/edits/{eid}/generate` (job; emits `edit.progress`) | S14, S15 |
 | GET | `/edits/{eid}` (latest version, its `draft` state, beats, events, facts) · `/edits/{eid}/versions/{v}` — both with `facts` and the version's `renders` (ADR 0049) | S16, S17 |

@@ -68,7 +68,8 @@ SELECTOR_MAX_TOKENS = 16000
 CAPABILITIES = ("planner", "selector")
 
 
-def edit_inputs(s: Session, req: EditRequest) -> EditInputs:
+def edit_inputs(s: Session, req: EditRequest, keep: frozenset[int] = frozenset()) -> EditInputs:
+    """``keep``: segment ids a storyboard locked (never avoided by a weight)."""
     rate = req.fps or dominant_rate(
         (r, d, tb)
         for r, d, tb in s.execute(
@@ -76,7 +77,10 @@ def edit_inputs(s: Session, req: EditRequest) -> EditInputs:
         )
     )
     pace = pace_frames(req.pace, rate, req.shot_lengths)
-    cands, counts = retrieve(s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s))
+    weights: dict[str, str] = dict(req.weights.items())
+    cands, counts = retrieve(
+        s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s), weights, keep
+    )
     return EditInputs(rate, pace, cands, counts, _inputs_digest(s, cands), load_context(s))
 
 
@@ -217,6 +221,8 @@ def _inputs_digest(session: Session, cands: list[Candidate]) -> str:
             f"{c.segment_id}:{c.start}:{c.end}:{c.usable_start}:{c.usable_end}:{c.status}:"
             f"{c.user_use}:{c.group_id};".encode()
         )
+        if c.bonus:  # the owner's weights met its categories (tags included; ADR 0072)
+            h.update(f"b{c.bonus};".encode())
     ids = [c.segment_id for c in cands]
     for chunk in range(0, len(ids), 500):
         part = ids[chunk : chunk + 500]

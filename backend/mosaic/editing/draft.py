@@ -26,7 +26,7 @@ from mosaic.core.keys import artifact_key
 from mosaic.editing import solver
 from mosaic.editing.request import EditRequest
 from mosaic.editing.resolve import EditInputs, Resolved, rejected_segments, resolve
-from mosaic.editing.retrieval import Candidate
+from mosaic.editing.retrieval import Candidate, parse_ref
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Edit, EditDraftOp, EditVersion
 
@@ -536,7 +536,19 @@ def inputs(s: Session, d: Draft) -> tuple[EditRequest, EditInputs]:
     from mosaic.editing.generate import edit_inputs
 
     req = request_of(EditRequest.model_validate(d.base.request), d.board)
-    return req, edit_inputs(s, req)
+    return req, edit_inputs(s, req, locked_segments(d.board))
+
+
+def locked_segments(board: Board) -> frozenset[int]:
+    """The segment ids of the storyboard's locked shots and the picks absorbed into them:
+    they stay candidates whatever the content weights say (invariant 10)."""
+    ids = (
+        parse_ref(sh.segment_id)
+        for b in board.beats
+        for sh in b.shots
+        if sh.locked or sh.absorbed_by
+    )
+    return frozenset(i for i in ids if i is not None)
 
 
 def timed(

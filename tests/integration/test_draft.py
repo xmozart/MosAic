@@ -591,7 +591,7 @@ def test_make_it_shorter_reuses_the_analysis_with_no_ai_call(drafted: Any) -> No
 
 def test_make_it_90_seconds(drafted: Any) -> None:
     """Acceptance 3 as written: longer, from the storyboard and its alternatives, with
-    no AI call; within tolerance, or reported as short of footage (ADR 0071)."""
+    no AI call, within tolerance (ADR 0071)."""
     _, _, client, _, eid = _fresh(drafted, 25, 60)
     calls = len(fake.CALLS)
     v = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 90}).json()
@@ -675,3 +675,42 @@ def test_a_beat_faster_and_a_shots_alternatives(drafted: Any) -> None:
     )
     assert swapped.status_code == 200, swapped.text
     assert client.get(f"/api/edits/{eid}/shots/nope/alternatives").status_code == 404
+
+
+def test_edit_categories_come_most_frequent_first(drafted: Any) -> None:
+    project, _, client, _ = drafted
+    items = client.get(f"/api/projects/{project.id}/edit-categories").json()["items"]
+    assert len(items) == 22
+    clips = [i["clips"] for i in items]
+    assert clips == sorted(clips, reverse=True)
+    assert clips[0] > 0, "the corpus has categorised clips"
+
+
+def test_a_locked_shot_is_never_avoided_by_a_content_weight(drafted: Any) -> None:
+    """Invariant 10: the owner tags a locked clip with a category the edit avoids; the
+    lock wins and the shot stays (ADR 0072)."""
+    from sqlalchemy import select
+
+    from mosaic.storage.models_project import ClipTag, EditVersion
+
+    project, _, client, edit_id, eid = _fresh(drafted, 28)
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    e = d["timeline"]["tracks"][0]["events"][0]
+    ref = e["origin"]["selection_ref"]
+    client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": ref}})
+    client.post(f"/api/edits/{eid}/versions")
+    asset = int(e["asset_id"][4:])
+    with project.write() as s:
+        s.add(ClipTag(asset_id=asset, tag="timelapse"))
+        v = s.scalars(
+            select(EditVersion)
+            .where(EditVersion.edit_id == edit_id)
+            .order_by(EditVersion.version.desc())
+        ).first()
+        assert v is not None
+        v.request = {**v.request, "weights": {"timelapse": "avoid"}}
+    after = client.get(f"/api/edits/{eid}/draft").json()
+    refs = {x["origin"]["selection_ref"] for x in after["timeline"]["tracks"][0]["events"]}
+    assert ref in refs
+    assert not any("no longer available" in n for n in after["metrics"]["solver"]["notes"])
+    assert "avoided" in after["metrics"]["retrieval"], "the avoid weight was applied"

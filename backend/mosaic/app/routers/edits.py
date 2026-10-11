@@ -112,6 +112,17 @@ def list_edits(
         return edit_cards(s, svc.store, project.id, cursor, limit)
 
 
+@router.get("/projects/{pid}/edit-categories")
+def edit_categories(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """S14 step 3: the content categories, most frequent in this library first, each with
+    its clip count (ADR 0072). The wizard shows the first six; More categories the rest."""
+    from mosaic.editing.categories import library_counts
+
+    check(me, "edits.read", pid)
+    with _project(svc, me, pid) as project, project.db.session() as s:
+        return {"items": library_counts(s)}
+
+
 @router.get("/projects/{pid}/presets")
 def list_presets(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     check(me, "edits.read", pid)

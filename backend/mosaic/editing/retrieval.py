@@ -13,7 +13,7 @@ trip. Clips are read a batch at a time (invariant 13).
 from __future__ import annotations
 
 import statistics
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from fractions import Fraction
@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mosaic.core.time import parse_rational
+from mosaic.editing.categories import avoided, classify, weight_bonus
 from mosaic.library import decisions
 from mosaic.library.dispositions import (
     effective_for_clips,
@@ -32,6 +33,7 @@ from mosaic.library.dispositions import (
 from mosaic.storage.models_project import (
     Asset,
     ClipDecision,
+    ClipTag,
     DeepReview,
     Segment,
     TranscriptSegment,
@@ -78,6 +80,8 @@ class Candidate:
     transcript: str = ""
     obs: dict[str, Any] = field(default_factory=dict)
     similar_to: int | None = None  # the group's recommended segment, for non-best members
+    categories: frozenset[str] = frozenset()  # content categories (ADR 0072)
+    bonus: float = 0.0  # the owner's content weights for those categories
 
     @property
     def ref(self) -> str:
@@ -93,7 +97,7 @@ class Candidate:
         s += 0.5 * (self.quality or 0.0)
         s += 1.0 if self.status == "USE" else 0.0
         s += 3.0 if self.user_use else 0.0
-        return s
+        return s + self.bonus
 
     def sort_key(self) -> tuple[str, int, int]:
         when = self.capture.isoformat() if self.capture else ""
@@ -222,6 +226,7 @@ class _Clip:
     segments: list[_Seg]
     rules: dict[int, decisions.SegmentDecision]  # the decision in force per segment
     obs: dict[int, dict[str, Any]]
+    tags: list[str] = field(default_factory=list)  # the owner's tags on the clip
 
 
 def _clips(session: Session, assets: list[Asset]) -> Iterator[_Clip]:
@@ -254,6 +259,11 @@ def _clips(session: Session, assets: list[Asset]) -> Iterator[_Clip]:
             r.segment_id: r.data
             for r in session.scalars(select(DeepReview).where(DeepReview.segment_id.in_(in_batch)))
         }
+        tags: dict[int, list[str]] = {}
+        for aid, tag in session.execute(
+            select(ClipTag.asset_id, ClipTag.tag).where(ClipTag.asset_id.in_(ids))
+        ):
+            tags.setdefault(aid, []).append(tag)
         for asset in batch:
             gs = segs.get(asset.id)
             if not gs:
@@ -264,6 +274,7 @@ def _clips(session: Session, assets: list[Asset]) -> Iterator[_Clip]:
                 # The owner's decisions first: on the segment, then on the clip (ADR 0042).
                 decisions.resolve(gs, rows, clip_rules.get(asset.id)),
                 {g.id: seen[g.id] for g in gs if g.id in seen},
+                sorted(tags.get(asset.id, [])),
             )
 
 
@@ -302,10 +313,19 @@ def _describe(session: Session, cands: list[Candidate]) -> None:
 
 
 def retrieve(
-    session: Session, min_seconds: Fraction, want_seconds: Fraction
+    session: Session,
+    min_seconds: Fraction,
+    want_seconds: Fraction,
+    weights: Mapping[str, str] | None = None,
+    keep: frozenset[int] = frozenset(),
 ) -> tuple[list[Candidate], dict[str, int]]:
-    """All eligible candidates (capped), sorted by capture time, plus filter counts."""
+    """All eligible candidates (capped), sorted by capture time, plus filter counts.
+    ``keep``: segment ids a storyboard locked; a content weight never avoids them
+    (invariant 10)."""
+    weights = weights or {}
     counts = {"segments": 0, "rejected": 0, "too_short": 0, "duplicate": 0, "analysis_only": 0}
+    if any(w == "avoid" for w in weights.values()):
+        counts["avoided"] = 0
     found: list[Candidate] = []
     similar: list[Candidate] = []
     best_of: dict[int, int] = {
@@ -344,6 +364,12 @@ def retrieve(
             if usable < min_seconds and not user_use:
                 counts["too_short"] += 1
                 continue
+            cats = classify(
+                obs.get(g.id, {}), has_speech=g.has_speech, rate=asset.rate, tags=clip.tags
+            )
+            if weights and avoided(cats, weights) and not user_use and g.id not in keep:
+                counts["avoided"] += 1  # the owner asked to avoid it (ADR 0072)
+                continue
             duplicate = g.similarity_group_id is not None and not g.group_best and not user_use
             capture = (
                 base + timedelta(seconds=float(Fraction(g.start_ticks) * tb)) if base else None
@@ -370,26 +396,31 @@ def retrieve(
                     shake_percentile=None,  # read for the final candidates only
                     obs=obs.get(g.id, {}),
                     similar_to=best_of.get(g.similarity_group_id or -1) if duplicate else None,
+                    categories=cats,
+                    bonus=weight_bonus(cats, weights),
                 )
             )
     counts["duplicate"] = len(similar)
     if sum((c.usable_seconds for c in found), Fraction(0)) < FALLBACK_FACTOR * want_seconds:
         found += similar
         counts["duplicate_fallback"] = len(similar)
-    capped = cap_by_day(found, MAX_CANDIDATES)
+    capped = cap_by_day(found, MAX_CANDIDATES, keep)
     _describe(session, capped)
     counts["candidates"] = len(capped)
     counts["capped"] = len(found) - len(capped)
     return sorted(capped, key=Candidate.sort_key), counts
 
 
-def cap_by_day(cands: list[Candidate], limit: int) -> list[Candidate]:
-    """Keep at most ``limit``: every user USE, then per day a share proportional to its
-    candidates (at least ``MIN_PER_DAY``), best score first."""
+def cap_by_day(
+    cands: list[Candidate], limit: int, locked: frozenset[int] = frozenset()
+) -> list[Candidate]:
+    """Keep at most ``limit``: every user USE and every segment a storyboard locked
+    (``locked``), then per day a share proportional to its candidates (at least
+    ``MIN_PER_DAY``), best score first."""
     if len(cands) <= limit:
         return list(cands)
-    forced = [c for c in cands if c.user_use]
-    rest = [c for c in cands if not c.user_use]
+    forced = [c for c in cands if c.user_use or c.segment_id in locked]
+    rest = [c for c in cands if not (c.user_use or c.segment_id in locked)]
     room = max(0, limit - len(forced))
     by_day: dict[int, list[Candidate]] = {}
     for c in rest:

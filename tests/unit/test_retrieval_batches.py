@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select
 
 from mosaic.editing import retrieval
+from mosaic.editing.categories import classify
 from mosaic.editing.retrieval import Candidate, cap_by_day, capture_dates, trip_day
 from mosaic.library import decisions
 from mosaic.library.dispositions import segment_facts
@@ -273,6 +274,9 @@ def _reference(
                     transcript=text if g.has_speech else "",
                     obs=obs.get(g.id, {}),
                     similar_to=best_of.get(g.similarity_group_id or -1) if duplicate else None,
+                    categories=classify(
+                        obs.get(g.id, {}), has_speech=g.has_speech, rate=asset.rate
+                    ),
                 )
             )
     counts["duplicate"] = len(similar)
@@ -307,4 +311,54 @@ def test_batched_retrieval_equals_clip_at_a_time(
     with project.db.session() as s:
         gyro = s.scalars(select(Asset.id).where(Asset.group_key == "c2")).one()
     assert any(c.asset_id == gyro and c.shake_percentile is not None for c in cands)
+    project.close()
+
+
+def test_content_weights_rank_and_avoid(tmp_path: Path) -> None:
+    project = _build(tmp_path)
+    with project.write() as s:  # the owner keeps one speech segment: USE
+        seg = s.scalars(
+            select(Segment).where(Segment.has_speech.is_(True)).order_by(Segment.id)
+        ).first()
+        assert seg is not None
+        for row in s.scalars(select(Disposition).where(Disposition.segment_id == seg.id)):
+            s.delete(row)
+        s.flush()
+        s.add(
+            Disposition(
+                asset_id=seg.asset_id,
+                segment_id=seg.id,
+                anchor_start_ticks=seg.start_ticks,
+                anchor_end_ticks=seg.end_ticks,
+                source="user",
+                status="USE",
+                updated_at=T,
+                provenance_id=seg.provenance_id,
+            )
+        )
+        picked = seg.id
+        locked = s.scalars(
+            select(Segment.id).where(Segment.has_speech.is_(True), Segment.id != picked)
+        ).first()
+    with project.db.session() as s:
+        plain, plain_counts = retrieval.retrieve(s, Fraction(1), Fraction(10))
+        weighted, counts = retrieval.retrieve(
+            s, Fraction(1), Fraction(10), {"conversations": "avoid"}
+        )
+        liked, _ = retrieval.retrieve(s, Fraction(1), Fraction(10), {"conversations": "strong"})
+    speech = [c for c in plain if "conversations" in c.categories]
+    assert speech, "the fixture has speech"
+    kept = [c for c in weighted if "conversations" in c.categories]
+    assert [c.segment_id for c in kept] == [picked], "avoided unless the owner picked it"
+    assert kept[0].user_use
+    # Counted before near-duplicates and the cap, so at least those the plain list had.
+    assert counts["avoided"] >= len([c for c in speech if not c.user_use]) > 0
+    assert "avoided" not in plain_counts
+    assert all(c.bonus == 0.0 for c in plain)
+    assert all(c.bonus == 2.0 for c in liked if "conversations" in c.categories)
+    with project.db.session() as s:  # a locked shot's segment is never avoided
+        held, _ = retrieval.retrieve(
+            s, Fraction(1), Fraction(10_000), {"conversations": "avoid"}, frozenset({locked})
+        )
+    assert locked in {c.segment_id for c in held}
     project.close()

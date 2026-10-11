@@ -3907,6 +3907,48 @@
         "summary": "Get Suggestions"
       }
     },
+    "/api/projects/{pid}/edit-categories": {
+      "get": {
+        "description": "S14 step 3: the content categories, most frequent in this library first, each with\nits clip count (ADR 0072). The wizard shows the first six; More categories the rest.",
+        "operationId": "edit_categories_api_projects__pid__edit_categories_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Edit Categories Api Projects  Pid  Edit Categories Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Categories"
+      }
+    },
     "/api/projects/{pid}/edits": {
       "get": {
         "description": "S13's edit cards (ADR 0047): status, cover, format, versions, preliminary.",

@@ -120,6 +120,10 @@ def test_cap_by_day_keeps_every_day_and_user_picks() -> None:
     assert len(kept) <= 30
     assert any(c.segment_id == 500 for c in kept)
     assert sum(1 for c in kept if c.day == 2) >= 3
+    # A segment a storyboard locked is kept like a user pick, however low it ranks.
+    cands.append(cand(600, day=1, score_hint="low"))
+    assert any(c.segment_id == 600 for c in cap_by_day(cands, 30, frozenset({600})))
+    assert not any(c.segment_id == 600 for c in cap_by_day(cands, 30))
 
 
 # -------------------------------------------------------------------- solver
