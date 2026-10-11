@@ -68,7 +68,8 @@ def create_edit(
     body = request.model_dump(mode="json")
     with project.write() as s:
         existing = next(
-            (e for e in s.scalars(select(Edit).order_by(Edit.id)) if e.request == body), None
+            (e for e in s.scalars(select(Edit).order_by(Edit.id)) if _same(e.request, body)),
+            None,
         )
         if existing is None:
             existing = Edit(
@@ -82,6 +83,17 @@ def create_edit(
         edit_id, uid = existing.id, existing.uid
     control.index_edit(principal, uid, project.id)
     return edit_id
+
+
+def _same(stored: dict[str, Any], body: dict[str, Any]) -> bool:
+    """Whether a stored request is this one, once fields added since it was saved take
+    their defaults (an M2 request is the same request in M4; ADR 0066)."""
+    if stored == body:
+        return True
+    try:
+        return EditRequest.model_validate(stored).model_dump(mode="json") == body
+    except ValueError:
+        return False
 
 
 def submit_generate(

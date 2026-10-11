@@ -89,7 +89,7 @@ def edit_inputs(s: Session, req: EditRequest) -> EditInputs:
             select(Asset.rate, Asset.duration_ticks, Asset.tb).where(Asset.kind == "video")
         )
     )
-    pace = pace_frames(req.pace, rate)
+    pace = pace_frames(req.pace, rate, req.shot_lengths)
     cands, counts = retrieve(s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s))
     return EditInputs(rate, pace, cands, counts, _inputs_digest(s, cands), load_context(s))
 

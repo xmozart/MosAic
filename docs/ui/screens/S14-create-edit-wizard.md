@@ -47,3 +47,9 @@
 - Step 2's More options (the arc template and beats), locks and must-include chips wait for M4.
 - Custom (step 2) offers the nine other story presets.
 - Create returns to S13 (S15 is M4).
+
+## M4 notes (ADR 0066)
+
+- Step 4's More options hold the two rules the mockup doesn't show: "Unique moments over technical quality" and "Allow long cinematic holds".
+- Step 5's music source is None or Choose track. Choose folder waits for M6's music library.
+- Defaults are PRODUCT.md §4's; the mockup's filled-in example is not the default state.
