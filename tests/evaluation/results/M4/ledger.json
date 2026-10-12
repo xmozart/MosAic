@@ -1,0 +1,20 @@
+{
+  "milestone": "M4",
+  "runs": [
+    {
+      "at": "2026-10-12T14:11:22-04:00",
+      "trips": [
+        "Airshow"
+      ],
+      "cost_usd": 0.0
+    },
+    {
+      "at": "2026-10-12T14:16:17-04:00",
+      "trips": [
+        "Airshow",
+        "Dubai"
+      ],
+      "cost_usd": 0.0
+    }
+  ]
+}

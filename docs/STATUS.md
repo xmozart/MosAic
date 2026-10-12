@@ -4,15 +4,17 @@ The agent maintains this file. It is the resume point for every new session.
 
 ## ⚠ Waiting for owner
 
-Nothing blocks the work now. Coming up:
-- **G1, later (M4 acceptance 1):** a real 2–4 hour trip filmed on several cameras, for the benchmark edit. Airshow (about 90 min, GoPro only) and Dubai (about 4 min) don't qualify. Put it under the Samples folder (`eval.corpus_dir` = `/Volumes/Extreme SSD/Samples`).
+**Gate G6 (M4, the final v1 gate)**: `docs/reports/M4.md` → "What I need from you".
+- Watch the two benchmark edits and score `tests/evaluation/results/M4/airshow.md` and `dubai.md`.
+- A real 2–4 hour trip filmed on several cameras, for acceptance 1. Airshow (about 90 min, GoPro only) and Dubai (about 4 min) don't qualify. Put it under the Samples folder (`eval.corpus_dir` = `/Volumes/Extreme SSD/Samples`); then `make eval` runs the benchmark on it.
+- Q-4 (does Change settings keep the edit's locks?), and Q-1, Q-2, Q-3 still open (`docs/OPEN_QUESTIONS.md`).
 - **Signing (deferred at G1 on 2026-10-11):** add the GitHub secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` whenever you like. Never paste them into a chat or a file.
-- Optional: try the DMG on a second Mac without developer tools. Still open: Q-1, Q-2, Q-3 (`docs/OPEN_QUESTIONS.md`).
+- After G6: later milestones (`docs/milestones/LATER.md`) are planned with the owner before starting.
 
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.15, acceptance tests, `make eval`, report, then G6.
+- **Step:** M4 done; stopped at G6 (`docs/reports/M4.md`).
 - **Checks:** full `make ci` per group of related steps, then push (AGENT_WORKFLOW §1). Groups: 7 · 8+9a · 9b+9c · 10+11 · 12+13 · S14+S15 · S16+S17 · S18+S19+S24 · 15.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
@@ -52,7 +54,8 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
   - [x] 14f. S19 Render final: presets with estimates, encoder availability, sidecars, Save to (ADR 0091)
   - [x] 14g. S24 Help me label: Library entry after analysis, dialog with keys, summary (ADR 0092)
     - Follow-up: give the "answered already" 422 a machine-readable code; S24 matches its text today.
-- [ ] 15. Acceptance tests, `make eval`, `docs/reports/M4.md`, then G6
+- [x] 15. Acceptance tests, `make eval`, `docs/reports/M4.md`; **at G6**
+  - [x] 15a. Acceptance 6 test, ADR 0093, the v3 benchmark eval (both sample trips: every zero-target metric 0); a render fix found by the eval
 
 ## M0 plan
 
