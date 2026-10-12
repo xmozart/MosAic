@@ -12,6 +12,7 @@ from mosaic.core.ids import new_ulid
 from mosaic.core.principal import Principal
 from mosaic.core.time import format_display, parse_rational
 from mosaic.editing.request import Category, EditRequest
+from mosaic.editing.titles import shot_events
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
 from mosaic.library import decisions
@@ -421,7 +422,7 @@ def report(
     events_out = []
     selections = v.timeline.get("selections", {})
     with project.db.session() as s:
-        for e in v.timeline["tracks"][0]["events"]:
+        for e in shot_events(v.timeline["tracks"][0]["events"]):  # cards select nothing
             sid = int(e["segment_id"][4:])
             aid = int(e["asset_id"][4:])
             sel = selections.get(e["origin"]["selection_ref"], {})

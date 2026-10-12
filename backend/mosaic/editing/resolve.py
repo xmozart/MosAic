@@ -8,6 +8,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from mosaic.ai.prompts.planner.schema_v2 import Output as PlanOut
 from mosaic.ai.prompts.selector.schema_v2 import Output as SelectOut
-from mosaic.editing import critic, refiner, solver
+from mosaic.editing import critic, refiner, solver, titles
 from mosaic.editing.request import EditRequest, PaceFrames, target_frames
 from mosaic.editing.retrieval import Candidate
 from mosaic.library import decisions
@@ -215,8 +216,15 @@ def resolve(
     shots = [dataclasses.replace(sh) for sh in shots]
     rate, pace, cands = inp.rate, inp.pace, inp.cands
     by_ref = {c.ref: c for c in cands}
-    target = target_frames(req.duration_s, rate)
-    tolerance = target * req.tolerance_pct // 100
+    total = target_frames(req.duration_s, rate)
+    tolerance = total * req.tolerance_pct // 100
+    # Title cards take their frames from the footage (ADR 0079): reserved here from the
+    # selection's days, settled once the edit's own days are known.
+    day1 = titles_day1(cands)
+    reserved = titles.plan_cards(
+        req, inp.trip, day1, sorted(sh.cand.day for sh in shots), rate, total
+    )
+    target = total - reserved.frames
     shares = {b.beat_id: b.share_percent for b in plan.beats}
     locks = lock_budget(shots, target, tolerance)
     fit = solver.fit(shots, shares, target, tolerance, pace, rate)
@@ -266,8 +274,16 @@ def resolve(
         refiner.land_on_target(cuts, target, rate, pace)
         if not any(refiner.is_jump(a, b) for a, b in itertools.pairwise(cuts)):
             break
-    notes += refiner.choose_transitions(cuts, req.transitions, rate)
-    notes += refiner.split_dialogue(cuts, rate, pace)
+    days = [c.shot.cand.day for c in cuts]
+    cards = titles.plan_cards(req, inp.trip, day1, days, rate, total)
+    if cards.frames != reserved.frames:
+        target = total - cards.frames
+        refiner.land_on_target(cuts, target, rate, pace)
+    breaks = frozenset(
+        [*(i for i in range(len(cuts)) if cards.before(i))] + ([len(cuts)] if cards.closing else [])
+    )
+    notes += refiner.choose_transitions(cuts, req.transitions, rate, breaks)
+    notes += refiner.split_dialogue(cuts, rate, pace, breaks)
     fit.shots = [c.shot for c in cuts]
     metrics, findings = critic.evaluate(
         cuts,
@@ -281,7 +297,8 @@ def resolve(
     metrics["retrieval"] = inp.counts
     metrics["locks"] = locks
     metrics["solver"] = solver.describe(fit) | {"notes": notes}
-    evts = refiner.events(cuts, rate)
+    findings = _after_cards(findings, cuts, cards)
+    evts = refiner.events(cuts, rate, cards, req.transitions)
     in_edit = [sh for c in cuts for sh in (c.shot, *c.merged_shots)]
     used = {sh.cand.segment_id for sh in in_edit}
     inserted = [sh for sh in in_edit if sh.alt_of is not None]
@@ -314,10 +331,40 @@ def resolve(
     ]
     timeline = {
         "rate": rate,
-        "duration": {"frames": sum(c.frames for c in cuts), "rate": rate},
+        "duration": {"frames": sum(c.frames for c in cuts) + cards.frames, "rate": rate},
         "tracks": [{"kind": "video", "events": evts}],
         "selections": selections,
         "title": plan.title,
         "order": "user" if user_order else "request",
     }
+    # The critic timed the footage alone; the edit's length includes its cards.
+    metrics["target_frames"] = total
+    metrics["total_frames"] += cards.frames
+    metrics["titles"] = {"cards": len(evts) - len(cuts), "frames": cards.frames}
     return Resolved(timeline, beats, metrics, findings)
+
+
+def titles_day1(cands: list[Candidate]) -> date | None:
+    """Trip day 1's date, from any candidate whose capture date and day are known."""
+    for c in cands:
+        if c.capture is not None and c.day >= 1:
+            return c.capture.date() - timedelta(days=c.day - 1)
+    return None
+
+
+def _after_cards(
+    findings: list[critic.Finding], cuts: list[refiner.Cut], cards: titles.Cards
+) -> list[critic.Finding]:
+    """The critic's findings at their place in the timeline, past the title cards before
+    them (the critic times the footage alone)."""
+    starts = list(itertools.accumulate((c.frames for c in cuts), initial=0))
+
+    def shift(frame: int) -> int:
+        extra = 0
+        for i, start in enumerate(starts[:-1]):
+            if start > frame:
+                break
+            extra += sum(card.frames for card in cards.before(i))
+        return frame + extra
+
+    return [dataclasses.replace(f, frame=shift(f.frame)) for f in findings]

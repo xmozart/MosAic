@@ -52,6 +52,7 @@ from mosaic.render.plan import (
     pieces,
     samples_for,
     still_key,
+    title_key,
 )
 from mosaic.storage import provenance
 from mosaic.storage.models_project import (
@@ -165,6 +166,8 @@ def _video_key(
     """The chunk key and source files of a picture: an event, part of one, or one side
     of a dissolve."""
     prof = _profile(r)
+    if e.get("kind") == "title":  # a title card (ADR 0079): drawn, no source
+        return title_key(ctx.project.id, e, prof, v.rate), []
     if e.get("kind") == "still":  # a photo (ADR 0075): its file, never a proxy
         photo = _photo_file(ctx, int(e["asset_id"][4:]))
         return still_key(ctx.project.id, e, photo.fingerprint, prof, v.rate), [photo]
@@ -316,6 +319,8 @@ def _event_chunk(
     binaries: FFmpegBinaries,
     caps: Any,
 ) -> dict[str, Any]:
+    if _event(v, index).get("kind") == "title":
+        return _still_chunk(ctx, r, v, index, key, None, binaries)
     if _event(v, index).get("kind") == "still":
         return _still_chunk(ctx, r, v, index, key, files[0], binaries)
     prov = _provenance(ctx, key, "render.chunk", RENDER_VERSION)
@@ -410,15 +415,17 @@ def _still_chunk(
     v: EditVersion,
     index: int,
     key: str,
-    photo: SourceFile,
+    photo: SourceFile | None,
     binaries: FFmpegBinaries,
 ) -> dict[str, Any]:
     """A still event (ADR 0075): its canvas made with Pillow from the photo, then panned
-    and zoomed by FFmpeg to exactly its frames, with silence."""
+    and zoomed by FFmpeg to exactly its frames, with silence. A title card (``photo``
+    None, ADR 0079) is the same, from its drawn card and without motion."""
     import tempfile
 
     from mosaic.media.photo import PhotoError
     from mosaic.media.stills import canvas, motion_exprs
+    from mosaic.media.titles import card_image
 
     e = _picture(v, index)
     prof = _profile(r)
@@ -440,12 +447,16 @@ def _still_chunk(
         ctx.project.artifacts.writer("chunk", key, ".mov", provenance_id=prov) as tmp,
     ):
         try:
-            image = canvas(photo.path, prof.width, prof.height)
+            image = (
+                card_image(e["title"]["title"], e["title"]["subtitle"], prof.width, prof.height)
+                if photo is None
+                else canvas(photo.path, prof.width, prof.height)
+            )
         except PhotoError as exc:
             raise PermanentError(f"{e['asset_id']}: {exc}") from None
         canvas_path = Path(tmpdir) / "canvas.png"
         image.save(canvas_path, compress_level=1)  # decoded again for every frame
-        zoom, x, y = motion_exprs(e["motion"], frames)
+        zoom, x, y = motion_exprs(e["motion"], frames) if photo is not None else ("1", "0", "0")
         spec = rb.StillSpec(
             canvas=canvas_path,
             zoom=zoom,
@@ -478,7 +489,7 @@ def _audio_plan(
     """An audio chunk's key, files and asset (None for a still: silence)."""
     e = _event(v, index)
     prof = _profile(r)
-    if e.get("kind") == "still":
+    if e.get("kind") in ("still", "title"):
         return audio_key(ctx.project.id, e, [], prof, v.rate), [], None
     with ctx.project.db.session() as s:
         asset = s.get(Asset, int(e["asset_id"][4:]))

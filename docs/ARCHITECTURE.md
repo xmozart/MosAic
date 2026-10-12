@@ -305,6 +305,8 @@ Resulting timeline event (solver and refiner output):
 
 `transform.focus` is optional: the subject's position in integer thousandths of the display frame, from the segment's focus (ADR 0076). A crop to another shape centres on it.
 
+Title cards are events of `"kind": "title"` with a `title` object (`card`, `title`, `subtitle`, `day`), `duration` in frames and no asset; their text comes only from the trip context and capture dates (ADR 0079).
+
 Still-photo events use `"kind": "still"` with `duration` in frames and a `motion` object: start and end crop rectangles for pan and zoom, in integer thousandths of the frame, plus an easing (ADR 0075).
 
 The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata dictionaries. Exporters come later.

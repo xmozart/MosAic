@@ -32,6 +32,13 @@ describe("preview model", () => {
     expect(beatAt(EVENTS, BEATS, 10_000)).toBeNull();
   });
 
+  it("title cards are their own segments, never a beat's or Other", () => {
+    const card = { ...EVENTS[0]!, event_id: "evt_0000", kind: "title", asset_id: null, segment_id: null, beat_id: null };
+    const segs = beatSegments([card, ...EVENTS.slice(0, 2)], BEATS);
+    expect(segs.map((s) => s.label)).toEqual(["Title", "Arrival"]);
+    expect(segs[0]!.series).toBe(6);
+  });
+
   it("facts read as the mockup does", () => {
     expect(Object.fromEntries(factsRows(EDIT.facts))).toEqual({
       Duration: "1:00",

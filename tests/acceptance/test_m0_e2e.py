@@ -21,6 +21,7 @@ from mosaic.core.timecheck import find_float_times
 from mosaic.editing.generate import export_path
 from mosaic.editing.request import EditRequest
 from mosaic.editing.service import create_edit, get_version, submit_generate
+from mosaic.editing.titles import shot_events
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
@@ -92,7 +93,7 @@ def test_every_case_is_edited_and_renders_frame_exact(e2e: Any, ffmpeg_bin: FFmp
     project, control, edit_id, _ = e2e
     v = get_version(project, edit_id)
     assert v.metrics["blocking_ok"], (v.metrics, v.findings)
-    events = v.timeline["tracks"][0]["events"]
+    events = shot_events(v.timeline["tracks"][0]["events"])
     used = {int(e["asset_id"][4:]) for e in events}
     missing = []
     for case, files in REQUIRED.items():

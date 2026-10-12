@@ -410,3 +410,27 @@ def dissolve_key(project_id: str, key_a: str, key_b: str, frames: int, rate: str
         config={"rate": rate, "transition": TRANSITION_VERSION},
         version=RENDER_VERSION,
     )
+
+
+def title_key(project_id: str, event: dict[str, Any], prof: Profile, rate: str) -> str:
+    """A title card's chunk key (ADR 0079): its text, frames and fades, the card style, a
+    digest of the bundled fonts, the still pipeline that encodes it, and the profile."""
+    from mosaic.media.titles import TITLE_STYLE, fonts_digest
+
+    return artifact_key(
+        "title",
+        project_id=project_id,
+        inputs={
+            "title": event["title"],
+            "frames": event["timeline_out"]["frames"] - event["timeline_in"]["frames"],
+            **dips(event),
+        },
+        config={
+            "profile": prof.as_json(),
+            "rate": rate,
+            "style": TITLE_STYLE,
+            "fonts": fonts_digest(),
+            "still": STILL_VERSION,
+        },
+        version=RENDER_VERSION,
+    )

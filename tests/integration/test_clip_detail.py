@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
+from mosaic.editing.titles import shot_events
+
 pytestmark = pytest.mark.integration
 
 
@@ -92,7 +94,7 @@ def test_used_in_names_the_edits_that_cut_the_clip(analyzed_session: Any) -> Non
         generate(project, control, EditRequest(duration_s=30))
         with project.db.session() as s:
             versions = list(s.scalars(select(EditVersion)))
-    events = versions[-1].timeline["tracks"][0]["events"]
+    events = shot_events(versions[-1].timeline["tracks"][0]["events"])
     used = int(events[0]["asset_id"][4:])
     c = client.get(f"/api/projects/{project.id}/clips/{used}").json()
     assert c["used_in"], json.dumps(c["used_in"])

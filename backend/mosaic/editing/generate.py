@@ -57,7 +57,8 @@ from mosaic.storage.models_project import (
     VisualObservation,
 )
 
-EDIT_VERSION = "edit/3"  # 2: M4 request in retrieval and prompts; 3: transitions (ADR 0078)
+# 2: the M4 request in retrieval and prompts; 3: transitions (ADR 0078); 4: title cards (ADR 0079)
+EDIT_VERSION = "edit/4"
 PLANNER = ("planner", 3)  # v2: trip context (M1); v3: arc, custom beats, preferences (M4)
 SELECTOR = ("selector", 3)  # v3: preferences, categories (M4)
 POOL_FACTOR = 3

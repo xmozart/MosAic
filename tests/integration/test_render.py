@@ -732,3 +732,62 @@ def test_a_dissolve_renders_frame_exact_between_two_shots(
     mix = far(middle, (out_going + in_coming) / 2)
     assert mix < far(middle, out_going)
     assert mix < far(middle, in_coming)
+
+
+def test_title_cards_open_and_close_the_edit_and_render_frame_exact(
+    analyzed_session: Any, ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0079: with a trip name in the trip context, the edit opens on a card with the
+    name (over the footage's dates, when they are known) and closes on the name. Cards
+    fade in from and out to black, render to their exact frames and are part of the
+    edit's length."""
+
+    from mosaic.library import context
+
+    project, control = analyzed_session
+    with project.write() as s:
+        before = context.load(s)
+        context.save(s, before.model_copy(update={"trip_name": "Corpus trip"}), "user")
+    try:
+        edit_id = create_edit(
+            project,
+            EditRequest(duration_s=45, chronology="strict"),
+            control,
+            control.local_principal,
+        )
+        job = submit_generate(
+            LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id
+        )
+        assert run_job(control, job, timeout=600) == "done"
+    finally:
+        with project.write() as s:
+            context.save(s, before, "user")
+    v = get_version(project, edit_id)
+    events = v.timeline["tracks"][0]["events"]
+    opening, closing = events[0], events[-1]
+    assert opening["kind"] == closing["kind"] == "title"
+    assert opening["title"]["title"] == "Corpus trip"
+    # The synthetic corpus has no capture dates, so no date line (the unit tests cover it).
+    assert v.metrics["days_used"] == []
+    assert opening["title"]["subtitle"] == ""
+    assert closing["title"]["title"] == "Corpus trip"
+    rate = parse_rational(v.rate)
+    total = v.timeline["duration"]["frames"]
+    assert abs(total - round(45 * rate)) <= v.metrics["tolerance_frames"]
+    assert v.metrics["titles"] == {"cards": 2, "frames": 180}
+    r = get_render(project, _render(project, control, edit_id, v.version, "final", True))
+    assert r is not None
+    path = output_path(project.workspace, r)
+    assert _frames(ffmpeg_bin, path) == total
+    assert _samples(ffmpeg_bin, path) == samples_for(total, rate)
+    w, h = r.profile["width"], r.profile["height"]
+    frames = {}
+    for k, data in enumerate(stream_frames(ffmpeg_bin, path, w, h)):
+        if k in (0, 45):
+            frames[k] = data
+        if k >= 45:
+            break
+    assert frames[0].max() < 40, "the card fades in from black"
+    card = frames[45]
+    assert card[: h // 4].max() < 30, "a dark ground"
+    assert card[h // 3 : 2 * h // 3].max() > 200, "the name, drawn in the middle"

@@ -27,6 +27,7 @@ from mosaic.editing import solver
 from mosaic.editing.request import Category, EditRequest, Weight
 from mosaic.editing.resolve import EditInputs, Resolved, rejected_segments, resolve
 from mosaic.editing.retrieval import Candidate, parse_ref
+from mosaic.editing.titles import shot_events
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Edit, EditDraftOp, EditVersion
 
@@ -616,7 +617,7 @@ def pinned(op: LockShot, done: Resolved, board: Board) -> LockShot:
         return op.model_copy(update={"pin": None, "absorb": []})
     _, _, sh = board.shot(op.ref)
     rate = done.timeline["rate"]
-    for e in done.timeline["tracks"][0]["events"]:
+    for e in shot_events(done.timeline["tracks"][0]["events"]):
         refs = [e["origin"]["selection_ref"], *e["origin"].get("merged", [])]
         if op.ref in refs:
             # A J- or L-cut moved only its picture: the pin is the window that is heard,

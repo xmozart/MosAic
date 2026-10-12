@@ -11,8 +11,10 @@ export interface TimelineTime {
 
 export interface TimelineEvent {
   event_id: string;
-  asset_id: string;
-  segment_id: string;
+  /** "title" for a title card (ADR 0079): no clip behind it. */
+  kind?: string;
+  asset_id: string | null;
+  segment_id: string | null;
   beat_id: string | null;
   role: string;
   timeline_in: TimelineTime;
@@ -113,22 +115,25 @@ export function timecode(t: TimelineTime): string {
 
 /** Contiguous runs of one beat as coloured bar segments, the beat's order as its colour.
  * A shot outside every beat gets the colour after the last beat's. */
+const TITLE_CARD = "\u0000title";
+
 export function beatSegments(events: TimelineEvent[], beats: Beat[]): PlayerSegment[] {
   const order = new Map(beats.map((b, i) => [b.beat_id, i]));
   const out: (PlayerSegment & { beat: string | null })[] = [];
   for (const e of events) {
+    const beat = e.kind === "title" ? TITLE_CARD : e.beat_id;
     const last = out.at(-1);
-    if (last && last.beat === e.beat_id) {
+    if (last && last.beat === beat) {
       last.end = toSource(e.timeline_out);
       continue;
     }
     const i = order.get(e.beat_id ?? "") ?? beats.length;
     out.push({
-      beat: e.beat_id,
+      beat,
       start: toSource(e.timeline_in),
       end: toSource(e.timeline_out),
-      label: beats[i]?.title ?? "Other",
-      series: (i % 6) + 1,
+      label: beat === TITLE_CARD ? "Title" : (beats[i]?.title ?? "Other"),
+      series: beat === TITLE_CARD ? 6 : (i % 6) + 1,
     });
   }
   return out.map(({ beat: _beat, ...seg }) => seg);

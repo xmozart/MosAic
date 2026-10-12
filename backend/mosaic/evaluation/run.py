@@ -23,6 +23,7 @@ from typing import Any
 from mosaic.core.clock import now_iso
 from mosaic.core.principal import Principal
 from mosaic.editing.request import EditRequest
+from mosaic.editing.titles import shot_events
 from mosaic.evaluation import expectations as exp
 from mosaic.jobs.client import ensure_worker, wait_for_job
 from mosaic.jobs.executor import LocalExecutor
@@ -260,7 +261,7 @@ def run_trip(
         job = submit_generate(executor, me, project, edit_id, cost_limit_usd=budget.remaining)
         _run_job(control, job, "edit", budget, name)
         v = get_version(project, edit_id)
-        events = v.timeline["tracks"][0]["events"]
+        events = shot_events(v.timeline["tracks"][0]["events"])
         result |= {
             "edit": f"edt_{edit_id:04d}",
             "version": v.version,

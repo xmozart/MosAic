@@ -29,6 +29,7 @@ from typing import Any
 from mosaic.core.time import Rounding, frame_start_ticks, parse_rational, round_fraction
 from mosaic.editing.request import PaceFrames
 from mosaic.editing.solver import Shot, bounds
+from mosaic.editing.titles import Cards, title_event
 
 JUMP_GAP = Fraction(2)  # seconds: closer same-recording neighbours are a jump cut
 WORD_MARGIN = Fraction(1, 50)  # seconds: word timestamps are approximate (±20 ms)
@@ -490,23 +491,31 @@ def _ceiling(c: Cut) -> int:
     return edge
 
 
-def choose_transitions(cuts: list[Cut], mode: str, rate: str) -> list[str]:
+def choose_transitions(
+    cuts: list[Cut], mode: str, rate: str, breaks: frozenset[int] = frozenset()
+) -> list[str]:
     """Transitions (ADR 0066's mapping, ADR 0078): ``cuts`` dips to black at the opening
     and the closing; ``dissolves`` also dissolves where one beat changes to the next,
     between two videos with half a dissolve of usable picture past the out point and
-    before the in point; ``minimal`` is cuts only. The edit's frames never change."""
+    before the in point; ``minimal`` is cuts only. The edit's frames never change.
+    ``breaks``: indices of shots a title card goes before (``len(cuts)``: after the last),
+    which do their own dips (ADR 0079): no dip or dissolve meets a card."""
     notes: list[str] = []
     if mode == "minimal" or not cuts:
         return notes
     r = parse_rational(rate)
     dip = round_fraction(DIP * r, Rounding.NEAREST)
-    cuts[0].dip_in = min(dip, cuts[0].frames // 2)
-    cuts[-1].dip_out = min(dip, cuts[-1].frames // 2)
+    if 0 not in breaks:
+        cuts[0].dip_in = min(dip, cuts[0].frames // 2)
+    if len(cuts) not in breaks:
+        cuts[-1].dip_out = min(dip, cuts[-1].frames // 2)
     if mode != "dissolves":
         return notes
     half = round_fraction(DISSOLVE * r / 2, Rounding.NEAREST)
     for i in range(len(cuts) - 1):
         a, b = cuts[i], cuts[i + 1]
+        if i + 1 in breaks:
+            continue
         if a.shot.beat_id == b.shot.beat_id or a.shot.cand.still or b.shot.cand.still:
             continue
         # The renderer's own rounding (render.plan), so the handles it reads are these.
@@ -581,7 +590,9 @@ def _resize(c: Cut, frames: int, keep_end: bool, rate: str) -> None:
     c.frames = frames
 
 
-def split_dialogue(cuts: list[Cut], rate: str, pace: PaceFrames) -> list[str]:
+def split_dialogue(
+    cuts: list[Cut], rate: str, pace: PaceFrames, breaks: frozenset[int] = frozenset()
+) -> list[str]:
     """J- and L-cuts (ADR 0077) at each boundary between a dialogue shot and a
     non-dialogue neighbour: into dialogue the neighbour's picture runs on (J), out of it
     the neighbour's picture starts early (L). Only picture cuts move; the edit's length
@@ -592,7 +603,7 @@ def split_dialogue(cuts: list[Cut], rate: str, pace: PaceFrames) -> list[str]:
         a, b = cuts[i], cuts[i + 1]
         if a.shot.dialogue == b.shot.dialogue or _fixed(a) or _fixed(b):
             continue
-        if a.dissolve:  # a dissolve already blends this cut (ADR 0078)
+        if a.dissolve or i + 1 in breaks:  # a dissolve or a title card is there
             continue
         if a.shot.cand.asset_id == b.shot.cand.asset_id:
             continue
@@ -630,10 +641,23 @@ def split_dialogue(cuts: list[Cut], rate: str, pace: PaceFrames) -> list[str]:
 # ----------------------------------------------------------------------- events
 
 
-def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
+def events(
+    cuts: list[Cut], rate: str, cards: Cards | None = None, mode: str = "cuts"
+) -> list[dict[str, Any]]:
+    """The timeline's events: the cuts in order, with the title ``cards`` before the shots
+    they introduce and the closing card last (ADR 0079)."""
     out: list[dict[str, Any]] = []
     pos = 0
-    for i, c in enumerate(cuts, 1):
+
+    def put_cards(index: int) -> None:
+        nonlocal pos
+        for card in cards.before(index) if cards else []:
+            out.append(title_event(card, f"evt_{len(out) + 1:04d}", pos, rate, mode))
+            pos += card.frames
+
+    for k, c in enumerate(cuts):
+        put_cards(k)
+        i = len(out) + 1
         s = c.shot
         if s.cand.still:
             out.append(still_event(c, i, pos, rate))
@@ -672,6 +696,8 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
             }
         )
         pos += c.frames
+    if cards and cards.closing:
+        out.append(title_event(cards.closing, f"evt_{len(out) + 1:04d}", pos, rate, mode))
     return out
 
 

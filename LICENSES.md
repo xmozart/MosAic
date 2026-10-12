@@ -15,6 +15,7 @@ Python package is missing here or is GPL/AGPL. Regenerate the Python tables with
 | libzimg (linked into FFmpeg) | 3.0.6 | WTFPL | `zscale` filter for HDR tone mapping |
 | libopenh264 (linked into FFmpeg) | 2.6.0 | BSD-2-Clause | Fallback H.264 encoder. Patent note: Cisco's patent coverage applies only to Cisco-distributed binaries (FUTURE_APPENDIX §5) |
 | VideoToolbox / AudioToolbox | macOS | Apple system frameworks | Hardware H.264/HEVC encode |
+| Geist (latin, latin-ext, cyrillic, cyrillic-ext and vietnamese subsets, `backend/mosaic/media/fonts/`, from `@fontsource-variable/geist`) | 5.3.0 | SIL OFL 1.1 (`fonts/OFL.txt`) | Title cards drawn by Pillow (ADR 0079); bundled files, never fetched |
 
 Optional AI apps the user installs and signs in to (ADR 0014):
 

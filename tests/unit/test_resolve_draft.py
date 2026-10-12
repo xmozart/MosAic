@@ -16,6 +16,7 @@ from mosaic.editing import solver
 from mosaic.editing.request import EditRequest, pace_frames
 from mosaic.editing.resolve import EditInputs, resolve
 from mosaic.editing.retrieval import Candidate
+from mosaic.editing.titles import shot_events
 from mosaic.library.context import TripContext
 from mosaic.storage.control import ControlDB
 from mosaic.storage.projects import Project, init_project
@@ -99,7 +100,7 @@ def _run(project: Project, *, user_order: bool, excluded: set[str]) -> list[str]
     shots = [_shot(b, 0), _shot(d, 1, (x,)), _shot(a, 2), _shot(e, 0, beat=2)]
     with project.db.session() as s:
         done = resolve(s, req, inp, plan, shots, set(), user_order=user_order, excluded=excluded)
-    return [e["segment_id"] for e in done.timeline["tracks"][0]["events"]]
+    return [e["segment_id"] for e in shot_events(done.timeline["tracks"][0]["events"])]
 
 
 def test_a_spare_lands_in_the_owners_order(project: Project) -> None:
@@ -114,9 +115,11 @@ def test_what_the_owner_took_out_is_never_a_spare(project: Project) -> None:
     assert "seg_000004" not in _run(project, user_order=True, excluded={"seg_000004"})
 
 
-def _timed(project: Project, shots: list[solver.Shot], seconds: int) -> Any:
+def _timed(
+    project: Project, shots: list[solver.Shot], seconds: int, chronology: str = "story"
+) -> Any:
     cands = [sh.cand for sh in shots] + [x.cand for sh in shots for x in sh.absorbed]
-    req = EditRequest(duration_s=seconds, chronology="story")
+    req = EditRequest(duration_s=seconds, chronology=chronology)
     inp = EditInputs(RATE, pace_frames("balanced", RATE), cands, {}, "digest", TripContext())
     plan = PlanOut(
         title="Trip",
@@ -149,7 +152,7 @@ def test_a_pinned_shot_keeps_its_exact_cut_while_the_rest_is_trimmed(project: Pr
     shots[2].locked = True
     shots[2].pin = (1234, 1234 + 5000, 150)  # 5 s from 1.234 s, at 30 fps
     done = _timed(project, shots, 12)
-    events = done.timeline["tracks"][0]["events"]
+    events = shot_events(done.timeline["tracks"][0]["events"])
     pinned = next(e for e in events if e["origin"]["selection_ref"] == "b1#2")
     assert pinned["source_in"]["ticks"] == 1234
     assert pinned["source_out"]["ticks"] == 6234
@@ -177,7 +180,7 @@ def test_locks_longer_than_the_target_are_reported_in_frames(project: Project) -
     assert locks["frames"] == 420
     assert locks["over_frames"] == 420 - (300 + 300 * 5 // 100)
     assert done.metrics["solver"]["notes"][0].startswith("locked shots exceed the target")
-    kept = [e["origin"]["selection_ref"] for e in done.timeline["tracks"][0]["events"]]
+    kept = [e["origin"]["selection_ref"] for e in shot_events(done.timeline["tracks"][0]["events"])]
     assert {"b1#0", "b1#1"} <= set(kept), "locks are never dropped to fit"
 
 
@@ -271,9 +274,36 @@ def test_absorbed_footage_stays_in_its_locked_cut_and_is_never_a_spare(project: 
     other = _shot(b, 2, (x,))  # names x as its alternative
     locker.absorbed.append(inside)
     done = _timed(project, [locker, other], 30)  # far too short: the solver backfills
-    events = done.timeline["tracks"][0]["events"]
+    events = shot_events(done.timeline["tracks"][0]["events"])
     locked = next(e for e in events if e["origin"]["selection_ref"] == "b1#0")
     assert locked["origin"]["merged"] == ["b1#1"]
     assert locked["origin"]["merged_segments"] == [x.ref]
     assert [e["segment_id"] for e in events].count(x.ref) == 0, "never added again as a spare"
     assert done.timeline["selections"]["b1#1"]["used"]
+
+
+def test_cards_reserved_from_the_selection_are_settled_on_the_edits_days(
+    project: Project,
+) -> None:
+    """ADR 0079: the selection spans two days, so day cards were reserved; the day-2 shot
+    is too short to use, so the edit has one day and no day cards, and the footage grows
+    back into their frames: the edit still lands on its length."""
+    import dataclasses
+
+    from mosaic.editing.resolve import titles_day1
+
+    day1 = [_cand(n, 20, n) for n in range(1, 10)]  # pace caps each at 8 s
+    late = dataclasses.replace(
+        _cand(19, 1, 19), day=2, capture=datetime(2026, 7, 16, 9, 9, tzinfo=UTC)
+    )  # 1 s: under the pace's minimum, dropped
+    assert titles_day1([late, *day1]).isoformat() == "2026-07-15"
+    assert titles_day1([dataclasses.replace(late, capture=None)]) is None
+    shots = [_shot(c, i) for i, c in enumerate([*day1, late])]
+    done = _timed(project, shots, 60, chronology="strict")
+    events = done.timeline["tracks"][0]["events"]
+    titles = [e["title"] for e in events if e["kind"] == "title"]
+    assert titles == [{"card": "opening", "title": "15 July 2026", "subtitle": "", "day": 0}]
+    assert done.metrics["titles"] == {"cards": 1, "frames": 90}
+    total = done.timeline["duration"]["frames"]
+    assert abs(total - 1798) <= done.metrics["tolerance_frames"]
+    assert done.metrics["duration_ok"]

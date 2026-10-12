@@ -91,7 +91,7 @@ def check_render(
     events = timeline["tracks"][0]["events"]
     bounds = [(e["timeline_in"]["frames"], e["timeline_out"]["frames"]) for e in events]
     checks = [
-        EventCheck(e["event_id"], e["asset_id"], b - a, still=e.get("kind") == "still")
+        EventCheck(e["event_id"], e["asset_id"], b - a, still=e.get("kind") in ("still", "title"))
         for e, (a, b) in zip(events, bounds, strict=True)
     ]
     # Frames that fade to black or blend two pictures carry no clean barcode.
@@ -113,7 +113,7 @@ def check_render(
         if ev >= len(events):
             break
         e = events[ev]
-        if e.get("kind") == "still":
+        if e.get("kind") in ("still", "title"):
             continue
         k = n - bounds[ev][0]
         if not clear[ev][0] <= k < clear[ev][1]:

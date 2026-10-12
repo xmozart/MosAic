@@ -17,6 +17,7 @@ from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from mosaic.editing.service import edit_ref
+from mosaic.editing.titles import shot_events
 from mosaic.jobs.store import JobStore
 from mosaic.render.plan import SHORT_SIDE
 from mosaic.render.service import job_status, render_state
@@ -29,7 +30,7 @@ RESOLUTION_LABEL = {v: ("4K" if k == "4k" else k) for k, v in SHORT_SIDE.items()
 
 def cover(s: Session, timeline: dict[str, Any]) -> int | None:
     """A frame of the edit's first shot: the first kept sample at or after its in point."""
-    events = (timeline.get("tracks") or [{}])[0].get("events", [])
+    events = shot_events((timeline.get("tracks") or [{}])[0].get("events", []))
     if not events:
         return None
     e = events[0]
@@ -255,7 +256,7 @@ def version_facts(s: Session, v: EditVersion) -> dict[str, Any]:
     from mosaic.storage.models_project import Asset
 
     tracks = v.timeline.get("tracks") or [{}]
-    events = tracks[0].get("events", [])
+    events = shot_events(tracks[0].get("events", []))
     ids = {int(e["asset_id"][4:]) for e in events}
     kinds = dict(s.execute(select(Asset.id, Asset.kind).where(Asset.id.in_(ids))).all())
     m = v.metrics or {}
