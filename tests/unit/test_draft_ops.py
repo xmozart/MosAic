@@ -207,3 +207,22 @@ def test_pacing_skips_locked_absorbed_and_speech_shots() -> None:
     beat.shots[0].audio_intent = "natural_sound"
     paced = apply(board, OP.validate_python({"kind": "pace_beat", "beat_id": "b2"}))
     assert [s.length for s in paced.beat("b2")[1].shots] == ["short", "medium"]
+
+
+def test_weights_change_on_the_storyboard_and_neutral_resets() -> None:
+    from mosaic.editing.draft import request_of
+    from mosaic.editing.request import EditRequest
+
+    board = apply(
+        _board(),
+        OP.validate_python({"kind": "set_weight", "category": "wildlife", "weight": "more"}),
+    )
+    board = apply(
+        board, OP.validate_python({"kind": "set_weight", "category": "people", "weight": "neutral"})
+    )
+    base = EditRequest(duration_s=60, weights={"people": "strong", "city": "less"})
+    req = request_of(base, board)
+    assert req.weights == {"city": "less", "wildlife": "more"}, "neutral drops people"
+    assert request_of(base, _board()) is base
+    with pytest.raises(ValidationError):
+        OP.validate_python({"kind": "set_weight", "category": "dinosaurs", "weight": "more"})

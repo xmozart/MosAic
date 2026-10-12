@@ -285,6 +285,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/edits/{eid}/category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * More Or Less Category
+         * @description More or less of a content category: its weight moves one step and the edit is
+         *     regenerated with the owner's locks kept (ADR 0074). 409 at the end of the scale.
+         */
+        post: operations["more_or_less_category_api_edits__eid__category_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/edits/{eid}/draft": {
         parameters: {
             query?: never;
@@ -422,8 +443,9 @@ export interface paths {
         put?: never;
         /**
          * Regenerate Edit
-         * @description Regenerate the story (new beats from the edit's own clips) or the whole edit; the
-         *     owner's locked shots stay (ADR 0070).
+         * @description Regenerate the story (new beats from the edit's own clips) or the whole edit
+         *     (ADR 0070), or give it a stronger opening or a different ending (its first or last
+         *     beat; ADR 0074); the owner's locked shots stay.
          */
         post: operations["regenerate_edit_api_edits__eid__regenerate_post"];
         delete?: never;
@@ -1679,6 +1701,16 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
         };
+        /** CategoryBody */
+        CategoryBody: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "people" | "reactions" | "landscapes" | "wildlife" | "architecture" | "food" | "culture" | "action" | "drone" | "pov" | "selfies" | "conversations" | "natural_sound" | "humor" | "transport" | "sunsets" | "water" | "night" | "city" | "slow_motion" | "timelapse" | "photos";
+            /** More */
+            more: boolean;
+        };
         /** CreateBody */
         CreateBody: {
             /** Name */
@@ -1746,7 +1778,7 @@ export interface components {
          */
         DraftOpBody: {
             /** Op */
-            op: components["schemas"]["MoveShot"] | components["schemas"]["MoveBeat"] | components["schemas"]["RemoveShot"] | components["schemas"]["LockShot"] | components["schemas"]["ReplaceShot"] | components["schemas"]["SetDuration"] | components["schemas"]["PaceBeat"];
+            op: components["schemas"]["MoveShot"] | components["schemas"]["MoveBeat"] | components["schemas"]["RemoveShot"] | components["schemas"]["LockShot"] | components["schemas"]["ReplaceShot"] | components["schemas"]["SetDuration"] | components["schemas"]["PaceBeat"] | components["schemas"]["SetWeight"];
         };
         /** DurationBody */
         DurationBody: {
@@ -2020,6 +2052,28 @@ export interface components {
              * @enum {string}
              */
             kind: "set_duration";
+        };
+        /**
+         * SetWeight
+         * @description More or less of a content category (PRODUCT.md §8; ADR 0074): the request's weight
+         *     for it, from the next timing or regeneration on.
+         */
+        SetWeight: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "people" | "reactions" | "landscapes" | "wildlife" | "architecture" | "food" | "culture" | "action" | "drone" | "pov" | "selfies" | "conversations" | "natural_sound" | "humor" | "transport" | "sunsets" | "water" | "night" | "city" | "slow_motion" | "timelapse" | "photos";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_weight";
+            /**
+             * Weight
+             * @enum {string}
+             */
+            weight: "avoid" | "less" | "neutral" | "more" | "strong";
         };
         /** SettingsPatch */
         SettingsPatch: {
@@ -2510,6 +2564,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    more_or_less_category_api_edits__eid__category_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {

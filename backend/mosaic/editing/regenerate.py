@@ -28,7 +28,13 @@ from mosaic.jobs.registry import PermanentError, task
 from mosaic.library.context import TripContext
 from mosaic.storage.config import NotConfiguredError
 
-RESELECT = ("reselect", 1)
+RESELECT = ("reselect", 2)  # v2: a directive and the owner's preferences (ADR 0074)
+DIRECTIVES = {
+    "opening": "Make this the strongest possible opening: an arresting first shot that "
+    "sets the place and the mood, then build quickly into the story.",
+    "ending": "Give the edit a different ending from the one it has now: not its current "
+    "closing clips; end on a calm, memorable moment that resolves the story.",
+}
 RESELECT_MAX_TOKENS = 8000
 BEAT_VERSION = "beat/1"
 
@@ -71,12 +77,20 @@ def context(
     by_ref: dict[str, Candidate],
     pace_pref_s: Fraction,
     trip: TripContext,
+    directive: str | None = None,
 ) -> dict[str, Any]:
-    from mosaic.editing.generate import request_summary
+    from mosaic.editing.generate import preferences_text, request_summary
 
     beat = sl.beat
     banned = avoid(board, beat.beat_id) | {sh.segment_id for sh in sl.fixed.values()}
     pool = [r for r in dict.fromkeys(beat.pool) if r in by_ref and r not in banned]
+    if directive == "ending":
+        # A different ending: the beat's current free clips leave the pool when the rest
+        # can still fill the free slots (ADR 0074).
+        now = {sh.segment_id for i, sh in enumerate(beat.shots) if i not in sl.fixed}
+        others = [r for r in pool if r not in now]
+        if len(others) >= sl.needed:
+            pool = others
     total = sum(b.share_percent for b in board.beats) or 1
     seconds = Fraction(req.duration_s * beat.share_percent, total)
     lines = []
@@ -86,13 +100,16 @@ def context(
             what = c.line() if c else sh.segment_id
             lines.append(f"{i + 1}. locked: {what}")
         else:
-            lines.append(f"{i + 1}. free")
+            c = by_ref.get(sh.segment_id)
+            lines.append(f"{i + 1}. free (now: {c.line() if c else sh.segment_id})")
     if not beat.shots:
         lines.append("1. free")
     return {
         "trip_context": trip.prompt_text(),
         "request": request_summary(req),
         "instructions": req.instructions or "(none)",
+        "preferences": preferences_text(req),
+        "directive": DIRECTIVES[directive] if directive else "(none)",
         "pace": f"{req.pace} (preferred shot about {float(pace_pref_s):.1f} s)",
         "beat": (
             f"{beat.beat_id}: {beat.title}. Intent: {beat.intent}. Target: about {round(seconds)} s"
@@ -241,6 +258,9 @@ def pair(a: int, b: int) -> int:
 def regenerate_beat_task(ctx: TaskContext) -> dict[str, Any]:
     edit_id = int(ctx.params["edit_id"])
     beat_id = str(ctx.params["beat_id"])
+    directive = ctx.params.get("directive")
+    if directive is not None and directive not in DIRECTIVES:
+        raise PermanentError(f"directive must be one of {', '.join(DIRECTIVES)}")
     try:
         task_check_ready(ctx, "selector")
     except NotConfiguredError as exc:
@@ -248,13 +268,15 @@ def regenerate_beat_task(ctx: TaskContext) -> dict[str, Any]:
     for _ in range(ATTEMPTS):
         ctx.check_cancelled()
         try:
-            return _attempt(ctx, edit_id, beat_id)
+            return _attempt(ctx, edit_id, beat_id, directive)
         except draft.DraftChangedError:
             continue  # the owner changed the storyboard meanwhile: keep it, and redo
     raise PermanentError("the storyboard kept changing while this beat was regenerated")
 
 
-def _attempt(ctx: TaskContext, edit_id: int, beat_id: str) -> dict[str, Any]:
+def _attempt(
+    ctx: TaskContext, edit_id: int, beat_id: str, directive: str | None = None
+) -> dict[str, Any]:
     from mosaic.editing.generate import (
         EDIT_VERSION,
         export_path,
@@ -270,13 +292,17 @@ def _attempt(ctx: TaskContext, edit_id: int, beat_id: str) -> dict[str, Any]:
     with ctx.project.db.session() as s:
         d = draft.load(s, edit_id)
         req, inp = draft.inputs(s, d)
+        if directive == "opening" and d.board.beats:  # the first beat when the job runs
+            beat_id = d.board.beats[0].beat_id
+        elif directive == "ending" and d.board.beats:
+            beat_id = d.board.beats[-1].beat_id
         try:
             sl = slots(d.board, beat_id)
         except DraftError as exc:
             raise PermanentError(str(exc)) from None
         by_ref = {c.ref: c for c in inp.cands}
         pref_s = Fraction(inp.pace.preferred) / parse_rational(inp.rate)
-        pctx = context(req, d.board, sl, by_ref, pref_s, inp.trip)
+        pctx = context(req, d.board, sl, by_ref, pref_s, inp.trip, directive)
         refs = known_refs(s, edit_id)
         take = take_number(s, edit_id, beat_id)
         rejected = sorted(rejected_segments(s))
@@ -306,6 +332,7 @@ def _attempt(ctx: TaskContext, edit_id: int, beat_id: str) -> dict[str, Any]:
             "base": d.base.key,
             "beat": beat_id,
             "take": take,
+            "directive": directive,
             "candidates": inp.digest,
             "rejected": rejected,
         },
@@ -319,9 +346,17 @@ def _attempt(ctx: TaskContext, edit_id: int, beat_id: str) -> dict[str, Any]:
             edit_id,
             t,
             creator="ai",
-            reason=f"Regenerated “{sl.beat.title}”",
+            reason={
+                "opening": "A stronger opening",
+                "ending": "A different ending",
+            }.get(directive or "", f"Regenerated “{sl.beat.title}”"),
             extra_metrics={
-                "regenerated": {"beat_id": beat_id, "take": take, "locked_kept": len(sl.fixed)},
+                "regenerated": {
+                    "beat_id": beat_id,
+                    "take": take,
+                    "locked_kept": len(sl.fixed),
+                    "directive": directive,
+                },
                 "ai": {
                     "selector": {
                         "provider": res.provider,
@@ -517,10 +552,12 @@ def _regenerate(ctx: TaskContext, edit_id: int, scope: str) -> dict[str, Any]:
     from mosaic.ai.prompts.selector.schema_v2 import Output as SelectOut
     from mosaic.editing.generate import (
         EDIT_VERSION,
+        MIN_CLIPS,
         PLANNER,
         PLANNER_MAX_TOKENS,
         SELECTOR,
         SELECTOR_MAX_TOKENS,
+        TOO_FEW_CLIPS,
         check_plan,
         check_selection,
         export_path,
@@ -544,6 +581,8 @@ def _regenerate(ctx: TaskContext, edit_id: int, scope: str) -> dict[str, Any]:
         rejected = sorted(rejected_segments(s))
     if not cands:
         raise PermanentError("no clips to make a story from")
+    if len(cands) < MIN_CLIPS:
+        raise PermanentError(TOO_FEW_CLIPS)
     by_ref = {c.ref: c for c in cands}
     all_refs = {c.ref: c for c in inp.cands}
     # Negative, so never an edit's own --variant (ADR 0070); the scope is part of it, so

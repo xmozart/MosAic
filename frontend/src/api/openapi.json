@@ -138,6 +138,49 @@
         "title": "BulkChange",
         "type": "object"
       },
+      "CategoryBody": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "people",
+              "reactions",
+              "landscapes",
+              "wildlife",
+              "architecture",
+              "food",
+              "culture",
+              "action",
+              "drone",
+              "pov",
+              "selfies",
+              "conversations",
+              "natural_sound",
+              "humor",
+              "transport",
+              "sunsets",
+              "water",
+              "night",
+              "city",
+              "slow_motion",
+              "timelapse",
+              "photos"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "more": {
+            "title": "More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category",
+          "more"
+        ],
+        "title": "CategoryBody",
+        "type": "object"
+      },
       "CreateBody": {
         "additionalProperties": false,
         "properties": {
@@ -391,7 +434,8 @@
                 "pace_beat": "#/components/schemas/PaceBeat",
                 "remove_shot": "#/components/schemas/RemoveShot",
                 "replace_shot": "#/components/schemas/ReplaceShot",
-                "set_duration": "#/components/schemas/SetDuration"
+                "set_duration": "#/components/schemas/SetDuration",
+                "set_weight": "#/components/schemas/SetWeight"
               },
               "propertyName": "kind"
             },
@@ -416,6 +460,9 @@
               },
               {
                 "$ref": "#/components/schemas/PaceBeat"
+              },
+              {
+                "$ref": "#/components/schemas/SetWeight"
               }
             ],
             "title": "Op"
@@ -1038,6 +1085,63 @@
           "duration_s"
         ],
         "title": "SetDuration",
+        "type": "object"
+      },
+      "SetWeight": {
+        "additionalProperties": false,
+        "description": "More or less of a content category (PRODUCT.md \u00a78; ADR 0074): the request's weight\nfor it, from the next timing or regeneration on.",
+        "properties": {
+          "category": {
+            "enum": [
+              "people",
+              "reactions",
+              "landscapes",
+              "wildlife",
+              "architecture",
+              "food",
+              "culture",
+              "action",
+              "drone",
+              "pov",
+              "selfies",
+              "conversations",
+              "natural_sound",
+              "humor",
+              "transport",
+              "sunsets",
+              "water",
+              "night",
+              "city",
+              "slow_motion",
+              "timelapse",
+              "photos"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "kind": {
+            "const": "set_weight",
+            "default": "set_weight",
+            "title": "Kind",
+            "type": "string"
+          },
+          "weight": {
+            "enum": [
+              "avoid",
+              "less",
+              "neutral",
+              "more",
+              "strong"
+            ],
+            "title": "Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "weight"
+        ],
+        "title": "SetWeight",
         "type": "object"
       },
       "SettingsPatch": {
@@ -1723,6 +1827,58 @@
         "summary": "Regenerate Beat"
       }
     },
+    "/api/edits/{eid}/category": {
+      "post": {
+        "description": "More or less of a content category: its weight moves one step and the edit is\nregenerated with the owner's locks kept (ADR 0074). 409 at the end of the scale.",
+        "operationId": "more_or_less_category_api_edits__eid__category_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response More Or Less Category Api Edits  Eid  Category Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "More Or Less Category"
+      }
+    },
     "/api/edits/{eid}/draft": {
       "get": {
         "description": "S16's storyboard: the draft's beats and shots, undo state and current timing.",
@@ -2034,7 +2190,7 @@
     },
     "/api/edits/{eid}/regenerate": {
       "post": {
-        "description": "Regenerate the story (new beats from the edit's own clips) or the whole edit; the\nowner's locked shots stay (ADR 0070).",
+        "description": "Regenerate the story (new beats from the edit's own clips) or the whole edit\n(ADR 0070), or give it a stronger opening or a different ending (its first or last\nbeat; ADR 0074); the owner's locked shots stay.",
         "operationId": "regenerate_edit_api_edits__eid__regenerate_post",
         "parameters": [
           {
@@ -2051,7 +2207,7 @@
             "name": "scope",
             "required": true,
             "schema": {
-              "pattern": "^(story|all)$",
+              "pattern": "^(story|all|opening|ending)$",
               "title": "Scope",
               "type": "string"
             }

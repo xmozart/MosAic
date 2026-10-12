@@ -24,7 +24,7 @@ from mosaic.ai.prompts.selector.schema_v2 import Length
 from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
 from mosaic.editing import solver
-from mosaic.editing.request import EditRequest
+from mosaic.editing.request import Category, EditRequest, Weight
 from mosaic.editing.resolve import EditInputs, Resolved, rejected_segments, resolve
 from mosaic.editing.retrieval import Candidate, parse_ref
 from mosaic.storage import provenance
@@ -113,6 +113,8 @@ class Board(BaseModel):
     # Segments the owner took out (removed or replaced): never brought back as a spare.
     excluded: list[str] = Field(default_factory=list)
     duration_s: int | None = None  # the length asked for, when the owner changed it (M4.4b)
+    # Content weights the owner changed since the base version (M4.4c): neutral resets.
+    weight_changes: dict[Category, Weight] = Field(default_factory=dict)
 
     def exclude(self, segment_id: str) -> None:
         self.excluded = sorted({*self.excluded, segment_id})
@@ -235,6 +237,16 @@ class SetDuration(BaseModel):
     duration_s: int = Field(ge=5, le=4 * 3600)
 
 
+class SetWeight(BaseModel):
+    """More or less of a content category (PRODUCT.md §8; ADR 0074): the request's weight
+    for it, from the next timing or regeneration on."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["set_weight"] = "set_weight"
+    category: Category
+    weight: Weight
+
+
 class PaceBeat(BaseModel):
     """Make a beat faster (shorter shots) or slower (longer ones): every free shot's
     length moves one step; locked shots keep their cut."""
@@ -258,7 +270,7 @@ class ReplaceShot(BaseModel):
 
 
 Op = Annotated[
-    MoveShot | MoveBeat | RemoveShot | LockShot | ReplaceShot | SetDuration | PaceBeat,
+    MoveShot | MoveBeat | RemoveShot | LockShot | ReplaceShot | SetDuration | PaceBeat | SetWeight,
     Field(discriminator="kind"),
 ]
 OP: TypeAdapter[Op] = TypeAdapter(Op)
@@ -288,6 +300,8 @@ def apply(board: Board, op: Op) -> Board:
         out.exclude(sh.segment_id)
     elif isinstance(op, SetDuration):
         out.duration_s = op.duration_s
+    elif isinstance(op, SetWeight):
+        out.weight_changes = {**out.weight_changes, op.category: op.weight}
     elif isinstance(op, PaceBeat):
         _, beat = out.beat(op.beat_id)
         step = -1 if op.faster else 1
@@ -523,10 +537,16 @@ def board_shots(
 
 
 def request_of(req: EditRequest, board: Board) -> EditRequest:
-    """The request the storyboard is timed to: its own length, if the owner changed it."""
-    if board.duration_s is None or board.duration_s == req.duration_s:
+    """The request the storyboard is timed to: its own length and content weights, where
+    the owner changed them since the base version."""
+    update: dict[str, Any] = {}
+    if board.duration_s is not None and board.duration_s != req.duration_s:
+        update["duration_s"] = board.duration_s
+    if board.weight_changes:
+        update["weights"] = {**req.weights, **board.weight_changes}
+    if not update:
         return req
-    return req.model_copy(update={"duration_s": board.duration_s})
+    return EditRequest.model_validate({**req.model_dump(mode="json"), **update})
 
 
 def inputs(s: Session, d: Draft) -> tuple[EditRequest, EditInputs]:
@@ -722,6 +742,8 @@ def commit(
         if edit.name.endswith(f" · {old_s} s"):
             edit.name = f"{edit.name[: -len(f' · {old_s} s')]} · {new_s} s"
         edit.request = {**edit.request, "duration_s": new_s}
+    if edit is not None and edit.request.get("weights", {}) != row.request.get("weights", {}):
+        edit.request = {**edit.request, "weights": row.request.get("weights", {})}  # ADR 0074
     s.execute(delete(EditDraftOp).where(EditDraftOp.edit_id == edit_id))
     s.flush()
     return row

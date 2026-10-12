@@ -109,3 +109,10 @@ def test_custom_beats_fit_the_planners_titles() -> None:
     assert [b.title for b in owners_titles(plan, req).beats] == titles, "as the owner typed"
     system = load(*PLANNER).system
     assert "plan exactly that many instead" in system
+
+
+def test_a_plan_needs_two_clips() -> None:
+    from mosaic.editing.generate import MIN_CLIPS, TOO_FEW_CLIPS
+
+    assert MIN_CLIPS == 2
+    assert "at least two" in TOO_FEW_CLIPS

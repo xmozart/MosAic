@@ -714,3 +714,183 @@ def test_a_locked_shot_is_never_avoided_by_a_content_weight(drafted: Any) -> Non
     assert ref in refs
     assert not any("no longer available" in n for n in after["metrics"]["solver"]["notes"])
     assert "avoided" in after["metrics"]["retrieval"], "the avoid weight was applied"
+
+
+def test_more_of_a_category_regenerates_with_the_new_weight(
+    drafted: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PRODUCT.md §8 (ADR 0074): one step more or less of a category, the whole edit
+    regenerated with it (the prompts see it) and the owner's locks kept; refused at
+    either end of the scale."""
+    from mosaic.ai import client as ai_client
+    from tests.support.runner import run_job
+
+    project, control, client, _, eid = _fresh(drafted, 29, 47)
+    seen: list[str] = []
+    real = ai_client.AIClient.structured
+
+    def spying(
+        self: Any, capability: str, name: str, version: int, ctx: Any, *a: Any, **k: Any
+    ) -> Any:
+        if name == "planner":
+            seen.append(ctx["preferences"])
+        return real(self, capability, name, version, ctx, *a, **k)
+
+    monkeypatch.setattr(ai_client.AIClient, "structured", spying)
+    ref = _shots(client.get(f"/api/edits/{eid}/draft").json())[0]["ref"]
+    client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": ref}})
+
+    def step(more: bool) -> dict[str, Any]:
+        r = client.post(
+            f"/api/edits/{eid}/category", json={"category": "conversations", "more": more}
+        )
+        assert r.status_code == 202, r.text
+        assert run_job(control, r.json()["job_id"]) == "done"
+        v = client.get(f"/api/edits/{eid}").json()
+        assert v["metrics"]["regenerated"]["scope"] == "all"
+        assert any(s["ref"] == ref and s["locked"] for b in v["beats"] for s in b["shots"])
+        return {"weight": r.json()["weight"], "version": v}
+
+    up = step(True)
+    assert up["weight"] == "more"
+    assert up["version"]["request"]["weights"]["conversations"] == "more"
+    assert "More of: conversations." in seen[-1], "the regeneration saw the new weight"
+    assert step(True)["weight"] == "strong"
+    top = client.post(
+        f"/api/edits/{eid}/category", json={"category": "conversations", "more": True}
+    )
+    assert top.status_code == 409
+    for want in ("more", "neutral", "less", "avoid"):
+        got = step(False)
+        assert got["weight"] == want
+        weights = got["version"]["request"]["weights"]
+        if want == "neutral":
+            assert "conversations" not in weights, "neutral is no weight"
+        else:
+            assert weights["conversations"] == want
+    assert "Avoid: conversations." in seen[-1]
+    bottom = client.post(
+        f"/api/edits/{eid}/category", json={"category": "conversations", "more": False}
+    )
+    assert bottom.status_code == 409
+    card = next(
+        e
+        for e in client.get(f"/api/projects/{project.id}/edits").json()["items"]
+        if e["edit_id"] == eid
+    )
+    assert card["request"]["weights"]["conversations"] == "avoid"
+    assert (
+        client.post(f"/api/edits/{eid}/category", json={"category": "x", "more": True}).status_code
+        == 422
+    )
+
+
+def test_a_stronger_opening_and_a_different_ending(
+    drafted: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mosaic.ai import client as ai_client
+    from tests.support.runner import run_job
+
+    _, control, client, _, eid = _fresh(drafted, 30, 49)
+    directives: list[str] = []
+    real = ai_client.AIClient.structured
+
+    def spying(
+        self: Any, capability: str, name: str, version: int, ctx: Any, *a: Any, **k: Any
+    ) -> Any:
+        if name == "reselect":
+            directives.append(ctx["directive"])
+            assert version == 2
+        return real(self, capability, name, version, ctx, *a, **k)
+
+    monkeypatch.setattr(ai_client.AIClient, "structured", spying)
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    beats = [b["beat_id"] for b in d["board"]["beats"]]
+    first = d["board"]["beats"][0]["shots"][0]["ref"]
+    client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": first}})
+    last_before = {s["segment_id"] for s in d["board"]["beats"][-1]["shots"] if not s["locked"]}
+    for end, beat, reason in (
+        ("opening", beats[0], "A stronger opening"),
+        ("ending", beats[-1], "A different ending"),
+    ):
+        r = client.post(f"/api/edits/{eid}/regenerate", params={"scope": end})
+        assert r.status_code == 202, r.text
+        assert run_job(control, r.json()["job_id"]) == "done"
+        v = client.get(f"/api/edits/{eid}").json()
+        assert v["reason"] == reason
+        assert v["metrics"]["regenerated"] == v["metrics"]["regenerated"] | {
+            "beat_id": beat,
+            "directive": end,
+        }
+    after = client.get(f"/api/edits/{eid}/draft").json()
+    assert any(s["ref"] == first and s["locked"] for s in after["board"]["beats"][0]["shots"]), (
+        "the opening keeps its lock"
+    )
+    last_after = {s["segment_id"] for s in after["board"]["beats"][-1]["shots"] if not s["locked"]}
+    assert last_after
+    assert last_after != last_before, "a different ending"
+    assert directives[0].startswith("Make this the strongest possible opening")
+    assert directives[1].startswith("Give the edit a different ending")
+
+
+def test_one_clip_left_fails_with_a_reason_before_any_ai_call(
+    drafted: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No plan can be made from one clip (two beats, no clip twice): generating and
+    regenerating stop before any AI call, saying why (ADR 0074)."""
+    import dataclasses
+
+    from mosaic.editing import generate as gen
+    from mosaic.editing import regenerate as regen
+    from mosaic.editing.generate import TOO_FEW_CLIPS
+    from mosaic.editing.service import create_edit, submit_generate
+    from mosaic.jobs.executor import LocalExecutor
+    from mosaic.jobs.store import JobStore
+    from tests.support.runner import run_job
+
+    project, control, client, _, eid = _fresh(drafted, 31, 51)
+    calls = len(fake.CALLS)
+    monkeypatch.setattr(regen, "scope_candidates", lambda scope, board, cands: cands[:1])
+    job = client.post(f"/api/edits/{eid}/regenerate", params={"scope": "all"}).json()["job_id"]
+    assert run_job(control, job) == "failed"
+    assert [t.error for t in JobStore(control.db).tasks(job)] == [TOO_FEW_CLIPS]
+
+    real = gen.edit_inputs
+
+    def one_clip(*a: Any, **k: Any) -> Any:
+        inp = real(*a, **k)
+        return dataclasses.replace(inp, cands=inp.cands[:1])
+
+    monkeypatch.setattr(gen, "edit_inputs", one_clip)
+    edit_id = create_edit(
+        project, EditRequest(duration_s=33, variant=31), control, control.local_principal
+    )
+    job = submit_generate(
+        LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id
+    )
+    assert run_job(control, job) == "failed"
+    assert [t.error for t in JobStore(control.db).tasks(job)] == [TOO_FEW_CLIPS]
+    assert len(fake.CALLS) == calls, "no AI call"
+
+
+def test_a_weight_step_that_cannot_be_queued_is_put_back_and_keeps_the_owners_change(
+    drafted: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invariant 10 (ADR 0074): the owner's op races in while the weight step is being
+    queued; the step is put back by an op of its own, the owner's op stays applied."""
+    from mosaic.editing import service
+    from mosaic.editing.draft import DraftChangedError, LockShot
+
+    project, _, client, edit_id, eid = _fresh(drafted, 32, 53)
+    ref = _shots(client.get(f"/api/edits/{eid}/draft").json())[0]["ref"]
+
+    def racing(*_: Any, **__: Any) -> int:
+        service.change_draft(project, edit_id, "op", LockShot(ref=ref))
+        raise DraftChangedError("the draft changed while it was being saved; try again")
+
+    monkeypatch.setattr(service, "submit_regenerate", racing)
+    r = client.post(f"/api/edits/{eid}/category", json={"category": "water", "more": True})
+    assert r.status_code == 409
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    assert next(s for s in _shots(d) if s["ref"] == ref)["locked"], "the owner's op stays"
+    assert d["board"]["weight_changes"]["water"] == "neutral", "the weight is back"

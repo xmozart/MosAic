@@ -11,7 +11,7 @@ from mosaic.core.clock import now_iso
 from mosaic.core.ids import new_ulid
 from mosaic.core.principal import Principal
 from mosaic.core.time import format_display, parse_rational
-from mosaic.editing.request import EditRequest
+from mosaic.editing.request import Category, EditRequest
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
 from mosaic.library import decisions
@@ -205,10 +205,12 @@ def submit_regenerate_beat(
     project: Project,
     edit_id: int,
     beat_id: str,
+    directive: str | None = None,
 ) -> int:
-    """A fresh take on one beat, keeping its locked shots (ADR 0069). A changed draft is
-    saved first; ``draft.DraftError`` when the beat has no free slot, ``LookupError``
-    for an unknown edit or beat."""
+    """A fresh take on one beat, keeping its locked shots (ADR 0069); ``directive``:
+    ``opening`` or ``ending`` (ADR 0074). A changed draft is saved first;
+    ``draft.DraftError`` when the beat has no free slot, ``LookupError`` for an unknown
+    edit or beat."""
     from mosaic.editing import draft, regenerate
 
     with project.db.session() as s:
@@ -219,14 +221,14 @@ def submit_regenerate_beat(
         JobSpec(
             project_id=project.id,
             kind="edit",
-            params={"edit_id": edit_id, "beat_id": beat_id},
+            params={"edit_id": edit_id, "beat_id": beat_id, "directive": directive},
             cost_limit_usd=job_cost_limit(principal),
             tasks=[
                 TaskSpec(
                     kind="edit.regenerate_beat",
                     stage="edit",
                     resource_class=ResourceClass.AI_API,
-                    params={"edit_id": edit_id, "beat_id": beat_id},
+                    params={"edit_id": edit_id, "beat_id": beat_id, "directive": directive},
                     label=f"regenerating {beat_id} of {edit_ref(edit_id)}",
                 )
             ],
@@ -329,6 +331,59 @@ def alternatives(project: Project, edit_id: int, ref: str) -> tuple[list[dict[st
             }
         )
     return out, sh.locked or bool(sh.absorbed_by)
+
+
+WEIGHT_STEPS = ("avoid", "less", "neutral", "more", "strong")
+
+
+def submit_end(
+    executor: Executor, principal: Principal, project: Project, edit_id: int, end: str
+) -> int:
+    """A stronger opening (the first beat) or a different ending (the last), regenerated
+    with that directive around their locked shots (PRODUCT.md §8; ADR 0074)."""
+    from mosaic.editing import draft
+
+    with project.db.session() as s:
+        beats = draft.load(s, edit_id).board.beats
+    if not beats:
+        raise LookupError("this edit has no beats")
+    beat = beats[0] if end == "opening" else beats[-1]
+    return submit_regenerate_beat(executor, principal, project, edit_id, beat.beat_id, end)
+
+
+def more_or_less(
+    executor: Executor,
+    principal: Principal,
+    project: Project,
+    edit_id: int,
+    category: Category,
+    more: bool,
+) -> tuple[int, str]:
+    """More or less of a content category (PRODUCT.md §8; ADR 0074): its weight moves one
+    step (avoid, less, neutral, more, strong) and the whole edit is regenerated with it,
+    keeping the owner's locks. Returns the job and the new weight; ``draft.DraftError``
+    when the weight cannot move further that way."""
+    from mosaic.editing import draft
+
+    with project.db.session() as s:
+        d = draft.load(s, edit_id)
+        now = draft.request_of(EditRequest.model_validate(d.base.request), d.board)
+    current = now.weights.get(category, "neutral")
+    i = WEIGHT_STEPS.index(current) + (1 if more else -1)
+    if not 0 <= i < len(WEIGHT_STEPS):
+        raise draft.DraftError(
+            f"{category.replace('_', ' ')} is already {'strongly preferred' if more else 'avoided'}"
+        )
+    weight = WEIGHT_STEPS[i]
+    change_draft(project, edit_id, "op", draft.SetWeight(category=category, weight=weight))
+    try:
+        return submit_regenerate(executor, principal, project, edit_id, "all"), weight
+    except draft.DraftChangedError:
+        # Not queued: put the weight back with an op of its own. An undo could take back
+        # the owner's change that raced in instead (invariant 10).
+        back = draft.SetWeight(category=category, weight=current)
+        change_draft(project, edit_id, "op", back)
+        raise
 
 
 def get_version(project: Project, edit_id: int, version: int | None = None) -> EditVersion:

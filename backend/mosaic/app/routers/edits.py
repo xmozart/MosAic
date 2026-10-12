@@ -24,7 +24,7 @@ from mosaic.editing import estimate as edit_estimate
 from mosaic.editing import presets
 from mosaic.editing.cards import PAGE, edit_cards, render_rows, version_facts
 from mosaic.editing.generate import version_json
-from mosaic.editing.request import STORY_PRESETS, EditRequest
+from mosaic.editing.request import STORY_PRESETS, Category, EditRequest
 from mosaic.editing.service import (
     EditNotFoundError,
     create_edit,
@@ -293,20 +293,53 @@ def redo_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, A
 @router.post("/edits/{eid}/regenerate", status_code=202)
 def regenerate_edit(
     eid: str,
-    scope: str = Query(..., pattern="^(story|all)$"),
+    scope: str = Query(..., pattern="^(story|all|opening|ending)$"),
     svc: Services = Svc,
     me: Principal = Me,
 ) -> dict[str, Any]:
-    """Regenerate the story (new beats from the edit's own clips) or the whole edit; the
-    owner's locked shots stay (ADR 0070)."""
-    from mosaic.editing.service import submit_regenerate
+    """Regenerate the story (new beats from the edit's own clips) or the whole edit
+    (ADR 0070), or give it a stronger opening or a different ending (its first or last
+    beat; ADR 0074); the owner's locked shots stay."""
+    from mosaic.editing.service import submit_end, submit_regenerate
 
     check(me, "edits.write", eid)
     with _edit(svc, me, eid, write=True) as (project, edit_id):
         try:
+            if scope in ("opening", "ending"):
+                return {"job_id": submit_end(svc.executor, me, project, edit_id, scope)}
             return {"job_id": submit_regenerate(svc.executor, me, project, edit_id, scope)}
+        except draft_ops.UnknownBeatError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except draft_ops.DraftError as exc:
+            raise HTTPException(422, str(exc)) from None
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+
+
+class CategoryBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: Category
+    more: StrictBool
+
+
+@router.post("/edits/{eid}/category", status_code=202)
+def more_or_less_category(
+    eid: str, body: CategoryBody, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """More or less of a content category: its weight moves one step and the edit is
+    regenerated with the owner's locks kept (ADR 0074). 409 at the end of the scale."""
+    from mosaic.editing.service import more_or_less
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            job, weight = more_or_less(svc.executor, me, project, edit_id, body.category, body.more)
+        except draft_ops.DraftError as exc:
+            raise HTTPException(409, str(exc)) from None
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        return {"job_id": job, "category": body.category, "weight": weight}
 
 
 @router.post("/edits/{eid}/beats/{bid}/regenerate", status_code=202)

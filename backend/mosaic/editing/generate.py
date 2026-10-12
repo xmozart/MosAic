@@ -66,6 +66,12 @@ SELECTOR_MAX_TOKENS = 16000
 
 
 CAPABILITIES = ("planner", "selector")
+# A plan has at least two beats (each at most 80 %) and no clip twice (ADR 0074).
+MIN_CLIPS = 2
+TOO_FEW_CLIPS = (
+    "only one usable clip: an edit needs at least two (check what the edit avoids, or "
+    "what was rejected)"
+)
 
 
 def edit_inputs(s: Session, req: EditRequest, keep: frozenset[int] = frozenset()) -> EditInputs:
@@ -415,6 +421,8 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             "no usable clips: analyze the folder first (`mosaic analyze`), or every clip "
             "was rejected or is shorter than the minimum shot"
         )
+    if len(cands) < MIN_CLIPS:
+        raise PermanentError(TOO_FEW_CLIPS)
     try:
         task_check_ready(ctx, "planner")
         task_check_ready(ctx, "selector")
