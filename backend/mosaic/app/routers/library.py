@@ -176,3 +176,47 @@ def get_transcript(
             return clip_view.transcript(s, aid, after)
         except LookupError:
             raise HTTPException(404, "no such clip") from None
+
+
+# --------------------------------------------------------- Help me label (S24)
+
+
+@router.get("/projects/{pid}/labeling-questions")
+def labeling_questions(pid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """Up to five optional questions (ADR 0085); asking them creates no record."""
+    from mosaic.library import labeling
+    from mosaic.library.context import load as load_context
+
+    check(me, "library.write", pid)  # new questions are stored so they are never repeated
+    with _project(svc, me, pid, write=True) as project:
+        rows = labeling.questions(project)
+        with project.db.session() as s:
+            trip = load_context(s)
+        return {"items": [labeling.as_json(q, trip) for q in rows]}
+
+
+class LabelAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    skip: bool = False
+    choice: Literal["yes", "no", "not_sure"] | None = None  # same person
+    name: Annotated[str, StringConstraints(max_length=60)] | None = None
+    text: Annotated[str, StringConstraints(max_length=300)] | None = None  # place, event
+
+
+@router.post("/projects/{pid}/labeling-questions/{qid}/answer")
+def answer_labeling_question(
+    pid: str, qid: str, body: LabelAnswer, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """The owner's answer: a trip-context record or person links only (ADR 0085)."""
+    from mosaic.library import labeling
+
+    check(me, "library.write", pid)
+    with _project(svc, me, pid, write=True) as project:
+        try:
+            return labeling.answer(
+                project, qid, skip=body.skip, choice=body.choice, name=body.name, text=body.text
+            )
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except labeling.AnswerError as exc:
+            raise HTTPException(422, str(exc)) from None

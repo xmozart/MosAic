@@ -504,6 +504,40 @@ class EditFinding(ProjectBase):
     __table_args__ = (Index("ux_edit_finding", "edit_id", "version", "seq", unique=True),)
 
 
+class LabelingQuestion(ProjectBase):
+    """An optional "Help me label" question (S24; ARCHITECTURE.md §13; ADR 0085): about a
+    day's place, whether clips show the same person, or what happened. ``subject`` keys
+    it (a day or the clips), so an answered or skipped question is never asked again."""
+
+    __tablename__ = "labeling_question"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(26), unique=True)  # ULID: the API's id
+    kind: Mapped[str] = mapped_column(String(16))  # place|same_person|event
+    subject: Mapped[str] = mapped_column(String(200), unique=True)
+    day: Mapped[int | None] = mapped_column(Integer)
+    asset_ids: Mapped[list[int]] = mapped_column(JSON)
+    sample_ids: Mapped[list[int]] = mapped_column(JSON)
+    text: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open|answered|skipped
+    answer: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[str] = mapped_column(String(40))
+    answered_at: Mapped[str | None] = mapped_column(String(40))
+
+
+class PersonLink(ProjectBase):
+    """A clip the owner said shows a trip-context person (S24): a label the owner typed
+    and a clip, nothing else - no face, embedding or other biometric data (ADR 0085)."""
+
+    __tablename__ = "person_link"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(60))
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    question_id: Mapped[int | None] = mapped_column(ForeignKey("labeling_question.id"))
+    created_at: Mapped[str] = mapped_column(String(40))
+
+    __table_args__ = (Index("ux_person_link", "label", "asset_id", unique=True),)
+
+
 class Render(ProjectBase):
     """A preview or final render of one edit version (ARCHITECTURE.md §10). The output file
     lives under the workspace's ``renders/``; chunks are cached artifacts."""

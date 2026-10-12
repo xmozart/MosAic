@@ -546,6 +546,58 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LabelAnswer": {
+        "additionalProperties": false,
+        "properties": {
+          "choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "not_sure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "skip": {
+            "default": false,
+            "title": "Skip",
+            "type": "boolean"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "title": "LabelAnswer",
+        "type": "object"
+      },
       "LockShot": {
         "additionalProperties": false,
         "description": "Lock (or unlock) a shot: a hard constraint on every later change (invariant 10).\nThe server fills ``pin`` (the shot's cut as the draft times it now) and ``absorb``\n(picks cut together with it) when it records the op (ADR 0068).",
@@ -4769,6 +4821,109 @@
           }
         },
         "summary": "Get Inventory Files"
+      }
+    },
+    "/api/projects/{pid}/labeling-questions": {
+      "get": {
+        "description": "Up to five optional questions (ADR 0085); asking them creates no record.",
+        "operationId": "labeling_questions_api_projects__pid__labeling_questions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Labeling Questions Api Projects  Pid  Labeling Questions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Labeling Questions"
+      }
+    },
+    "/api/projects/{pid}/labeling-questions/{qid}/answer": {
+      "post": {
+        "description": "The owner's answer: a trip-context record or person links only (ADR 0085).",
+        "operationId": "answer_labeling_question_api_projects__pid__labeling_questions__qid__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pid",
+            "required": true,
+            "schema": {
+              "title": "Pid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "qid",
+            "required": true,
+            "schema": {
+              "title": "Qid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelAnswer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Answer Labeling Question Api Projects  Pid  Labeling Questions  Qid  Answer Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Labeling Question"
       }
     },
     "/api/projects/{pid}/library": {

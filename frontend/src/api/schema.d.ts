@@ -1327,6 +1327,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/labeling-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Labeling Questions
+         * @description Up to five optional questions (ADR 0085); asking them creates no record.
+         */
+        get: operations["labeling_questions_api_projects__pid__labeling_questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/labeling-questions/{qid}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Labeling Question
+         * @description The owner's answer: a trip-context record or person links only (ADR 0085).
+         */
+        post: operations["answer_labeling_question_api_projects__pid__labeling_questions__qid__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/library": {
         parameters: {
             query?: never;
@@ -1949,6 +1989,20 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LabelAnswer */
+        LabelAnswer: {
+            /** Choice */
+            choice?: ("yes" | "no" | "not_sure") | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Skip
+             * @default false
+             */
+            skip: boolean;
+            /** Text */
+            text?: string | null;
         };
         /**
          * LockShot
@@ -4662,6 +4716,77 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    labeling_questions_api_projects__pid__labeling_questions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_labeling_question_api_projects__pid__labeling_questions__qid__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                qid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelAnswer"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
