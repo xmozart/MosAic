@@ -191,6 +191,8 @@ class Resolved:
     beats: list[dict[str, Any]]
     metrics: dict[str, Any]
     findings: list[critic.Finding]
+    # The cuts behind the timeline's shot events, in order (for the AI critic's fixes).
+    cuts: list[refiner.Cut] = dataclasses.field(default_factory=list)
 
 
 def resolve(
@@ -349,7 +351,7 @@ def resolve(
     metrics["target_frames"] = total
     metrics["total_frames"] += cards.frames
     metrics["titles"] = {"cards": len(evts) - len(cuts), "frames": cards.frames}
-    return Resolved(timeline, beats, metrics, findings)
+    return Resolved(timeline, beats, metrics, findings, cuts)
 
 
 def titles_day1(cands: list[Candidate]) -> date | None:

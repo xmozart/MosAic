@@ -39,6 +39,7 @@ class Finding:
     ref: str | None = None
     ops: list[dict[str, Any]] | None = None
     event_id: str | None = None
+    source: str = "critic"  # critic|ai (ADR 0082)
 
     def as_json(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -51,7 +52,17 @@ class Finding:
             out["event_id"] = self.event_id
         if self.ops:
             out["ops"] = self.ops
+        if self.source != "critic":
+            out["source"] = self.source
         return out
+
+
+def fixable(c: Cut) -> bool:
+    """Whether a fix may touch shot ``c``: not one the owner locked, pinned or chose, nor
+    one cut together with such a shot (invariant 10)."""
+    return not any(
+        sh.locked or sh.cand.user_use or sh.pin is not None for sh in (c.shot, *c.merged_shots)
+    )
 
 
 def fix_for(c: Cut, used: set[str], *, remove: bool) -> list[dict[str, Any]] | None:
@@ -59,9 +70,8 @@ def fix_for(c: Cut, used: set[str], *, remove: bool) -> list[dict[str, Any]] | N
     edit already, else (``remove``) dropping it. None for a shot the owner locked or
     chose (invariant 10), or one cut together with such a shot. The alternative chosen
     joins ``used``, so no two fixes offer the same one."""
-    for sh in (c.shot, *c.merged_shots):
-        if sh.locked or sh.cand.user_use or sh.pin is not None:
-            return None
+    if not fixable(c):
+        return None
     ref = c.merged_refs[0]
     alt = next((a["segment_id"] for a in c.shot.alternatives if a["segment_id"] not in used), None)
     if alt is not None:

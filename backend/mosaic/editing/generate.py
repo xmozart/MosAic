@@ -18,7 +18,8 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from mosaic.ai.client import AIClient
+from mosaic.ai.client import AIClient, AIResult
+from mosaic.ai.prompts.critic.schema_v1 import Output as CriticOut
 from mosaic.ai.prompts.planner.schema_v2 import Output as PlanOut
 from mosaic.ai.prompts.selector.schema_v2 import Output as SelectOut
 from mosaic.ai.registry import task_check_ready, task_choice
@@ -26,7 +27,7 @@ from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
 from mosaic.core.settings import ProviderChoice
 from mosaic.core.time import parse_rational
-from mosaic.editing import findings
+from mosaic.editing import ai_critic, findings
 from mosaic.editing.request import (
     STORY_PRESETS,
     EditRequest,
@@ -35,11 +36,13 @@ from mosaic.editing.request import (
 )
 from mosaic.editing.resolve import (
     EditInputs,
+    Resolved,
     rejected_segments,
     resolve,
     shots_from_selection,
 )
 from mosaic.editing.retrieval import Candidate, retrieve
+from mosaic.editing.titles import shot_events
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
 from mosaic.library.context import TripContext
@@ -490,6 +493,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     ctx.set_stage("timing")
     with ctx.project.db.session() as s:
         done = resolve(s, req, inp, plan, shots, rejected)
+    crit_res, crit_note = _review(ctx, client, req, trip, plan, done)
     metrics = done.metrics
     # Made while the library was still being analysed.
     metrics["preliminary"] = preliminary or analysing(ctx)
@@ -504,8 +508,18 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
             "model": sel_res.model,
             "cached": sel_res.cached,
         },
-        "cost_usd": round(plan_res.cost_usd + sel_res.cost_usd, 6),
+        "cost_usd": round(
+            plan_res.cost_usd + sel_res.cost_usd + (crit_res.cost_usd if crit_res else 0.0), 6
+        ),
     }
+    if crit_res is not None:
+        metrics["ai"]["critic"] = {
+            "provider": crit_res.provider,
+            "model": crit_res.model,
+            "cached": crit_res.cached,
+        }
+    elif crit_note:
+        metrics["ai"]["critic"] = {"skipped": crit_note}
     with ctx.write() as s:
         prov = provenance.record(
             s,
@@ -513,7 +527,12 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
                 kind="edit",
                 algorithm_version=EDIT_VERSION,
                 prompt_version=f"planner/v{PLANNER[1]},selector/v{SELECTOR[1]}",
-                input_keys=[key, f"prov:{plan_res.provenance_id}", f"prov:{sel_res.provenance_id}"],
+                input_keys=[
+                    key,
+                    f"prov:{plan_res.provenance_id}",
+                    f"prov:{sel_res.provenance_id}",
+                    *([f"prov:{crit_res.provenance_id}"] if crit_res else []),
+                ],
             ),
         )
         number = (
@@ -551,3 +570,41 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         "blocking_ok": metrics["blocking_ok"],
         "export": str(path),
     }
+
+
+def _review(
+    ctx: TaskContext,
+    client: AIClient,
+    req: EditRequest,
+    trip: TripContext,
+    plan: PlanOut,
+    done: Resolved,
+) -> tuple[AIResult | None, str | None]:
+    """The optional AI critic on the timed cut (ADR 0082): its notes join ``done``'s
+    findings. Off by the ``editing.ai_critic`` setting, skipped (with a reason) when its
+    provider is not ready or it fails: the cut never depends on it."""
+    if not client.config.get(client.principal, ai_critic.SETTING):
+        return None, None
+    try:
+        task_check_ready(ctx, "critic")
+    except NotConfiguredError as exc:
+        return None, str(exc)
+    shots = {e["event_id"] for e in shot_events(done.timeline["tracks"][0]["events"])}
+    if not shots:
+        return None, None
+    ctx.set_stage("reviewing the cut")
+    try:
+        res = client.structured(
+            "critic",
+            *ai_critic.CRITIC,
+            ai_critic.context(req, trip, plan, done),
+            max_tokens=ai_critic.CRITIC_MAX_TOKENS,
+            variant=req.variant,
+            validate=lambda a: ai_critic.check(a, shots),
+        )
+    except PermanentError as exc:
+        return None, f"the critic failed: {exc}"[:300]
+    answer = res.data
+    assert isinstance(answer, CriticOut)
+    done.findings.extend(ai_critic.findings(answer, done))
+    return res, None

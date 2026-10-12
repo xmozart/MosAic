@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 from mosaic.ai.adapters.base import estimate_text_tokens
 from mosaic.ai.registry import price_for
 from mosaic.core.principal import Principal
+from mosaic.editing.ai_critic import CRITIC_MAX_TOKENS
+from mosaic.editing.ai_critic import SETTING as AI_CRITIC
 from mosaic.editing.generate import (
     CAPABILITIES,
     PLANNER_MAX_TOKENS,
@@ -67,10 +69,16 @@ def for_request(
         math.floor(SELECTOR_MAX_TOKENS * OUTPUT_SHARE[0]),
         math.floor(SELECTOR_MAX_TOKENS * OUTPUT_SHARE[1]),
     )
+    critic_on = bool(config.get(me, AI_CRITIC))  # the AI critic reviews the cut (ADR 0082)
+    crit_out = (
+        math.floor(CRITIC_MAX_TOKENS * OUTPUT_SHARE[0]),
+        math.floor(CRITIC_MAX_TOKENS * OUTPUT_SHARE[1]),
+    )
     cost: list[float] | None = [0.0, 0.0]
     if not reuses and inp.cands:
         p_plan, p_sel = price_for(choices["planner"]), price_for(choices["selector"])
-        if p_plan is None or p_sel is None:
+        p_crit = price_for(config.provider(me, "critic")) if critic_on else (0.0, 0.0)
+        if p_plan is None or p_sel is None or p_crit is None:
             cost = None
         else:
             cost = [
@@ -80,6 +88,9 @@ def for_request(
                         + plan_out[i] * p_plan[1]
                         + (TEXT_TOKENS + pool + plan_out[i]) * p_sel[0]
                         + sel_out[i] * p_sel[1]
+                        # The critic reads the cut, about the size of the selection.
+                        + (TEXT_TOKENS + sel_out[i]) * p_crit[0]
+                        + crit_out[i] * p_crit[1]
                     )
                     / 1_000_000,
                     2,
@@ -87,7 +98,8 @@ def for_request(
                 for i in (0, 1)
             ]
     usable = sum((c.usable_seconds for c in inp.cands), Fraction(0))
-    wall = REUSE_SECONDS if reuses else (2 * CALL_SECONDS[0], 2 * CALL_SECONDS[1])
+    calls = 3 if critic_on else 2
+    wall = REUSE_SECONDS if reuses else (calls * CALL_SECONDS[0], calls * CALL_SECONDS[1])
     return {
         "candidates": len(inp.cands),
         "target": {"frames": target_frames(req.duration_s, inp.rate), "rate": inp.rate},

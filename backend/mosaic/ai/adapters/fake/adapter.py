@@ -263,6 +263,33 @@ def _reselect(request: StructuredRequest) -> dict[str, Any]:
     }
 
 
+@responder("critic")
+def _critic(request: StructuredRequest) -> dict[str, Any]:
+    """A short review: a note on the opening and, in a longer cut, a suggestion to drop
+    the second-to-last shot (deterministic, so tests can apply it)."""
+    ids: list[str] = request.context.get("event_ids", [])
+    if not ids:
+        return {"notes": []}
+    notes: list[dict[str, Any]] = [
+        {
+            "event_id": ids[0],
+            "action": "note",
+            "severity": "info",
+            "text": "The opening could pull the viewer in faster.",
+        }
+    ]
+    if len(ids) >= 4:
+        notes.append(
+            {
+                "event_id": ids[-2],
+                "action": "remove",
+                "severity": "warning",
+                "text": "This shot slows the ending down; the cut is stronger without it.",
+            }
+        )
+    return {"notes": notes}
+
+
 @responder("review")
 def _review(request: StructuredRequest) -> dict[str, Any]:
     """A neutral full-resolution observation that keeps the quick description."""

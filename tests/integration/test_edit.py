@@ -91,7 +91,7 @@ def test_identical_request_makes_zero_ai_calls(edited: tuple[Project, ControlDB,
     assert len(versions) == 1, "identical key: no new version"
     take2 = generate(project, control, EditRequest(duration_s=30, variant=1))
     assert take2 != edit_id
-    assert len(fake.CALLS) == before + 2  # a fresh planner and selector take
+    assert len(fake.CALLS) == before + 3  # a fresh planner and selector take, then the critic
 
 
 def test_report_explains_every_event(edited: tuple[Project, ControlDB, int]) -> None:
@@ -199,7 +199,7 @@ def test_trip_context_changes_the_edit_but_never_reruns_vision(
     v2 = get_version(project, first)
     assert v2.version == v1.version + 1, "a context change makes a new version"
     new_calls = fake.CALLS[len(calls) :]
-    assert sorted(new_calls) == ["planner", "selector"], "context never re-runs vision"
+    assert sorted(new_calls) == ["critic", "planner", "selector"], "context never re-runs vision"
     with project.write() as s:
         save(s, TripContext(), "user")  # leave the shared project as it was
 
@@ -445,7 +445,10 @@ def test_resolve_retimes_a_selection_without_ai(
         again = res.resolve(s, seen["req"], seen["inp"], seen["plan"], fresh, seen["rejected"])
     assert again.timeline == stored.timeline
     assert again.beats == stored.beats
-    assert [f.as_json() for f in again.findings] == stored.findings
+    # The AI critic's notes are added after timing (ADR 0082); the critic's own are equal.
+    assert [f.as_json() for f in again.findings] == [
+        f for f in stored.findings if f.get("source") != "ai"
+    ]
     assert again.metrics == {
         k: v for k, v in stored.metrics.items() if k not in ("preliminary", "ai")
     }
@@ -586,3 +589,92 @@ def test_dialogue_gets_j_and_l_cuts_without_cutting_a_word(analyzed_session: Any
             )
             assert room < smallest * 3003, (other["event_id"], room)
     assert checked, "the edit has a dialogue boundary"
+
+
+def test_the_ai_critic_reviews_a_generated_cut_by_event_id(
+    analyzed_session: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M4 step 10b (ADR 0082): after a generation the AI critic reads the cut as text and
+    its notes, about shots by event id, become findings with source "ai"; a "remove" is
+    applied like any fix. Off by the setting, or failing, the edit is made without it."""
+    from mosaic.ai.adapters.fake.adapter import RESPONDERS
+    from mosaic.editing import findings
+    from mosaic.storage.config import ConfigService
+
+    project, control = analyzed_session
+    before = fake.CALLS.count("critic")
+    edit_id = generate(project, control, EditRequest(duration_s=40, variant=23))
+    assert fake.CALLS.count("critic") == before + 1
+    v = get_version(project, edit_id)
+    events = v.timeline["tracks"][0]["events"]
+    shots = [e for e in events if e["kind"] != "title"]
+    ai = [f for f in v.findings if f.get("source") == "ai"]
+    assert [f["code"] for f in ai] == ["ai_note", "ai_remove"]
+    note, remove = ai
+    assert note["event_id"] == shots[0]["event_id"]
+    assert "ops" not in note, "a note has nothing to apply"
+    victim = shots[-2]
+    assert remove["event_id"] == victim["event_id"]
+    assert remove["frame"] == victim["timeline_in"]["frames"]
+    assert remove["ops"] == [{"kind": "remove_shot", "ref": victim["origin"]["selection_ref"]}]
+    assert v.metrics["ai"]["critic"]["provider"] == "fake"
+    with project.db.session() as s:
+        rows = findings.of_version(s, edit_id, v.version)
+        uid = next(f.uid for f in rows if f.code == "ai_remove")
+        assert {f.source for f in rows if f.code.startswith("ai_")} == {"ai"}
+    child, skipped = findings.apply(project, edit_id, [uid])
+    assert skipped == []
+    after = get_version(project, edit_id, child)
+    refs = {e["origin"].get("selection_ref") for e in after.timeline["tracks"][0]["events"]}
+    assert victim["origin"]["selection_ref"] not in refs
+
+    # A critic that names a shot not in the cut is retried, then left out: the edit stands.
+    def wrong(request: Any) -> dict[str, Any]:
+        return {
+            "notes": [
+                {
+                    "event_id": "evt_9999",
+                    "action": "remove",
+                    "severity": "warning",
+                    "text": "This shot is not in the cut at all.",
+                }
+            ]
+        }
+
+    monkeypatch.setitem(RESPONDERS, "critic", wrong)
+    broken = generate(project, control, EditRequest(duration_s=40, variant=24))
+    bv = get_version(project, broken)
+    assert "skipped" in bv.metrics["ai"]["critic"]
+    assert not [f for f in bv.findings if f.get("source") == "ai"]
+
+    config = ConfigService(control)
+    config.set(control.local_principal, "editing.ai_critic", False)
+    try:
+        calls = fake.CALLS.count("critic")
+        off = generate(project, control, EditRequest(duration_s=40, variant=25))
+        assert fake.CALLS.count("critic") == calls
+        assert "critic" not in get_version(project, off).metrics["ai"]
+    finally:
+        config.set(control.local_principal, "editing.ai_critic", True)
+
+
+def test_the_estimate_counts_the_ai_critics_call_when_it_is_on(analyzed_session: Any) -> None:
+    """ADR 0082: a new plan takes the planner, the selector and, when it is on, the
+    critic: three calls of wall time, two without it."""
+    from mosaic.editing import estimate
+    from mosaic.storage.config import ConfigService
+
+    project, control = analyzed_session
+    config = ConfigService(control)
+    me = control.local_principal
+    req = EditRequest(duration_s=55, variant=31)  # never generated: no plan to reuse
+    with project.db.session() as s:
+        on = estimate.for_request(s, config, me, project.id, req)
+        config.set(me, "editing.ai_critic", False)
+        try:
+            off = estimate.for_request(s, config, me, project.id, req)
+        finally:
+            config.set(me, "editing.ai_critic", True)
+    assert not on["reuses_plan"]
+    assert on["wall_seconds"][0] == 3 * estimate.CALL_SECONDS[0]
+    assert off["wall_seconds"][0] == 2 * estimate.CALL_SECONDS[0]

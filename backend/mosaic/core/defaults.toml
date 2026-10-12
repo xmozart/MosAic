@@ -28,6 +28,7 @@
 "ai.rate.codex-cli.requests_per_minute" = 0.0
 "ai.rate.codex-cli.tokens_per_minute" = 0.0
 "ai.rate.codex-cli.concurrency" = 0.0
+"editing.ai_critic" = true  # the AI critic reviews each generated cut (ADR 0082)
 "allow_gpl_ffmpeg" = false  # dev only; never enable in a shipped build
 
 # capability → provider, model, mode. Anthropic is the default provider, not a requirement.

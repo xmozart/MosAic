@@ -84,3 +84,70 @@ def test_a_pinned_or_merged_locked_shot_gets_no_fix_and_a_photo_is_never_shaky()
     photo = _cut(cand(5, asset=5), 0, 3)
     photo.shot.cand = dataclasses.replace(photo.shot.cand, still=True, shake_percentile=0.99)
     assert not [f for f in _findings([photo]) if f.code == "shaky_shot"]
+
+
+def test_the_ai_critics_answer_names_shots_of_this_cut_only() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from mosaic.ai.prompts.critic.schema_v1 import Output
+    from mosaic.ai.prompts.loader import load
+    from mosaic.editing import ai_critic
+
+    prompt = load(*ai_critic.CRITIC)
+    keys = ("trip_context", "request", "beats", "events", "event_count", "checks")
+    system, _ = prompt.render(dict.fromkeys(keys, "x"))
+    assert "event_id" in system
+    assert "timecodes" in system, "no timing in the answer (invariant 5)"
+    with pytest.raises(ValidationError):
+        Output.model_validate(
+            {
+                "notes": [
+                    {"event_id": "evt_1", "action": "note", "severity": "info", "text": "x" * 20}
+                ]
+            }
+        )
+    answer = Output.model_validate(
+        {
+            "notes": [
+                {"event_id": "evt_0009", "action": "note", "severity": "info", "text": "y" * 20},
+                {"event_id": None, "action": "remove", "severity": "warning", "text": "z" * 20},
+            ]
+        }
+    )
+    assert ai_critic.check(answer, {"evt_0001"}) == [
+        "evt_0009 is not a shot of this cut",
+        '"remove" needs the event_id of the shot',
+    ]
+
+
+def test_the_ai_critic_never_fixes_a_locked_shot() -> None:
+    from mosaic.ai.prompts.critic.schema_v1 import Output
+    from mosaic.editing import ai_critic, refiner
+    from mosaic.editing.resolve import Resolved
+
+    free = _alts(_cut(cand(1, asset=1), 0, 3), "seg_000008")
+    locked = _cut(cand(2, asset=2), 0, 3, locked=True)
+    cuts = [free, locked]
+    events = refiner.events(cuts, RATE)
+    done = Resolved({"rate": RATE, "tracks": [{"events": events}]}, [], {}, [], cuts)
+    answer = Output.model_validate(
+        {
+            "notes": [
+                {"event_id": "evt_0001", "action": "replace", "severity": "info", "text": "a" * 20},
+                {
+                    "event_id": "evt_0002",
+                    "action": "remove",
+                    "severity": "warning",
+                    "text": "b" * 20,
+                },
+            ]
+        }
+    )
+    got = ai_critic.findings(answer, done)
+    assert got[0].ops == [
+        {"kind": "replace_shot", "ref": free.merged_refs[0], "segment_id": "seg_000008"}
+    ]
+    assert got[1].ops is None, "the owner's lock wins (invariant 10)"
+    assert {f.source for f in got} == {"ai"}
+    assert got[1].as_json()["source"] == "ai"
