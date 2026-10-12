@@ -236,6 +236,9 @@ def test_a_hung_folder_check_does_not_hold_the_list(
     control = ControlDB()
     init_project(control, control.local_principal, trip).close()
     client = _client(control)
+    # The app's first request pays one-time costs; the budget is for the list itself
+    # (MISSING_CHECK_S, then the rest), not for warming up.
+    assert client.get("/api/projects").status_code == 200
 
     def hung(_path: str) -> bool:
         time.sleep(2)  # an offline network share
