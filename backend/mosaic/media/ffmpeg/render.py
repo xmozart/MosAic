@@ -34,6 +34,7 @@ from mosaic.media.ffmpeg.command import (
 AUDIO_RATE = 48000
 SEEK_MARGIN = Fraction(3)  # seconds of decode before the cut point after an input seek
 LOUDNESS_TARGET = "-14"  # LUFS integrated (web)
+LOUDNESS = {"web": "-14", "tv": "-23"}  # the request's loudness: web, or EBU R128 (ADR 0084)
 TRUE_PEAK = "-1.5"  # dBTP target; the acceptance limit is −1 dBTP
 LRA = "11"
 
@@ -176,7 +177,7 @@ def _video_chain(spec: ChunkSpec, src: str, label: str = "[vout]") -> str:
         Filter.of("trim", end_frame=spec.frames),
         Filter.of("setpts", "PTS-STARTPTS"),
         *_dip_filters(spec.frames, spec.dip_in, spec.dip_out),
-        Filter.of("format", "yuv420p"),
+        Filter.of("format", pix_fmt(spec.encoder)),
         Filter.of(
             "setparams", color_primaries="bt709", color_trc="bt709", colorspace="bt709", range="tv"
         ),
@@ -362,6 +363,12 @@ def audio_chunk(spec: AudioSpec) -> FFmpegCommand:
     )
 
 
+def pix_fmt(encoder: str) -> str:
+    """The picture format an encoder is fed: 10-bit 4:2:2 for a ProRes 422 master, else
+    8-bit 4:2:0 (ADR 0084)."""
+    return "yuv422p10le" if encoder.startswith("prores") else "yuv420p"
+
+
 def _video_codec(encoder: str, bitrate: str, rate: Fraction) -> list[tuple[str, OptionValue]]:
     tags: list[tuple[str, OptionValue]] = [
         ("-color_primaries", "bt709"),
@@ -371,6 +378,10 @@ def _video_codec(encoder: str, bitrate: str, rate: Fraction) -> list[tuple[str, 
     ]
     if encoder == "ffv1":
         return [("-c:v", "ffv1"), ("-level", 3), ("-g", 1), *tags]
+    if encoder == "prores_ks":  # profile 2: ProRes 422 (standard), intra-only
+        return [("-c:v", encoder), ("-profile:v", 2), ("-vendor", "apl0"), *tags]
+    if encoder == "prores_videotoolbox":
+        return [("-c:v", encoder), ("-profile:v", "standard"), *tags]
     gop = max(1, round(rate * 2))
     return [("-c:v", encoder), ("-b:v", bitrate), ("-g", gop), ("-bf", 0), *tags]
 
@@ -387,7 +398,9 @@ def concat_list(paths: list[Path]) -> str:
     return "".join(lines)
 
 
-def loudnorm_measure(list_file: Path, concat: bool = True) -> FFmpegCommand:
+def loudnorm_measure(
+    list_file: Path, concat: bool = True, loudness: str = LOUDNESS_TARGET
+) -> FFmpegCommand:
     """Pass 1 of two-pass loudnorm over the concatenated chunks (JSON on stderr), or over
     one file (the music mix) without ``concat``."""
     return FFmpegCommand(
@@ -404,7 +417,7 @@ def loudnorm_measure(list_file: Path, concat: bool = True) -> FFmpegCommand:
                         chain(
                             Filter.of(
                                 "loudnorm",
-                                I=LOUDNESS_TARGET,
+                                I=loudness,
                                 TP=TRUE_PEAK,
                                 LRA=LRA,
                                 print_format="json",
@@ -438,6 +451,8 @@ def assemble(
     rate: Fraction,
     audio_list: Path | None = None,
     audio_concat: bool = True,
+    loudness: str = LOUDNESS_TARGET,
+    hevc: bool = False,
 ) -> FFmpegCommand:
     """Concatenate the chunks: video stream-copied, audio normalized (pass 2, linear) and
     encoded (AAC in MP4; PCM in Matroska for lossless test renders). With ``audio_list``
@@ -448,7 +463,7 @@ def assemble(
         afilters.append(
             Filter.of(
                 "loudnorm",
-                I=LOUDNESS_TARGET,
+                I=loudness,
                 TP=TRUE_PEAK,
                 LRA=LRA,
                 measured_I=f"{measured.input_i:.2f}",
@@ -478,6 +493,8 @@ def assemble(
         ("-video_track_timescale", rate.numerator),
         ("-af", chain(*afilters)),
     ]
+    if hevc:  # Apple players open HEVC in MP4 only as hvc1
+        opts.append(("-tag:v", "hvc1"))
     if container == "mp4":
         opts += [("-c:a", "aac"), ("-b:a", "192k"), ("-movflags", "+faststart"), ("-f", "mp4")]
     else:
@@ -535,7 +552,7 @@ def still_chunk(spec: StillSpec) -> FFmpegCommand:
         *_dip_filters(spec.frames, spec.dip_in, spec.dip_out),
         Filter.of("scale", in_range="pc", out_range="tv", out_color_matrix="bt709"),
         Filter.of("setsar", "1"),
-        Filter.of("format", "yuv420p"),
+        Filter.of("format", pix_fmt(spec.encoder)),
         Filter.of(
             "setparams", color_primaries="bt709", color_trc="bt709", colorspace="bt709", range="tv"
         ),

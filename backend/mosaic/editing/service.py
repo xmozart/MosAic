@@ -514,7 +514,8 @@ def report(
     }
 
 
-def report_text(r: dict[str, Any]) -> str:
+def report_text(r: dict[str, Any], rejected_limit: int | None = 50) -> str:
+    """The report as text; ``rejected_limit`` rejected segments are listed (None: all)."""
     m = r["metrics"]
     rate = parse_rational(r["rate"])
     ok = "ok" if m["duration_ok"] else "OUT OF TOLERANCE"
@@ -555,9 +556,23 @@ def report_text(r: dict[str, Any]) -> str:
     rej = r["rejected"]
     lines.append("")
     lines.append(f"Rejected segments: {rej['total']}")
-    for x in rej["items"][:50]:
+    shown = rej["items"] if rejected_limit is None else rej["items"][:rejected_limit]
+    for x in shown:
         codes = ", ".join(sorted({c["code"] for c in x["reasons"]})) or x["source"]
         lines.append(f"  {x['segment_id']} ({x['asset_id']}): {codes}")
-    if rej["total"] > 50:
-        lines.append(f"  … {rej['total'] - 50} more (see the JSON report)")
+    if rej["total"] > len(shown):
+        lines.append(f"  … {rej['total'] - len(shown)} more (see the JSON report)")
     return "\n".join(lines)
+
+
+def full_report(project: Project, edit_id: int, version: int | None = None) -> dict[str, Any]:
+    """The report with every rejected segment (all pages), for an export (ADR 0084)."""
+    r = report(project, edit_id, version)
+    items = list(r["rejected"]["items"])
+    while len(items) < r["rejected"]["total"]:
+        page = report(project, edit_id, version, rejected_offset=len(items))["rejected"]["items"]
+        if not page:
+            break
+        items += page
+    r["rejected"] = r["rejected"] | {"items": items, "offset": 0}
+    return r

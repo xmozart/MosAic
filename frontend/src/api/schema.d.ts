@@ -1475,7 +1475,8 @@ export interface paths {
         };
         /**
          * Render File
-         * @description The rendered video, with Range requests (S17's player; S20 Open and Download).
+         * @description The rendered video, with Range requests (S17's player; S20 Open and Download), or
+         *     one of its sidecars: the EDL JSON, SRT captions or selection report (ADR 0084).
          */
         get: operations["render_file_api_projects__pid__renders__rid__file_get"];
         put?: never;
@@ -2102,10 +2103,17 @@ export interface components {
         };
         /**
          * RenderBody
-         * @description M0 subset of ``POST /renders``. ``final`` stands in for S19's preset/resolution
-         *     (1080p SDR final from originals, or a 720p preview from proxies).
+         * @description ``POST /renders``: a 720p preview from proxies, or a final from the originals
+         *     (``final``) in S19's preset ``codec`` at ``resolution`` (else the edit's), with the
+         *     ``sidecars`` asked for (ADR 0084).
          */
         RenderBody: {
+            /**
+             * Codec
+             * @default h264
+             * @enum {string}
+             */
+            codec: "h264" | "hevc" | "prores";
             /** Edit Id */
             edit_id: string;
             /**
@@ -2113,6 +2121,12 @@ export interface components {
              * @default false
              */
             final: boolean;
+            /** Loudness */
+            loudness?: ("web" | "tv") | null;
+            /** Resolution */
+            resolution?: ("720p" | "1080p" | "1440p" | "4k") | null;
+            /** Sidecars */
+            sidecars?: ("edl" | "srt" | "report")[];
             /** Version */
             version?: number | null;
         };
@@ -4928,6 +4942,7 @@ export interface operations {
         parameters: {
             query?: {
                 download?: boolean;
+                part?: "video" | "edl" | "srt" | "report";
             };
             header?: never;
             path: {

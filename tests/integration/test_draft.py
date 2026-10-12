@@ -1068,3 +1068,67 @@ def test_versions_compare_and_revert_over_the_api(drafted: Any) -> None:
     assert client.post(f"/api/edits/{eid}/revert", json={"version": 3}).status_code == 409
     assert client.post(f"/api/edits/{eid}/revert", json={"version": 9}).status_code == 404
     assert client.get(f"/api/edits/{eid}/compare", params={"a": 1, "b": 9}).status_code == 404
+
+
+def test_s19_exports_a_prores_master_with_its_edl_over_the_api(drafted: Any) -> None:
+    """S19 (ADR 0084): POST /renders with a preset, resolution and sidecars; the EDL is
+    downloadable beside the video; system info lists each codec's encoders."""
+    from mosaic.storage.models_project import Render
+    from tests.support.runner import run_job
+
+    project, control, client, eid = drafted
+    codecs = client.get("/api/system/info").json()["codecs"]
+    assert codecs["prores"], "FFmpeg's own ProRes encoder is always there"
+    assert set(codecs) == {"h264", "hevc", "prores"}
+    bad = client.post("/api/renders", json={"edit_id": eid, "final": True, "codec": "vp9"})
+    assert bad.status_code == 422
+    started = client.post(
+        "/api/renders",
+        json={
+            "edit_id": eid,
+            "final": True,
+            "codec": "prores",
+            "resolution": "720p",
+            "sidecars": ["edl"],
+        },
+    )
+    assert started.status_code == 202, started.text
+    body = started.json()
+    assert run_job(control, body["job_id"], timeout=900) == "done"
+    with project.db.session() as s:
+        r = s.get(Render, body["render_id"])
+        assert r is not None
+        assert (r.profile["codec"], r.profile["height"]) == ("prores", 720)
+    base = f"/api/projects/{project.id}/renders/{body['render_id']}/file"
+    video = client.get(base)
+    assert video.status_code == 200
+    assert video.headers["content-type"] == "video/quicktime"
+    edl = client.get(base, params={"part": "edl", "download": True})
+    assert edl.status_code == 200
+    assert edl.json()["version"] == body["version"]
+    assert "attachment" in edl.headers["content-disposition"]
+    assert client.get(base, params={"part": "srt"}).status_code == 404, "not asked for"
+
+    # Re-render (S20) is the same export: codec, resolution, loudness and sidecars.
+    tv = client.post(
+        "/api/renders",
+        json={
+            "edit_id": eid,
+            "final": True,
+            "codec": "prores",
+            "resolution": "720p",
+            "loudness": "tv",
+            "sidecars": ["edl"],
+        },
+    ).json()
+    assert run_job(control, tv["job_id"], timeout=900) == "done"
+    again = client.post(f"/api/projects/{project.id}/renders/{tv['render_id']}/rerender")
+    assert again.status_code == 202, again.text
+    assert run_job(control, again.json()["job_id"], timeout=900) == "done"
+    with project.db.session() as s:
+        first, second = s.get(Render, tv["render_id"]), s.get(Render, again.json()["render_id"])
+        assert first is not None
+        assert second is not None
+        keep = ("codec", "height", "resolution", "loudness", "sidecars")
+        assert {k: second.profile.get(k) for k in keep} == {k: first.profile.get(k) for k in keep}
+        assert first.profile["loudness"] == "tv"

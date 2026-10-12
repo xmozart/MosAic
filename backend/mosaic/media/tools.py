@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
+from functools import cache, lru_cache
 
 from mosaic.media.ffmpeg.capabilities import (
     Capabilities,
@@ -40,16 +40,21 @@ def media_tools() -> tuple[FFmpegBinaries, Capabilities]:
     return binaries, caps
 
 
-@lru_cache(maxsize=1)
 def working_h264_encoders() -> tuple[str, ...]:
-    """H.264 encoders in preference order that actually encode on this machine (one
+    """H.264 encoders in preference order that actually encode on this machine."""
+    return working_encoders("h264")
+
+
+@cache
+def working_encoders(codec: str) -> tuple[str, ...]:
+    """``codec``'s encoders in preference order that actually encode on this machine (one
     trial encode each, once per process). Listed-but-unusable encoders are skipped."""
     from mosaic.media.ffmpeg.builders import encoder_trial
     from mosaic.media.ffmpeg.run import run
 
     binaries, caps = media_tools()
     usable = []
-    for enc in caps.h264_encoders():
+    for enc in caps.codec_encoders(codec):
         result = run(binaries, encoder_trial(enc), check=False, timeout=60)
         if result.returncode == 0:
             usable.append(enc)

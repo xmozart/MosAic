@@ -52,9 +52,15 @@ def edit(analyzed_session: Any) -> tuple[Project, ControlDB, int, int]:
 
 
 def _render(
-    project: Project, control: ControlDB, edit_id: int, version: int, kind: str, lossless: bool
+    project: Project,
+    control: ControlDB,
+    edit_id: int,
+    version: int,
+    kind: str,
+    lossless: bool,
+    **options: Any,
 ) -> int:
-    rid = create_render(project, edit_id, version, kind, lossless)
+    rid = create_render(project, edit_id, version, kind, lossless, **options)
     job = submit_render(LocalExecutor(JobStore(control.db)), control.local_principal, project, rid)
     assert run_job(control, job, timeout=900) == "done"
     return rid
@@ -1019,3 +1025,162 @@ def test_reverting_to_v1_after_five_versions_renders_the_same_file(
     assert digest(again) == digest(first), "the same file"
     with pytest.raises(versions.RevertError):
         versions.revert(project, edit_id, 6)
+
+
+def _video_stream(ffmpeg_bin: FFmpegBinaries, path: Any) -> dict[str, Any]:
+    from mosaic.media.ffmpeg.builders import ffprobe_json
+
+    probe = json.loads(run(ffmpeg_bin, ffprobe_json(path)).stdout)
+    return next(st for st in probe["streams"] if st["codec_type"] == "video")
+
+
+def test_a_prores_master_is_422_in_mov_with_exact_frames(
+    edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0084: the Master ProRes preset - ProRes 422, 10-bit 4:2:2, in MOV with PCM
+    sound - from the originals, frame and sample exact, every frame the right one."""
+    project, control, edit_id, version = edit
+    v = get_version(project, edit_id, version)
+    r = get_render(
+        project, _render(project, control, edit_id, version, "final", False, codec="prores")
+    )
+    assert r is not None
+    assert r.profile["codec"] == "prores"
+    path = output_path(project.workspace, r)
+    assert path.suffix == ".mov"
+    video = _video_stream(ffmpeg_bin, path)
+    assert video["codec_name"] == "prores"
+    assert video["pix_fmt"] == "yuv422p10le"
+    total = v.timeline["duration"]["frames"]
+    assert _frames(ffmpeg_bin, path) == total
+    assert _samples(ffmpeg_bin, path) == samples_for(total, parse_rational(v.rate))
+    videos = {
+        int(e["asset_id"][4:]) for e in v.timeline["tracks"][0]["events"] if e["kind"] == "video"
+    }
+    checks = check_render(ffmpeg_bin, path, v.timeline, _sources(project, ffmpeg_bin, videos))
+    assert all(c.ok for c in checks), [(c.event_id, c.decoded, c.frames) for c in checks]
+
+
+def test_a_hevc_render_is_tagged_hvc1_where_a_hardware_encoder_works(
+    edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0084: High quality HEVC through a hardware encoder (software x265 is GPL), in
+    MP4 tagged hvc1, frame exact. Machines without one (CI runners) skip it."""
+    from mosaic.media.tools import working_encoders
+
+    if not working_encoders("hevc"):
+        pytest.skip("no hardware HEVC encoder works on this machine")
+    project, control, edit_id, version = edit
+    v = get_version(project, edit_id, version)
+    r = get_render(
+        project, _render(project, control, edit_id, version, "final", False, codec="hevc")
+    )
+    assert r is not None
+    path = output_path(project.workspace, r)
+    video = _video_stream(ffmpeg_bin, path)
+    assert (video["codec_name"], video["codec_tag_string"]) == ("hevc", "hvc1")
+    assert _frames(ffmpeg_bin, path) == v.timeline["duration"]["frames"]
+
+
+def test_a_final_render_writes_its_sidecars_and_meets_the_tv_loudness(
+    analyzed_session: Any, ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0084: with the EDL, SRT and report asked for, a final render writes them beside
+    it: the EDL is the version's JSON, the captions are the transcript words heard in
+    the edit (inside dialogue events, in order) and the report lists the shots. A TV
+    request is normalized to -23 LUFS (EBU R128)."""
+    import re
+
+    from mosaic.editing.generate import version_json
+    from mosaic.render.tasks import sidecar_path
+    from mosaic.storage.models_project import Edit
+
+    project, control = analyzed_session
+    edit_id = create_edit(
+        project,
+        EditRequest(duration_s=60, weights={"conversations": "strong"}, loudness="tv"),
+        control,
+        control.local_principal,
+    )
+    job = submit_generate(
+        LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id
+    )
+    assert run_job(control, job, timeout=600) == "done"
+    v = get_version(project, edit_id)
+    rid = _render(
+        project, control, edit_id, v.version, "final", False, sidecars=("edl", "srt", "report")
+    )
+    r = get_render(project, rid)
+    assert r is not None
+    assert r.metrics["sidecars"] == ["edl", "srt", "report"]
+    out = output_path(project.workspace, r)
+    with project.db.session() as s:
+        edit = s.get(Edit, edit_id)
+        assert edit is not None
+        assert json.loads(sidecar_path(out, "edl").read_text()) == json.loads(
+            json.dumps(version_json(edit, v))
+        )
+    assert "events" in sidecar_path(out, "report").read_text()
+    srt = sidecar_path(out, "srt").read_text()
+    rate = parse_rational(v.rate)
+    talk = [
+        (
+            e["audio"].get("timeline_in", e["timeline_in"])["frames"] / rate,
+            e["audio"].get("timeline_out", e["timeline_out"])["frames"] / rate,
+        )
+        for e in v.timeline["tracks"][0]["events"]
+        if e["audio"].get("intent") == "dialogue"
+    ]
+    assert talk, "the edit has dialogue"
+    stamps = re.findall(r"(\d\d):(\d\d):(\d\d),(\d{3}) --> (\d\d):(\d\d):(\d\d),(\d{3})", srt)
+    assert stamps, srt[:200]
+
+    def sec(h: str, m: str, s_: str, ms: str) -> Fraction:
+        return Fraction(int(h) * 3600 + int(m) * 60 + int(s_)) + Fraction(int(ms), 1000)
+
+    starts = [sec(*t[:4]) for t in stamps]
+    assert starts == sorted(starts)
+    for start in starts:
+        assert any(a - Fraction(1, 1000) <= start < b for a, b in talk), start
+    assert r.metrics["normalized"], "the edit has sound to normalize"
+    assert abs(r.metrics["loudness_lufs"] - (-23.0)) <= 1.0
+
+    # Deleting the render's file takes its sidecars with it.
+    from mosaic.render.service import delete_file
+
+    delete_file(project, rid)
+    assert not out.exists()
+    assert [p for p in ("edl", "srt", "report") if sidecar_path(out, p).exists()] == []
+
+
+def test_a_final_render_cancelled_after_its_sidecars_keeps_none(
+    edit: tuple[Project, ControlDB, int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0084: Cancel arriving once the sidecars are written leaves no video and no
+    sidecar (nor a half-written one)."""
+    from mosaic.render import tasks
+    from mosaic.storage.models_project import Render
+
+    project, control, edit_id, version = edit
+    rid = create_render(project, edit_id, version, "final", True, sidecars=("edl", "report"))
+    written = tasks._sidecars
+
+    def then_cancel(ctx: Any, r: Any, v: Any, out: Any) -> Any:
+        parts = written(ctx, r, v, out)
+        assert tasks.sidecar_path(out, "edl").exists()
+        half = tasks.sidecar_path(out, "report")
+        half.with_name(half.name + ".part").write_text("half")
+        with project.write() as s:
+            row = s.get(Render, rid)
+            assert row is not None
+            row.status = "cancelled"
+        return parts
+
+    monkeypatch.setattr(tasks, "_sidecars", then_cancel)
+    job = submit_render(LocalExecutor(JobStore(control.db)), control.local_principal, project, rid)
+    assert run_job(control, job, timeout=900) == "done"
+    r = get_render(project, rid)
+    assert r is not None
+    assert r.status == "cancelled"
+    out = output_path(project.workspace, r)
+    assert [p.name for p in out.parent.glob(f"*r{rid:04d}*")] == []

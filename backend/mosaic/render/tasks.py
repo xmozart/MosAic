@@ -94,6 +94,7 @@ def _profile(r: Render) -> Profile:
         p["bitrate"],
         p["lossless"],
         p.get("fill", "auto"),
+        p.get("codec", "h264"),
     )
 
 
@@ -669,7 +670,7 @@ def decoded_samples(binaries: FFmpegBinaries, path: Path) -> int:
 
 def output_path(workspace: Path, r: Render) -> Path:
     """One file per render (two renders of a version never share a file)."""
-    ext = "mov" if r.profile.get("lossless") else "mp4"
+    ext = "mov" if r.profile.get("lossless") or r.profile.get("codec") == "prores" else "mp4"
     name = f"v{r.version:03d}-{r.profile['kind']}-r{r.id:04d}.{ext}"
     return workspace / "renders" / f"edt_{r.edit_id:04d}" / name
 
@@ -697,7 +698,14 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     out.parent.mkdir(parents=True, exist_ok=True)
     total_frames = int(v.timeline["duration"]["frames"])
     akey = assembly_key(
-        ctx.project.id, keys, audio_keys, _music_signature(v), prof, v.rate, total_frames
+        ctx.project.id,
+        keys,
+        audio_keys,
+        _music_signature(v),
+        prof,
+        v.rate,
+        total_frames,
+        _loudness(r, v),
     )
     earlier = _same_render(ctx, r, akey)
     if earlier is not None:  # an identical render exists: its file, not a new one (ADR 0083)
@@ -712,17 +720,71 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     else:
         metrics = _assemble(ctx, binaries, r, v, keys, audio_keys, out)
     metrics = metrics | {"assembly_key": akey}
+    metrics.pop("sidecars", None)  # a reused render's own, never the earlier one's
+    if r.profile.get("sidecars"):  # the export's other files, beside the video (ADR 0084)
+        metrics["sidecars"] = _sidecars(ctx, r, v, out)
     with ctx.write() as s:
         row = s.get(Render, r.id)
         assert row is not None
         if row.status == "cancelled":  # cancelled while assembling: no file is kept
             out.unlink(missing_ok=True)
+            remove_sidecars(out)
             return {"render_id": r.id, "cancelled": True}
         row.status = "done"
         row.path = str(out.relative_to(ctx.project.workspace))
         row.metrics = metrics
         row.finished_at = now_iso()
     return {"render_id": r.id, "path": str(out), **metrics}
+
+
+SIDECAR_SUFFIX = {"edl": ".edl.json", "srt": ".srt", "report": ".report.txt"}
+
+
+def remove_sidecars(out: Path) -> None:
+    """A render's sidecars, and any left half-written, go with its video."""
+    for part in SIDECAR_SUFFIX:
+        path = sidecar_path(out, part)
+        path.unlink(missing_ok=True)
+        path.with_name(path.name + ".part").unlink(missing_ok=True)
+
+
+def sidecar_path(out: Path, part: str) -> Path:
+    """Where a render's sidecar ``part`` is written: beside its video, same stem."""
+    return out.with_name(out.stem + SIDECAR_SUFFIX[part])
+
+
+def _sidecars(ctx: TaskContext, r: Render, v: EditVersion, out: Path) -> list[str]:
+    """The EDL JSON, SRT captions and selection report asked for with a final render."""
+    from mosaic.editing.captions import srt
+    from mosaic.editing.generate import version_json
+    from mosaic.editing.service import full_report, report_text
+    from mosaic.storage.models_project import Edit
+
+    written = []
+    for part in r.profile["sidecars"]:
+        if part == "edl":
+            with ctx.project.db.session() as s:
+                edit = s.get(Edit, r.edit_id)
+                assert edit is not None
+                text = json.dumps(version_json(edit, v), indent=2, sort_keys=True) + "\n"
+        elif part == "srt":
+            with ctx.project.db.session() as s:
+                text = srt(s, v.timeline)
+        else:
+            text = report_text(full_report(ctx.project, r.edit_id, r.version), None)
+        path = sidecar_path(out, part)
+        tmp = path.with_name(path.name + ".part")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)
+        written.append(part)
+    return written
+
+
+def _loudness(r: Render, v: EditVersion) -> str:
+    """The loudness target in LUFS - the export's choice, else the request's: web -14,
+    TV -23 (EBU R128; ADR 0084)."""
+    choice = r.profile.get("loudness") or v.request.get("loudness", "web")
+    return rb.LOUDNESS.get(str(choice), rb.LOUDNESS_TARGET)
 
 
 def _music_signature(v: EditVersion) -> dict[str, Any] | None:
@@ -793,7 +855,8 @@ def _assemble(
         if v.request.get("music"):  # the music bed goes under the edit's sound (ADR 0080)
             _music_mix(ctx, binaries, v, sound, mix, total_samples)
             sound, concat = mix, False
-        measured = parse_loudnorm(run(binaries, rb.loudnorm_measure(sound, concat)).stderr)
+        target = _loudness(r, v)
+        measured = parse_loudnorm(run(binaries, rb.loudnorm_measure(sound, concat, target)).stderr)
         run(
             binaries,
             rb.assemble(
@@ -805,6 +868,8 @@ def _assemble(
                 rate,
                 None if sound == list_file else sound,
                 concat,
+                target,
+                hevc=prof.codec == "hevc",
             ),
         )
     finally:

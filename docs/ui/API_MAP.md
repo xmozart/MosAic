@@ -15,7 +15,7 @@ These are the REST endpoints and SSE events the screens need.
 | GET | `/auth/status` (public: `{mode: desktop\|server, setup_required, signed_in}`) | S2, S0 |
 | POST | `/auth/setup` · `/auth/login` (public; set the HttpOnly SameSite=Strict session cookie and the readable `mosaic_csrf` cookie; 401 wrong password, 429 with `Retry-After` after 5 failures) · `/auth/logout`. Server mode: every other `/api` request needs the session, and writes need `X-CSRF-Token` (ADR 0034) | S2 |
 | POST | `/auth/desktop-session` (desktop: `Authorization: Bearer <per-launch token>` → HttpOnly `mosaic_desktop` session cookie; 404 in server mode or without a token; ADR 0057) | S0 |
-| GET | `/system/info` (mode: desktop/server, version, hardware probe with fingerprint, encoders, `workers` slots per resource class, `benchmark` or null, `rate_limits` per provider; ADR 0030) | S0, S22 |
+| GET | `/system/info` (mode: desktop/server, version, hardware probe with fingerprint, encoders, `codecs` (the working encoders per codec: `h264`, `hevc`, `prores`; ADR 0084), `workers` slots per resource class, `benchmark` or null, `rate_limits` per provider; ADR 0030) | S0, S22 |
 | POST | `/projects/{pid}/benchmark?force=` → `{job_id}`: measure this computer in the project's queue (ADR 0030) | S8, S22 |
 | GET/POST | `/admin/media-roots` (server only; `{id, label, path, source: admin\|env}`; POST `{path, label?}` → 201, 422 for a relative or missing folder; ADR 0035) · DELETE `/admin/media-roots/{id}` | S22 (admin) |
 | GET | `/fs/browse?root=&path=&cursor=` (server only; without `root`: the roots, no paths. With it: `{root, path, crumbs, here, here: {counts, has_project}, items: [{name, path, counts: {videos, photos, folders, complete}|null, has_project}], next_cursor}`; counts are recursive, capped at 20,000 entries per folder, and `null` once the 2 s listing budget is spent; paths relative to the root; 403 outside it, 404 unknown; ADR 0035, 0039) | S4 |
@@ -125,9 +125,9 @@ SSE event types:
 
 | Method | Path | Used by |
 |---|---|---|
-| POST | `/renders` `{edit_id, version, preset, resolution, fps, loudness, include[], dest}` | S19 |
+| POST | `/renders` `{edit_id, version, final, codec: h264\|hevc\|prores, resolution: 720p\|1080p\|1440p\|4k, loudness: web\|tv, sidecars[]: edl\|srt\|report}` → `{project_id, render_id, version, job_id}`; 422 when no encoder for the codec works here. Resolution and loudness default to the edit's request; the frame rate is the edit's own; S20 Re-render repeats the export; Save to another folder comes with S19 (ADR 0084) | S19 |
 | GET | `/projects/{pid}/renders` · POST `/projects/{pid}/renders/{rid}/cancel` · `/rerender` · DELETE `/projects/{pid}/renders/{rid}/file` (render ids are per project; ADR 0047) | S20 |
-| GET | `/projects/{pid}/renders/{rid}/file` (Range; `?download=true`) | S17, S20 |
+| GET | `/projects/{pid}/renders/{rid}/file?part=video\|edl\|srt\|report` (Range for the video; `?download=true`; 404 for a sidecar not asked for; ADR 0084) | S17, S19, S20 |
 | POST | `/projects/{pid}/renders/{rid}/reveal` (desktop only; not in M2) | S20 |
 
 ## Diagnostics

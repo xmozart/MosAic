@@ -23,6 +23,8 @@ from mosaic.core.time import Rounding, frame_start_ticks, parse_rational, round_
 from mosaic.media.ffmpeg.render import AUDIO_RATE, SEEK_MARGIN, Piece
 
 Fill = Literal["auto", "crop"]
+Codec = Literal["h264", "hevc", "prores"]
+CODECS: tuple[Codec, ...] = ("h264", "hevc", "prores")
 Framing = Literal["fit", "crop"]
 RENDER_VERSION = "render/3"  # aspect framing: crop near the target shape, else fit (ADR 0046)
 STILL_VERSION = "still/1"  # canvas, blurred fill and pan/zoom (ADR 0075)
@@ -52,13 +54,14 @@ class Profile:
     # "crop": the edit's shape is not its footage's (a 9:16 reel from landscape clips):
     # every clip fills the frame by a centre crop. "auto": ``framing`` decides per clip.
     fill: Fill = "auto"
+    codec: Codec = "h264"  # final renders (ADR 0084): h264 | hevc | prores
 
     @property
     def container(self) -> str:
-        return "mov" if self.lossless else "mp4"
+        return "mov" if self.lossless or self.codec == "prores" else "mp4"
 
     def as_json(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "kind": self.kind,
             "width": self.width,
             "height": self.height,
@@ -67,6 +70,9 @@ class Profile:
             "lossless": self.lossless,
             "fill": self.fill,
         }
+        if self.codec != "h264":  # earlier profiles (and their chunk keys) unchanged
+            out["codec"] = self.codec
+        return out
 
 
 def frame_size(aspect: str, short_side: int) -> tuple[int, int]:
@@ -99,22 +105,28 @@ def profile(
     aspect: str = "16:9",
     resolution: str = "1080p",
     native: Fraction | None = None,
+    codec: Codec = "h264",
 ) -> Profile:
-    """Preview 720p from proxies; final at ``resolution`` (default 1080p) SDR from
-    originals, both in the edit's ``aspect`` (ADR 0046). ``native`` is the shape of the
-    edit's footage (``dominant_shape``): an aspect far from it crops every clip. The
-    encoder is the first available of VideoToolbox → NVENC → openh264; FFV1 for lossless
+    """Preview 720p H.264 from proxies; final at ``resolution`` (default 1080p) SDR from
+    originals in ``codec``, both in the edit's ``aspect`` (ADR 0046, 0084). ``native`` is
+    the shape of the edit's footage (``dominant_shape``): an aspect far from it crops every
+    clip. ``encoders``: the codec's working encoders, best first; FFV1 for lossless
     tests."""
     if not lossless and not encoders:
-        raise RuntimeError("no H.264 encoder available in this FFmpeg build")
+        raise RuntimeError(f"no {codec.upper()} encoder works with this FFmpeg build")
     enc = "ffv1" if lossless else encoders[0]
     fill: Fill = "crop" if native is not None and not _close(native, ASPECTS[aspect]) else "auto"
     if kind == "preview":
         w, h = frame_size(aspect, PREVIEW_SHORT_SIDE)
         return Profile("preview", w, h, enc, "5M", lossless, fill)
     w, h = frame_size(aspect, SHORT_SIDE[resolution])
-    bitrate = {"720p": "8M", "1080p": "14M", "1440p": "24M", "4k": "45M"}[resolution]
-    return Profile("final", w, h, enc, bitrate, lossless, fill)
+    rates = HEVC_BITRATE if codec == "hevc" else H264_BITRATE
+    bitrate = "" if codec == "prores" else rates[resolution]  # ProRes: the profile's rate
+    return Profile("final", w, h, enc, bitrate, lossless, fill, codec)
+
+
+H264_BITRATE = {"720p": "8M", "1080p": "14M", "1440p": "24M", "4k": "45M"}
+HEVC_BITRATE = {"720p": "5M", "1080p": "9M", "1440p": "16M", "4k": "28M"}  # same look
 
 
 def _close(a: Fraction, b: Fraction) -> bool:
@@ -447,6 +459,7 @@ def assembly_key(
     prof: Profile,
     rate: str,
     frames: int,
+    loudness: str | None = None,
 ) -> str:
     """A whole render's key (ADR 0083): its chunks in order (with dissolves), its audio
     chunks, the music track as it is on disk, the length and the profile. Two renders with
@@ -461,7 +474,7 @@ def assembly_key(
         config={
             "profile": prof.as_json(),
             "rate": rate,
-            "loudness": [LOUDNESS_TARGET, TRUE_PEAK, LRA],
+            "loudness": [loudness or LOUDNESS_TARGET, TRUE_PEAK, LRA],
         },
         version=f"{RENDER_VERSION}+{ASSEMBLY_VERSION}",
     )

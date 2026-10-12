@@ -34,6 +34,16 @@ def _media_info() -> tuple[tuple[str, ...], tuple[tuple[str, Any], ...]]:
     return tuple(caps.h264_encoders()), info
 
 
+def _codecs() -> dict[str, list[str]]:
+    from mosaic.media.ffmpeg.capabilities import FFmpegNotFoundError
+    from mosaic.media.tools import working_encoders
+
+    try:
+        return {c: list(working_encoders(c)) for c in ("h264", "hevc", "prores")}
+    except FFmpegNotFoundError:
+        return {"h264": [], "hevc": [], "prores": []}
+
+
 @router.get("/health")
 def health(svc: Services = Svc) -> dict[str, Any]:
     """Liveness for the container healthcheck and a reverse proxy: no sign-in, so it says
@@ -65,6 +75,8 @@ def system_info(svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
             **hw.as_json(),
         },
         "encoders": list(encoders),
+        # S19's presets (ADR 0084): the working encoders per codec, best first.
+        "codecs": _codecs(),
         "ffmpeg": dict(ffmpeg),
         # ADR 0030: the worker pool, the measured speed behind estimates, AI rate limits.
         "workers": configured_slots(svc.control),

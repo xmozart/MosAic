@@ -327,6 +327,7 @@ The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata 
   - Log sources (Apple Log, N-Log, D-Log M, GoPro flat) use a per-camera-profile LUT. The user supplies vendor LUTs unless redistribution is licensed.
   - HDR output is a later milestone.
 - **Encoders** are chosen from the capability probe (VideoToolbox, NVENC, QSV, AMF). Software encoding is used only if the user has installed an FFmpeg that provides it.
+  - Final presets (ADR 0084): H.264 or HEVC (hardware encoders, MP4, HEVC tagged `hvc1`) and a ProRes 422 master (VideoToolbox, else FFmpeg's own LGPL `prores_ks`; 10-bit 4:2:2 in MOV with PCM). Loudness is the request's: web −14 LUFS or TV −23 LUFS. A final render can write its EDL JSON, SRT captions (the heard transcript words) and selection report beside it.
 - All FFmpeg commands come from typed builders. Command, stderr and duration are logged to the diagnostics store.
 - M0 details (cutting, audio alignment, mezzanine, loudness passes, profiles) are in ADR 0016.
 

@@ -16,6 +16,14 @@ ENV_DIR = "MOSAIC_FFMPEG_DIR"
 
 ENCODER_PREFERENCE: tuple[str, ...] = ("h264_videotoolbox", "h264_nvenc", "libopenh264")
 """H.264 encoder order: VideoToolbox → NVENC → openh264 (ADR 0002 B)."""
+CODEC_ENCODERS: dict[str, tuple[str, ...]] = {
+    "h264": ENCODER_PREFERENCE,
+    # Hardware only: software x265 is GPL (CLAUDE.md licensing).
+    "hevc": ("hevc_videotoolbox", "hevc_nvenc", "hevc_qsv", "hevc_amf"),
+    # prores_ks is FFmpeg's own (LGPL) software encoder: a master is always possible.
+    "prores": ("prores_videotoolbox", "prores_ks"),
+}
+"""Final-render encoders per codec, in preference order (ADR 0084)."""
 
 
 class FFmpegLicense(StrEnum):
@@ -55,6 +63,9 @@ class Capabilities:
 
     def h264_encoders(self) -> list[str]:
         return [e for e in ENCODER_PREFERENCE if e in self.encoders]
+
+    def codec_encoders(self, codec: str) -> list[str]:
+        return [e for e in CODEC_ENCODERS[codec] if e in self.encoders]
 
     @property
     def can_tonemap(self) -> bool:

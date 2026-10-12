@@ -13,8 +13,8 @@ from mosaic.core.principal import Principal
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
 from mosaic.jobs.store import JobStore
-from mosaic.media.tools import working_h264_encoders
-from mosaic.render.plan import dominant_shape, profile
+from mosaic.media.tools import working_encoders
+from mosaic.render.plan import Codec, dominant_shape, profile
 from mosaic.storage.models_project import Asset, EditVersion, Render
 from mosaic.storage.projects import Project
 
@@ -42,9 +42,30 @@ def _native(s: Session, events: list[dict[str, Any]]) -> Fraction | None:
     )
 
 
+SIDECARS = ("edl", "srt", "report")  # what a final render may come with (ADR 0084)
+
+
 def create_render(
-    project: Project, edit_id: int, version: int, kind: str, lossless: bool = False
+    project: Project,
+    edit_id: int,
+    version: int,
+    kind: str,
+    lossless: bool = False,
+    *,
+    codec: Codec = "h264",
+    resolution: str | None = None,
+    loudness: str | None = None,
+    sidecars: tuple[str, ...] = (),
 ) -> int:
+    """A render of ``version``: a preview (720p H.264 from proxies) or a final from the
+    originals in ``codec`` at ``resolution`` (else the request's), with ``sidecars``
+    written beside it (ADR 0084). ``LookupError`` for an unknown version; ``RuntimeError``
+    when no encoder for the codec works here."""
+    unknown = set(sidecars) - set(SIDECARS)
+    if unknown:
+        raise ValueError(f"unknown sidecar {sorted(unknown)[0]!r}")
+    if loudness not in (None, "web", "tv"):
+        raise ValueError(f"unknown loudness {loudness!r}")
     with project.write() as s:
         v = s.scalar(
             select(EditVersion).where(
@@ -55,18 +76,33 @@ def create_render(
             raise LookupError(f"edt_{edit_id:04d} has no version {version}")
         req = v.request or {}
         events = v.timeline["tracks"][0]["events"]
+        final_codec: Codec = codec if kind == "final" else "h264"
         prof = profile(
             kind,
-            list(working_h264_encoders()),
+            list(working_encoders(final_codec)),
             lossless,
             aspect=req.get("aspect", "16:9"),
-            resolution=req.get("resolution", "1080p"),
+            resolution=resolution or req.get("resolution", "1080p"),
             native=_native(s, events),
+            codec=final_codec,
         )
+        # The export's choices, kept for a re-render; outside the profile's JSON, so chunk
+        # keys never see them (the resolution is in the frame size already).
+        extra: dict[str, Any] = {}
+        if kind == "final":
+            extra = {
+                k: val
+                for k, val in (
+                    ("resolution", resolution),
+                    ("loudness", loudness),
+                    ("sidecars", list(dict.fromkeys(sidecars))),
+                )
+                if val
+            }
         r = Render(
             edit_id=edit_id,
             version=version,
-            profile=prof.as_json(),
+            profile=prof.as_json() | extra,
             status="pending",
             metrics={},
             created_at=now_iso(),
@@ -197,20 +233,34 @@ def rerender(project: Project, store: JobStore, render_id: int) -> int:
         if render_state(r.status, job_status(store, r.job_id)) == "pending":
             raise RenderStateError("this render is still queued or running")
         edit_id, version = r.edit_id, r.version
-        kind, lossless = str(r.profile["kind"]), bool(r.profile.get("lossless"))
-    return create_render(project, edit_id, version, kind, lossless)
+        p = r.profile
+        kind, lossless = str(p["kind"]), bool(p.get("lossless"))
+    # The same export: its codec, resolution, loudness and sidecars (ADR 0084).
+    return create_render(
+        project,
+        edit_id,
+        version,
+        kind,
+        lossless,
+        codec=p.get("codec", "h264"),
+        resolution=p.get("resolution"),
+        loudness=p.get("loudness"),
+        sidecars=tuple(p.get("sidecars", ())),
+    )
 
 
 def delete_file(project: Project, render_id: int) -> None:
-    """Deletes a finished render's file (a derived output, never an original); the row
+    """Deletes a finished render's file and sidecars (derived outputs, never originals); the row
     stays as history with status ``deleted``."""
-    from mosaic.render.tasks import output_path
+    from mosaic.render.tasks import output_path, remove_sidecars
 
     with project.write() as s:
         r = _row(s, render_id)
         if r.status != "done":
             raise RenderStateError("only a finished render has a file to delete")
         if r.path:
-            output_path(project.workspace, r).unlink(missing_ok=True)
+            out = output_path(project.workspace, r)
+            out.unlink(missing_ok=True)
+            remove_sidecars(out)  # its export's other files go with it
         r.path = None
         r.status = "deleted"

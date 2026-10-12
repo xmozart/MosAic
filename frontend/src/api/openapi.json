@@ -866,8 +866,18 @@
       },
       "RenderBody": {
         "additionalProperties": false,
-        "description": "M0 subset of ``POST /renders``. ``final`` stands in for S19's preset/resolution\n(1080p SDR final from originals, or a 720p preview from proxies).",
+        "description": "``POST /renders``: a 720p preview from proxies, or a final from the originals\n(``final``) in S19's preset ``codec`` at ``resolution`` (else the edit's), with the\n``sidecars`` asked for (ADR 0084).",
         "properties": {
+          "codec": {
+            "default": "h264",
+            "enum": [
+              "h264",
+              "hevc",
+              "prores"
+            ],
+            "title": "Codec",
+            "type": "string"
+          },
           "edit_id": {
             "title": "Edit Id",
             "type": "string"
@@ -876,6 +886,50 @@
             "default": false,
             "title": "Final",
             "type": "boolean"
+          },
+          "loudness": {
+            "anyOf": [
+              {
+                "enum": [
+                  "web",
+                  "tv"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loudness"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "enum": [
+                  "720p",
+                  "1080p",
+                  "1440p",
+                  "4k"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution"
+          },
+          "sidecars": {
+            "items": {
+              "enum": [
+                "edl",
+                "srt",
+                "report"
+              ],
+              "type": "string"
+            },
+            "title": "Sidecars",
+            "type": "array"
           },
           "version": {
             "anyOf": [
@@ -5343,7 +5397,7 @@
         "summary": "Delete Render File"
       },
       "get": {
-        "description": "The rendered video, with Range requests (S17's player; S20 Open and Download).",
+        "description": "The rendered video, with Range requests (S17's player; S20 Open and Download), or\none of its sidecars: the EDL JSON, SRT captions or selection report (ADR 0084).",
         "operationId": "render_file_api_projects__pid__renders__rid__file_get",
         "parameters": [
           {
@@ -5372,6 +5426,22 @@
               "default": false,
               "title": "Download",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "part",
+            "required": false,
+            "schema": {
+              "default": "video",
+              "enum": [
+                "video",
+                "edl",
+                "srt",
+                "report"
+              ],
+              "title": "Part",
+              "type": "string"
             }
           }
         ],

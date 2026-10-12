@@ -564,7 +564,12 @@ def encoder_trial(encoder: str) -> FFmpegCommand:
         outputs=[
             OutputSpec(
                 "-",
-                [("-frames:v", 3), ("-c:v", encoder), ("-pix_fmt", "yuv420p"), ("-f", "null")],
+                [
+                    ("-frames:v", 3),
+                    ("-c:v", encoder),
+                    ("-pix_fmt", "yuv422p10le" if encoder.startswith("prores") else "yuv420p"),
+                    ("-f", "null"),
+                ],
             )
         ],
         description=f"encoder trial {encoder}",

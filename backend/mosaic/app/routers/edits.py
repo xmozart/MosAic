@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
@@ -37,6 +37,7 @@ from mosaic.editing.service import (
     resolve_edit,
     submit_generate,
 )
+from mosaic.render.plan import Codec
 from mosaic.storage import media_roots
 from mosaic.storage.config import ConfigService
 from mosaic.storage.models_project import Edit, EditVersion
@@ -520,7 +521,16 @@ def get_report(
 
 
 def _start_render(
-    svc: Services, me: Principal, eid: str, version: int | None, kind: str
+    svc: Services,
+    me: Principal,
+    eid: str,
+    version: int | None,
+    kind: str,
+    *,
+    codec: Codec = "h264",
+    resolution: str | None = None,
+    loudness: str | None = None,
+    sidecars: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     from mosaic.editing.draft import DraftChangedError
     from mosaic.editing.service import draft_dirty
@@ -536,9 +546,20 @@ def _start_render(
         if v is None:
             raise HTTPException(404, "this edit has no versions yet")
         try:
-            rid = create_render(project, edit_id, v, kind)
+            rid = create_render(
+                project,
+                edit_id,
+                v,
+                kind,
+                codec=codec,
+                resolution=resolution,
+                loudness=loudness,
+                sidecars=sidecars,
+            )
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+        except RuntimeError as exc:  # no encoder for the codec works here (ADR 0084)
+            raise HTTPException(422, str(exc)) from None
         job_id = submit_render(svc.executor, me, project, rid)
         return {"project_id": project.id, "render_id": rid, "version": v, "job_id": job_id}
 
@@ -550,20 +571,37 @@ def preview(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]
 
 
 class RenderBody(BaseModel):
-    """M0 subset of ``POST /renders``. ``final`` stands in for S19's preset/resolution
-    (1080p SDR final from originals, or a 720p preview from proxies)."""
+    """``POST /renders``: a 720p preview from proxies, or a final from the originals
+    (``final``) in S19's preset ``codec`` at ``resolution`` (else the edit's), with the
+    ``sidecars`` asked for (ADR 0084)."""
 
     model_config = ConfigDict(extra="forbid")
 
     edit_id: str
     version: StrictInt | None = None
     final: StrictBool = False
+    codec: Literal["h264", "hevc", "prores"] = "h264"
+    resolution: Literal["720p", "1080p", "1440p", "4k"] | None = None
+    loudness: Literal["web", "tv"] | None = None  # else the edit's request
+    sidecars: list[Literal["edl", "srt", "report"]] = Field(default_factory=list)
 
 
 @router.post("/renders", status_code=202)
 def start_render(body: RenderBody, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     check(me, "renders.write", body.edit_id)
-    return _start_render(svc, me, body.edit_id, body.version, "final" if body.final else "preview")
+    if not body.final:
+        return _start_render(svc, me, body.edit_id, body.version, "preview")
+    return _start_render(
+        svc,
+        me,
+        body.edit_id,
+        body.version,
+        "final",
+        codec=body.codec,
+        resolution=body.resolution,
+        loudness=body.loudness,
+        sidecars=tuple(body.sidecars),
+    )
 
 
 @router.get("/projects/{pid}/renders")
@@ -624,19 +662,33 @@ def delete_render_file(
 
 @router.get("/projects/{pid}/renders/{rid}/file", response_class=Response)
 def render_file(
-    pid: str, rid: int, download: bool = False, svc: Services = Svc, me: Principal = Me
+    pid: str,
+    rid: int,
+    download: bool = False,
+    part: Literal["video", "edl", "srt", "report"] = "video",
+    svc: Services = Svc,
+    me: Principal = Me,
 ) -> Response:
-    """The rendered video, with Range requests (S17's player; S20 Open and Download)."""
+    """The rendered video, with Range requests (S17's player; S20 Open and Download), or
+    one of its sidecars: the EDL JSON, SRT captions or selection report (ADR 0084)."""
     from mosaic.render.service import get_render
-    from mosaic.render.tasks import output_path
+    from mosaic.render.tasks import output_path, sidecar_path
 
     check(me, "renders.read", pid)
     with _project(svc, me, pid) as project:
         r = get_render(project, rid)
         path = output_path(project.workspace, r) if r is not None and r.path else None
+    if path is not None and part != "video":
+        path = sidecar_path(path, part)
     if r is None or path is None or not path.is_file():
-        raise HTTPException(404, "No rendered file.")
-    media = "video/quicktime" if path.suffix == ".mov" else "video/mp4"
+        raise HTTPException(404, "No rendered file." if part == "video" else f"No {part} file.")
+    media = {
+        ".mov": "video/quicktime",
+        ".mp4": "video/mp4",
+        ".json": "application/json",
+        ".srt": "application/x-subrip",
+        ".txt": "text/plain; charset=utf-8",
+    }[path.suffix]
     return FileResponse(
         path,
         media_type=media,
