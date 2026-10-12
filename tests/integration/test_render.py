@@ -23,7 +23,14 @@ from mosaic.render.plan import samples_for
 from mosaic.render.service import create_render, get_render, submit_render
 from mosaic.render.tasks import output_path
 from mosaic.storage.control import ControlDB
-from mosaic.storage.models_project import Artifact, Asset, AssetFile, MediaFile, MediaStream
+from mosaic.storage.models_project import (
+    Artifact,
+    Asset,
+    AssetFile,
+    MediaFile,
+    MediaStream,
+    Segment,
+)
 from mosaic.storage.projects import Project
 from tests.support.runner import run_job
 
@@ -357,8 +364,16 @@ def test_a_photo_renders_as_a_still_with_no_orientation_artifact(
     )
     assert run_job(control, job, timeout=600) == "done"
     v = get_version(project, edit_id)
+    with project.db.session() as s:  # the corpus's one photo; its id depends on scan order
+        seg = s.scalars(
+            select(Segment.id)
+            .join(Asset, Segment.asset_id == Asset.id)
+            .where(Asset.kind == "photo")
+        ).one()
     photo = next(
-        ref for ref, sel in v.timeline["selections"].items() if sel["segment_id"] == "seg_000001"
+        ref
+        for ref, sel in v.timeline["selections"].items()
+        if sel["segment_id"] == f"seg_{seg:06d}"
     )
     change_draft(project, edit_id, "op", LockShot(ref=photo))  # kept, however short the edit
     version = save_draft(project, edit_id)
