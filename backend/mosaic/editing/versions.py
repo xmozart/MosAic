@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from mosaic.core.clock import now_iso
 from mosaic.editing import draft, findings
+from mosaic.editing.service import source_file
 from mosaic.editing.titles import shot_events
 from mosaic.storage import provenance
 from mosaic.storage.models_project import Edit, EditDraftOp, EditVersion
@@ -117,7 +118,8 @@ def compare(project: Project, edit_id: int, a: int, b: int) -> dict[str, Any]:
     with project.db.session() as s:
         va, vb = _version(s, edit_id, a), _version(s, edit_id, b)
         sa, sb = _shots(va), _shots(vb)
-    changes = diff(sa, sb, a, b)
+        changes = diff(sa, sb, a, b)
+        _describe(s, changes, va, vb)
     return {
         "a": a,
         "b": b,
@@ -126,6 +128,29 @@ def compare(project: Project, edit_id: int, a: int, b: int) -> dict[str, Any]:
         "changes": changes,
         "same": not changes and va.timeline == vb.timeline,
     }
+
+
+def _describe(s: Session, changes: list[dict[str, Any]], va: EditVersion, vb: EditVersion) -> None:
+    """S18's words for each change: the clip's file name, its length and its beat's title
+    in each version (display only; the frames are exact)."""
+
+    for side, v in (("a", va), ("b", vb)):
+        events = {e["event_id"]: e for e in v.timeline["tracks"][0]["events"]}
+        titles = {b["beat_id"]: b["title"] for b in v.beats}
+        for c in changes:
+            e = events.get(c[f"event_{side}"]) if c[f"event_{side}"] else None
+            path = (
+                source_file(
+                    s, int(str(e["asset_id"]).removeprefix("ast_")), e["source_in"]["ticks"]
+                )
+                if e and e.get("asset_id")
+                else None
+            )
+            c[f"file_{side}"] = path.rsplit("/", 1)[-1] if path else None
+            c[f"frames_{side}"] = (
+                e["timeline_out"]["frames"] - e["timeline_in"]["frames"] if e else None
+            )
+            c[f"beat_{side}"] = titles.get(e.get("beat_id")) if e else None
 
 
 def diff(

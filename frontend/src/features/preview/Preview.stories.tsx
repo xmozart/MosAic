@@ -26,6 +26,7 @@ const base: PreviewViewProps = {
   onBack: noop,
   onExports: noop,
   onStoryboard: noop,
+  onVersions: noop,
   report: REPORT,
   findings: FINDINGS,
   latest: true,

@@ -1079,6 +1079,17 @@ def test_versions_compare_and_revert_over_the_api(drafted: Any) -> None:
         "added",
         "removed",
     }
+    for c in diff["changes"]:  # S18's words: file, length and beat on each side it is on
+        for side in ("a", "b"):
+            if c[f"event_{side}"]:
+                assert c[f"file_{side}"]
+                assert "/" not in c[f"file_{side}"]
+                assert c[f"frames_{side}"] >= 1
+                assert c[f"beat_{side}"]
+            else:
+                assert c[f"file_{side}"] is None
+                assert c[f"frames_{side}"] is None
+                assert c[f"beat_{side}"] is None
     first = _shots(client.get(f"/api/edits/{eid}/draft").json())[0]["ref"]
     client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": first}})
     assert client.get(f"/api/edits/{eid}/draft").json()["dirty"]
@@ -1090,11 +1101,13 @@ def test_versions_compare_and_revert_over_the_api(drafted: Any) -> None:
     v1 = client.get(f"/api/edits/{eid}/versions/1").json()
     assert v3["timeline"] == v1["timeline"]
     assert client.get(f"/api/edits/{eid}/compare", params={"a": 1, "b": 3}).json()["same"]
-    assert [v["version"] for v in client.get(f"/api/edits/{eid}/versions").json()["items"]] == [
-        1,
-        2,
-        3,
+    listed = client.get(f"/api/edits/{eid}/versions").json()["items"]
+    assert [(v["version"], v["creator"], v["parent_version"]) for v in listed] == [
+        (1, "ai", None),
+        (2, "user", 1),
+        (3, "user", 2),
     ]
+    assert listed[2]["reason"] == "Reverted to v1"
     assert client.post(f"/api/edits/{eid}/revert", json={"version": 3}).status_code == 409
     assert client.post(f"/api/edits/{eid}/revert", json={"version": 9}).status_code == 404
     assert client.get(f"/api/edits/{eid}/compare", params={"a": 1, "b": 9}).status_code == 404

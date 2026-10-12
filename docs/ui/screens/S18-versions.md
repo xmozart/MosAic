@@ -2,6 +2,7 @@
 
 - **Reference:** `docs/ui/reference/` → S18-Versions
 - **Milestone:** M4
+- **Route:** `/p/:pid/edits/:eid/versions?a=&b=` (ADR 0090)
 
 **Purpose.** Browse, compare and revert versions.
 

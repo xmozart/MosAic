@@ -269,6 +269,7 @@ function Preview() {
       onBack={() => navigate(`/p/${pid}/edits`)}
       onExports={() => navigate(`/p/${pid}/exports`)}
       onStoryboard={() => navigate(`/p/${pid}/edits/${eid}/storyboard`)}
+      onVersions={() => navigate(`/p/${pid}/edits/${eid}/versions`)}
       report={merged}
       reportError={report.isError && !merged}
       onRetryReport={() => void report.refetch()}

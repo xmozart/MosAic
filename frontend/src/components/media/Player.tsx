@@ -44,6 +44,10 @@ export interface PlayerProps {
   controlsEnd?: ReactNode;
   /** The length known before the video loads (S17: the edit's), so the bar can draw. */
   length?: SourceTime;
+  /** Playback started or stopped (S18 keeps two players in step). */
+  onPlayState?: (playing: boolean) => void;
+  /** The owner moved the playhead (display seconds; S18's synced compare). */
+  onSeeked?: (seconds: number) => void;
 }
 
 const SERIES = ["bg-cam-1", "bg-cam-2", "bg-cam-3", "bg-cam-4", "bg-cam-5", "bg-cam-6"];
@@ -54,6 +58,10 @@ export interface PlayerHandle {
   toggle: () => void;
   /** Gives the player keyboard focus (J/K/L, Space, arrows). */
   focus: () => void;
+  /** S18's synced compare: follow the other player (display seconds). */
+  play: () => void;
+  pause: () => void;
+  seekSeconds: (seconds: number) => void;
 }
 
 const L_RATES = [1, 1.5, 2, 4];
@@ -64,7 +72,7 @@ const L_RATES = [1, 1.5, 2, 4];
  * · ←/→ one frame · Shift+←/→ one second.
  */
 export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
-  { src, poster, rate, usableRange, markers = [], range, className, onTime, segments = [], overlay, empty, controlsEnd, length },
+  { src, poster, rate, usableRange, markers = [], range, className, onTime, segments = [], overlay, empty, controlsEnd, length, onPlayState, onSeeked },
   ref,
 ) {
   const video = useRef<HTMLVideoElement>(null);
@@ -116,6 +124,15 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
     },
     toggle,
     focus: () => root.current?.focus({ preventScroll: true }),
+    play: () => {
+      if (video.current?.paused) void video.current.play();
+    },
+    pause: () => video.current?.pause(),
+    // Already there (within half a frame): no seek, so a mirrored seek never echoes back.
+    seekSeconds: (t) => {
+      if (video.current && Math.abs(video.current.currentTime - t) < frame / 2) return;
+      seek(t);
+    },
   }));
 
   const onKey = (e: KeyboardEvent) => {
@@ -188,8 +205,15 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
             playsInline
             className="size-full object-contain"
             onClick={toggle}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
+            onPlay={() => {
+              setPlaying(true);
+              onPlayState?.(true);
+            }}
+            onPause={() => {
+              setPlaying(false);
+              onPlayState?.(false);
+            }}
+            onSeeked={(e) => onSeeked?.(e.currentTarget.currentTime)}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
             onTimeUpdate={(e) => {
               const t = e.currentTarget.currentTime;

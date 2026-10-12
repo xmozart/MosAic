@@ -1,4 +1,4 @@
-import { ChevronLeft, Download, LayoutPanelTop, RotateCw } from "lucide-react";
+import { ChevronLeft, Download, History, LayoutPanelTop, RotateCw } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
 import { EditFacts } from "@/components/edit/EditFacts";
@@ -40,6 +40,7 @@ export interface PreviewViewProps {
   onBack: () => void;
   onExports: () => void;
   onStoryboard: () => void;
+  onVersions: () => void;
   report: ReportData | undefined;
   reportError?: boolean;
   onRetryReport?: () => void;
@@ -198,6 +199,11 @@ function Ready(p: PreviewViewProps & { edit: EditVersionData }) {
           <Button variant="ghost" onClick={p.onStoryboard}>
             <LayoutPanelTop /> Open storyboard
           </Button>
+          {p.versions.length > 1 && (
+            <Button variant="ghost" onClick={p.onVersions}>
+              <History /> Versions
+            </Button>
+          )}
           <span className="flex-1" />
           {final && final.status !== "done" && <span className="text-caption font-normal text-text-muted">Final: {renderStatusText(final)}</span>}
           <Button onClick={p.onExports}>Exports</Button>

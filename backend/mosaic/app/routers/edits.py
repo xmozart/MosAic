@@ -490,6 +490,9 @@ def list_versions(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str
                 "created_at": v.created_at,
                 "duration": v.timeline.get("duration"),
                 "blocking_ok": v.metrics.get("blocking_ok"),
+                "creator": v.creator,
+                "reason": v.reason,
+                "parent_version": v.parent_version,
             }
             for v in rows
         ]
