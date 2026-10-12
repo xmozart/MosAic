@@ -305,7 +305,7 @@ def test_a_vertical_edit_renders_vertical_with_the_same_plan(
     assert _frames(ffmpeg_bin, path) == v.timeline["duration"]["frames"]
 
 
-@pytest.mark.parametrize("when", ["before", "while_assembling"])
+@pytest.mark.parametrize("when", ["before", "while_assembling", "while_reusing"])
 def test_a_cancelled_render_keeps_no_file(
     edit: tuple[Project, ControlDB, int, int], monkeypatch: pytest.MonkeyPatch, when: str
 ) -> None:
@@ -323,6 +323,19 @@ def test_a_cancelled_render_keeps_no_file(
             assert row is not None
             row.status = "cancelled"
 
+    if when == "while_reusing":  # an identical earlier render is linked, then Cancel
+        _render(project, control, edit_id, version, "preview", lossless=False)
+        found = tasks._same_render
+
+        def found_then_cancel(*args: Any) -> Any:
+            earlier = found(*args)
+            assert earlier is not None, "the earlier preview is reused"
+            cancel()
+            return earlier
+
+        monkeypatch.setattr(tasks, "_same_render", found_then_cancel)
+    else:  # the race is with the assembler: never reuse an earlier preview
+        monkeypatch.setattr(tasks, "_same_render", lambda *a: None)
     if when == "before":
         cancel()
     else:
