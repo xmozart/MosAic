@@ -971,6 +971,18 @@
             ],
             "title": "Resolution"
           },
+          "save_to": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save To"
+          },
           "sidecars": {
             "items": {
               "enum": [
@@ -2332,6 +2344,64 @@
           }
         },
         "summary": "Change Duration"
+      }
+    },
+    "/api/edits/{eid}/export": {
+      "get": {
+        "description": "S19: the version's length and defaults, each preset's size and time at each\nresolution and whether it can be encoded here, and where files go (ADR 0091).",
+        "operationId": "export_options_api_edits__eid__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Export Options Api Edits  Eid  Export Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Options"
       }
     },
     "/api/edits/{eid}/findings": {

@@ -5,9 +5,11 @@ import { useNavigate, useParams, useSearchParams } from "react-router";
 import { api } from "@/api/client";
 import { cardName, type EditCardData } from "@/features/edits/model";
 import { ACTIVE, latest, renderFile } from "@/lib/renders";
+import { hasNativeFolderPicker, nativeFolder } from "@/lib/desktop";
 import { useToasts } from "@/lib/toasts";
 
 import type { EditVersionData, Finding, ReportData, VersionItem } from "./model";
+import { ExportDialog, type ExportChoice, type ExportOptions } from "./ExportDialog";
 import { PreviewView, type PreviewState } from "./PreviewView";
 
 const POLL_MS = 2000;
@@ -91,12 +93,39 @@ function Preview() {
       if (error) throw new Error("render");
       return final;
     },
-    onSuccess: (final) => {
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["edit", eid] });
       void qc.invalidateQueries({ queryKey: ["renders", pid] });
-      if (final) toast({ kind: "info", message: "Rendering the final video. You can follow it in Exports." });
     },
     onError: () => toast({ kind: "error", message: "Couldn't start the render. Try again." }),
+  });
+  // S19 Render final (ADR 0091): the dialog's choices, rendered from the originals.
+  const [exporting, setExporting] = useState(false);
+  const exportOptions = useQuery({
+    queryKey: ["edit-export", eid, version],
+    enabled: exporting && version !== undefined,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/edits/{eid}/export", { params: { path: { eid }, query: { version } } });
+      if (error || !data) throw new Error("export");
+      return data as unknown as ExportOptions;
+    },
+  });
+  const exportFinal = useMutation({
+    mutationFn: async (c: ExportChoice) => {
+      const { error } = await api.POST("/api/renders", {
+        body: { edit_id: eid, version, final: true, codec: c.codec, resolution: c.resolution, loudness: c.loudness, sidecars: c.sidecars, save_to: c.save_to },
+      });
+      if (error) {
+        const detail = (error as { detail?: unknown }).detail;
+        throw new Error(typeof detail === "string" ? detail : "Couldn't start the render. Try again.");
+      }
+    },
+    onSuccess: () => {
+      setExporting(false);
+      void qc.invalidateQueries({ queryKey: ["edit", eid] });
+      void qc.invalidateQueries({ queryKey: ["renders", pid] });
+      toast({ kind: "info", message: "Rendering the final video. You can follow it in Exports." });
+    },
   });
   const regenerate = useMutation({
     mutationFn: async () => {
@@ -253,39 +282,54 @@ function Preview() {
 
   const final = renders ? latest(renders, "final") : undefined;
   return (
-    <PreviewView
-      title={card ? cardName(card) : (edit.data?.name ?? edit.data?.display_id ?? "Edit")}
-      state={state}
-      versions={versions.data ?? []}
-      onVersion={(v) => setParams({ v: String(v) })}
-      preview={preview}
-      final={final}
-      previewUrl={preview?.status === "done" ? renderFile(pid, preview.render_id) : undefined}
-      finalDownloadUrl={final?.status === "done" ? renderFile(pid, final.render_id, true) : undefined}
-      onRenderPreview={() => render.mutate(false)}
-      onRenderFinal={() => render.mutate(true)}
-      onRetryGenerate={() => regenerate.mutate()}
-      onRetryLoad={() => void edit.refetch()}
-      onBack={() => navigate(`/p/${pid}/edits`)}
-      onExports={() => navigate(`/p/${pid}/exports`)}
-      onStoryboard={() => navigate(`/p/${pid}/edits/${eid}/storyboard`)}
-      onVersions={() => navigate(`/p/${pid}/edits/${eid}/versions`)}
-      report={merged}
-      reportError={report.isError && !merged}
-      onRetryReport={() => void report.refetch()}
-      onMoreRejected={() => void report.fetchNextPage()}
-      loadingMore={report.isFetchingNextPage}
-      busy={render.isPending || regenerate.isPending}
-      findings={findings.data}
-      findingsError={findings.isError}
-      onRetryFindings={() => void findings.refetch()}
-      latest={isLatest}
-      fixing={fixing}
-      onApplyFinding={(id) => apply.mutate(id)}
-      onIgnoreFinding={(id) => ignore.mutate(id)}
-      onApplyAll={() => apply.mutate(null)}
-      onIgnoreAll={() => ignore.mutate(null)}
-      onRegenerateWithFixes={() => fixes.mutate()}
-    />
+    <>
+      <PreviewView
+        title={card ? cardName(card) : (edit.data?.name ?? edit.data?.display_id ?? "Edit")}
+        state={state}
+        versions={versions.data ?? []}
+        onVersion={(v) => setParams({ v: String(v) })}
+        preview={preview}
+        final={final}
+        previewUrl={preview?.status === "done" ? renderFile(pid, preview.render_id) : undefined}
+        finalDownloadUrl={final?.status === "done" ? renderFile(pid, final.render_id, true) : undefined}
+        onRenderPreview={() => render.mutate(false)}
+        onRenderFinal={() => {
+          exportFinal.reset();
+          setExporting(true);
+        }}
+        onRetryGenerate={() => regenerate.mutate()}
+        onRetryLoad={() => void edit.refetch()}
+        onBack={() => navigate(`/p/${pid}/edits`)}
+        onExports={() => navigate(`/p/${pid}/exports`)}
+        onStoryboard={() => navigate(`/p/${pid}/edits/${eid}/storyboard`)}
+        onVersions={() => navigate(`/p/${pid}/edits/${eid}/versions`)}
+        report={merged}
+        reportError={report.isError && !merged}
+        onRetryReport={() => void report.refetch()}
+        onMoreRejected={() => void report.fetchNextPage()}
+        loadingMore={report.isFetchingNextPage}
+        busy={render.isPending || regenerate.isPending}
+        findings={findings.data}
+        findingsError={findings.isError}
+        onRetryFindings={() => void findings.refetch()}
+        latest={isLatest}
+        fixing={fixing}
+        onApplyFinding={(id) => apply.mutate(id)}
+        onIgnoreFinding={(id) => ignore.mutate(id)}
+        onApplyAll={() => apply.mutate(null)}
+        onIgnoreAll={() => ignore.mutate(null)}
+        onRegenerateWithFixes={() => fixes.mutate()}
+      />
+      <ExportDialog
+        open={exporting}
+        onOpenChange={setExporting}
+        title={card ? cardName(card) : (edit.data?.name ?? "Edit")}
+        options={exportOptions.data}
+        error={exportFinal.error?.message ?? (exportOptions.isError ? "The export options couldn't be loaded." : null)}
+        busy={exportFinal.isPending}
+        onChooseFolder={hasNativeFolderPicker() ? () => nativeFolder("Save the final video to") : undefined}
+        onRender={(c) => exportFinal.mutate(c)}
+      />
+    </>
   );
 }

@@ -1,5 +1,7 @@
 import type { RenderRow } from "@/lib/renders";
 
+import type { ExportOptions } from "./ExportDialog";
+
 import type { Beat, EditVersionData, ReportData, TimelineEvent, Finding } from "./model";
 
 const RATE = "30000/1001";
@@ -127,3 +129,19 @@ export const FINDINGS: Finding[] = [
   finding(4, { frame: 6893, source: "ai", code: "ai_note", severity: "info", text: "The coast section has no people" }),
   finding(5, { frame: 8631, source: "ai", code: "ai_note", severity: "warning", text: "The ending is the drone pull-away; the family photo might land stronger" }),
 ];
+
+const mb = (n: number) => Math.round(n * 1_000_000);
+/** S19's options for a 5:02 edit (ADR 0091). */
+export const EXPORT_OPTIONS: ExportOptions = {
+  version: 3,
+  duration: { frames: 9051, rate: "30000/1001" },
+  rate: "30000/1001",
+  resolution: "4k",
+  loudness: "web",
+  presets: {
+    h264: { available: true, encoder: "h264_videotoolbox", reason: null, bytes: { "720p": mb(310), "1080p": mb(536), "1440p": mb(913), "4k": mb(1100) }, seconds: { "720p": 240, "1080p": 330, "1440p": 480, "4k": 720 } },
+    hevc: { available: true, encoder: "hevc_videotoolbox", reason: null, bytes: { "720p": mb(196), "1080p": mb(347), "1440p": mb(611), "4k": mb(700) }, seconds: { "720p": 260, "1080p": 380, "1440p": 600, "4k": 900 } },
+    prores: { available: true, encoder: "prores_videotoolbox", reason: null, bytes: { "720p": mb(2500), "1080p": mb(5600), "1440p": mb(9900), "4k": mb(18000) }, seconds: { "720p": 200, "1080p": 280, "1440p": 400, "4k": 540 } },
+  },
+  save_to: { default: "Costa_Rica_2026/MosAic/renders", can_choose: true },
+};

@@ -9,20 +9,26 @@ export interface ChoiceCardProps {
   onClick: () => void;
   icon?: ReactNode;
   badge?: string; // "Recommended"
+  /** Can't be chosen (S19: no encoder for the preset); ``footer`` says why. */
+  disabled?: boolean;
+  /** A last line (S19: the size and time estimate, or why it's unavailable). */
+  footer?: ReactNode;
 }
 
 /** COMPONENTS.md ChoiceCard: one option of a card radio group (S1 AI mode, S22 privacy
  * mode). Put it in a `RadioGroup`, which makes the group one Tab stop. */
-export function ChoiceCard({ selected, title, text, onClick, icon, badge }: ChoiceCardProps) {
+export function ChoiceCard({ selected, title, text, onClick, icon, badge, disabled, footer }: ChoiceCardProps) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
+      disabled={disabled}
       onClick={onClick}
       className={cn(
         "flex flex-col gap-2 rounded-lg border-[1.5px] p-[18px] text-left text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         selected ? "border-accent bg-accent-soft" : "border-border bg-surface-1 hover:border-text-faint",
+        "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border",
       )}
     >
       <span className="flex items-center gap-2.5">
@@ -34,6 +40,7 @@ export function ChoiceCard({ selected, title, text, onClick, icon, badge }: Choi
         {icon && <span className="ml-auto text-text-muted">{icon}</span>}
       </span>
       <span className="text-small text-text-muted">{text}</span>
+      {footer}
     </button>
   );
 }

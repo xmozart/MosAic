@@ -6,7 +6,7 @@ import { card } from "@/features/edits/fixtures";
 import type { RenderRow } from "@/lib/renders";
 import { useToasts } from "@/lib/toasts";
 
-import { BEATS, EDIT, EVENTS, REPORT, renderRow, FINDINGS } from "./fixtures";
+import { BEATS, EDIT, EVENTS, EXPORT_OPTIONS, FINDINGS, REPORT, renderRow } from "./fixtures";
 import { beatAt, beatSegments, factsRows, timecode, toSource } from "./model";
 import { PreviewScreen } from "./PreviewScreen";
 import { PreviewView, type PreviewViewProps } from "./PreviewView";
@@ -271,6 +271,7 @@ vi.mock("@/api/client", () => ({
         return Promise.resolve({ data: { ...EDIT, version: v, renders: server[v] ?? [] }, response: { status: 200 } });
       }
       if (path === "/api/edits/{eid}/versions") return Promise.resolve({ data: { items: [2, 3].map((v) => ({ version: v, created_at: "x" })) } });
+      if (path === "/api/edits/{eid}/export") return Promise.resolve({ data: EXPORT_OPTIONS });
       if (path === "/api/edits/{eid}/findings") return Promise.resolve({ data: { version: 3, items: FINDINGS } });
       if (path === "/api/jobs/{job_id}") return Promise.resolve({ data: { job_id: 11, state: "done", error: null } });
       if (path === "/api/edits/{eid}/report") return Promise.resolve({ data: { ...REPORT, version: Number(o?.params?.query?.version) } });
@@ -311,7 +312,14 @@ it("PreviewScreen starts a preview once for a version without one, and renders t
   await waitFor(() => expect(posts.filter((p) => p.path === "/api/renders")).toHaveLength(1));
   expect(posts[0]!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: false, codec: "h264" });
   fireEvent.click(await screen.findByRole("button", { name: "Render final" }));
-  await waitFor(() => expect(posts.at(-1)!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: true, codec: "h264" }));
+  const dialog = await screen.findByRole("dialog", { name: "Render final" });
+  fireEvent.click(await within(dialog).findByRole("radio", { name: /Master/ }));
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: /Edit data/ }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Render" }));
+  await waitFor(() =>
+    expect(posts.at(-1)!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: true, codec: "prores", resolution: "4k", loudness: "web", sidecars: ["srt", "report", "edl"], save_to: null }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(posts.filter((p) => (p.body as { final: boolean }).final === false)).toHaveLength(1);
 });
 

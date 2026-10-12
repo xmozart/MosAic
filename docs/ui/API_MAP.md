@@ -126,7 +126,7 @@ SSE event types:
 
 | Method | Path | Used by |
 |---|---|---|
-| POST | `/renders` `{edit_id, version, final, codec: h264\|hevc\|prores, resolution: 720p\|1080p\|1440p\|4k, loudness: web\|tv, sidecars[]: edl\|srt\|report}` → `{project_id, render_id, version, job_id}`; 422 when no encoder for the codec works here. Resolution and loudness default to the edit's request; the frame rate is the edit's own; S20 Re-render repeats the export; Save to another folder comes with S19 (ADR 0084) | S19 |
+| POST | `/renders` `{edit_id, version, final, codec: h264\|hevc\|prores, resolution: 720p\|1080p\|1440p\|4k, loudness: web\|tv, sidecars[]: edl\|srt\|report, save_to?}` → `{project_id, render_id, version, job_id}`; 422 when no encoder for the codec works here, or for a `save_to` that isn't an existing writable folder (desktop only; the finished files are copied there, never over a file, and the render's `metrics` get `saved_to` or `save_error`). Resolution and loudness default to the edit's request; the frame rate is the edit's own; S20 Re-render repeats the export (ADR 0084, 0091) · GET `/edits/{eid}/export?version=` → `{version, duration, rate, aspect, resolution, loudness, presets: {h264\|hevc\|prores: {available, encoder, reason, bytes{res}, seconds{res}\|null}}, save_to: {default, can_choose}}` (ADR 0091) | S19 |
 | GET | `/projects/{pid}/renders` · POST `/projects/{pid}/renders/{rid}/cancel` · `/rerender` · DELETE `/projects/{pid}/renders/{rid}/file` (render ids are per project; ADR 0047) | S20 |
 | GET | `/projects/{pid}/renders/{rid}/file?part=video\|edl\|srt\|report` (Range for the video; `?download=true`; 404 for a sidecar not asked for; ADR 0084) | S17, S19, S20 |
 | POST | `/projects/{pid}/renders/{rid}/reveal` (desktop only; not in M2) | S20 |

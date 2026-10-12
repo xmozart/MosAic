@@ -206,6 +206,12 @@ function Row({ r, p, onDetails, onDelete }: { r: RenderRow; p: ExportsViewProps;
           <span aria-hidden className={cn("size-2 shrink-0 rounded-full", DOT[r.status])} />
           {renderStatusText(r)}
         </span>
+        {r.status === "done" && r.metrics?.saved_to && (
+          <span title={r.metrics.saved_to} className="truncate text-caption font-normal text-text-faint">
+            Saved to {r.metrics.saved_to.replace(/[\\/][^\\/]*$/, "")}
+          </span>
+        )}
+        {r.status === "done" && r.metrics?.save_error && <span className="text-caption font-normal text-maybe">{r.metrics.save_error}</span>}
         {r.status === "rendering" && (
           <span className="h-1 overflow-hidden rounded-full bg-surface-3">
             <span className="block h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${r.pct ?? 0}%` }} />

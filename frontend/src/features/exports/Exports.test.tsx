@@ -41,6 +41,7 @@ describe("ExportsView", () => {
     expect(done!.getByRole("link", { name: /^Open Costa Rica/ })).toHaveAttribute("href", "/file/3");
     expect(done!.getByRole("link", { name: /^Download Costa Rica/ })).toHaveAttribute("href", "/file/3?dl");
     expect(failed!.getByText("Stopped at 30%")).toBeInTheDocument();
+    expect(done!.getByText("Saved to /Users/me/Movies")).toBeInTheDocument(); // S19 Save to
   });
 
   it("actions: cancel, remove, details then re-render, and delete with a confirmation", () => {

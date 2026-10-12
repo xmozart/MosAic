@@ -538,12 +538,15 @@ def _start_render(
     resolution: str | None = None,
     loudness: str | None = None,
     sidecars: tuple[str, ...] = (),
+    save_to: str | None = None,
 ) -> dict[str, Any]:
     from mosaic.editing.draft import DraftChangedError
     from mosaic.editing.service import draft_dirty
     from mosaic.render.service import create_render, submit_render, version_to_render
 
     with _edit(svc, me, eid, write=True) as (project, edit_id):
+        if save_to is not None:
+            _outside_footage(project, save_to)
         if version is None and draft_dirty(project, edit_id):
             check(me, "edits.write", eid)  # rendering the draft saves it as a version
         try:
@@ -562,6 +565,7 @@ def _start_render(
                 resolution=resolution,
                 loudness=loudness,
                 sidecars=sidecars,
+                save_to=save_to,
             )
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
@@ -591,6 +595,82 @@ class RenderBody(BaseModel):
     resolution: Literal["720p", "1080p", "1440p", "4k"] | None = None
     loudness: Literal["web", "tv"] | None = None  # else the edit's request
     sidecars: list[Literal["edl", "srt", "report"]] = Field(default_factory=list)
+    # S19 "Save to" (desktop): a folder the finished files are copied into (ADR 0091).
+    save_to: str | None = Field(default=None, max_length=4096)
+
+
+def _save_folder(path: str | None) -> str | None:
+    """S19's "Save to" (ADR 0091): desktop only (a server's files are downloaded from
+    Exports), an existing folder this app can write to. 422 otherwise."""
+    from pathlib import Path
+
+    from mosaic.core.runtime import server_mode
+    from mosaic.storage.placement import is_writable
+
+    if path is None:
+        return None
+    if server_mode():
+        raise HTTPException(422, "Save to is for the desktop app; download the files from Exports.")
+    folder = Path(path)
+    if not folder.is_absolute():
+        raise HTTPException(422, "Choose a folder by its full path.")
+    if not folder.is_dir():
+        raise HTTPException(422, "That folder doesn't exist.")
+    if not is_writable(folder):
+        raise HTTPException(422, "That folder can't be written to. Choose another one.")
+    return str(folder.resolve())
+
+
+def _outside_footage(project: Project, folder: str) -> None:
+    """A copy never lands among the trip's footage (the next scan would take it for a
+    clip); the trip's own MosAic folder is fine (ADR 0091)."""
+    from pathlib import Path
+
+    path = Path(folder)
+    root = project.root.resolve()
+    own = project.workspace.resolve()
+    if path.is_relative_to(root) and not path.is_relative_to(own):
+        raise HTTPException(422, "Choose a folder outside your footage.")
+
+
+@router.get("/edits/{eid}/export")
+def export_options(
+    eid: str, version: int | None = None, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """S19: the version's length and defaults, each preset's size and time at each
+    resolution and whether it can be encoded here, and where files go (ADR 0091)."""
+    from mosaic.core.runtime import server_mode
+    from mosaic.media import benchmark, hardware
+    from mosaic.media.tools import working_encoders
+    from mosaic.render.estimate import estimate
+    from mosaic.render.plan import CODECS
+
+    check(me, "edits.read", eid)
+    with _edit(svc, me, eid) as (project, edit_id):
+        try:
+            v = get_version(project, edit_id, version)
+        except EditNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from None
+        bench = benchmark.latest(svc.control, hardware.probe())
+        per_720 = (bench.result.get("ms_per_minute") or {}).get("720") if bench else None
+        req = v.request or {}
+        duration = v.timeline["duration"]
+        working: dict[str, list[str]] = {c: list(working_encoders(c)) for c in CODECS}
+        return {
+            "version": v.version,
+            "duration": duration,
+            "rate": v.rate,
+            "aspect": req.get("aspect", "16:9"),
+            "resolution": req.get("resolution", "1080p"),
+            "loudness": req.get("loudness", "web"),
+            "presets": estimate(
+                int(duration["frames"]), v.rate, req.get("aspect", "16:9"), working, per_720
+            ),
+            "save_to": {
+                "default": str(project.workspace / "renders"),
+                "can_choose": not server_mode(),
+            },
+        }
 
 
 @router.post("/renders", status_code=202)
@@ -608,6 +688,7 @@ def start_render(body: RenderBody, svc: Services = Svc, me: Principal = Me) -> d
         resolution=body.resolution,
         loudness=body.loudness,
         sidecars=tuple(body.sidecars),
+        save_to=_save_folder(body.save_to),
     )
 
 

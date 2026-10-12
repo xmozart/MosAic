@@ -7,10 +7,12 @@ export interface CheckboxRowProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  /** A second line under the label (S19: what the file holds). */
+  hint?: string;
 }
 
 /** DS-Components "Controls": a labelled checkbox (S14's editing rules). */
-export function CheckboxRow({ label, checked, onChange, disabled }: CheckboxRowProps) {
+export function CheckboxRow({ label, checked, onChange, disabled, hint }: CheckboxRowProps) {
   const id = useId();
   return (
     <div className="flex items-start gap-2.5">
@@ -25,8 +27,9 @@ export function CheckboxRow({ label, checked, onChange, disabled }: CheckboxRowP
           <Check aria-hidden strokeWidth={2.6} className="size-3 text-accent-fg" />
         </Radix.Indicator>
       </Radix.Root>
-      <label htmlFor={id} className="cursor-pointer text-body text-text">
+      <label htmlFor={id} className={disabled ? "flex flex-col gap-0.5 text-body text-text" : "flex cursor-pointer flex-col gap-0.5 text-body text-text"}>
         {label}
+        {hint && <span className="text-caption font-normal text-text-faint">{hint}</span>}
       </label>
     </div>
   );

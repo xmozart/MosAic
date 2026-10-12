@@ -19,6 +19,8 @@ export interface RenderRow {
   size_bytes: number | null;
   seconds: number | null;
   file: string | null;
+  /** S19 "Save to": where the copy went, or why it couldn't (ADR 0091). */
+  metrics?: { saved_to?: string; save_error?: string };
   created_at: string;
   finished_at: string | null;
 }

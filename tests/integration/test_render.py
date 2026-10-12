@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -1083,12 +1084,16 @@ def test_a_hevc_render_is_tagged_hvc1_where_a_hardware_encoder_works(
 
 
 def test_a_final_render_writes_its_sidecars_and_meets_the_tv_loudness(
-    analyzed_session: Any, ffmpeg_bin: FFmpegBinaries
+    analyzed_session: Any,
+    ffmpeg_bin: FFmpegBinaries,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ADR 0084: with the EDL, SRT and report asked for, a final render writes them beside
     it: the EDL is the version's JSON, the captions are the transcript words heard in
     the edit (inside dialogue events, in order) and the report lists the shots. A TV
-    request is normalized to -23 LUFS (EBU R128)."""
+    request is normalized to -23 LUFS (EBU R128). With "Save to" (ADR 0091) the video and
+    its sidecars are copied into that folder, never over a file already there."""
     import re
 
     from mosaic.editing.generate import version_json
@@ -1107,13 +1112,51 @@ def test_a_final_render_writes_its_sidecars_and_meets_the_tv_loudness(
     )
     assert run_job(control, job, timeout=600) == "done"
     v = get_version(project, edit_id)
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    taken = folder / f"Edit {edit_id} v{v.version}.mp4"
+    with project.write() as s:
+        e = s.get(Edit, edit_id)
+        assert e is not None
+        e.name = f"Edit {edit_id}"
+    taken.write_bytes(b"the owner's own file")
     rid = _render(
-        project, control, edit_id, v.version, "final", False, sidecars=("edl", "srt", "report")
+        project,
+        control,
+        edit_id,
+        v.version,
+        "final",
+        False,
+        sidecars=("edl", "srt", "report"),
+        save_to=str(folder),
     )
     r = get_render(project, rid)
     assert r is not None
     assert r.metrics["sidecars"] == ["edl", "srt", "report"]
     out = output_path(project.workspace, r)
+    assert taken.read_bytes() == b"the owner's own file", "never overwritten"
+    saved = Path(r.metrics["saved_to"])
+    assert saved == folder / f"Edit {edit_id} v{v.version} (2).mp4"
+    assert saved.read_bytes() == out.read_bytes()
+    for part, suffix in (("edl", ".edl.json"), ("srt", ".srt"), ("report", ".report.txt")):
+        copy = folder / f"{saved.stem}{suffix}"
+        assert copy.read_bytes() == sidecar_path(out, part).read_bytes(), part
+    # The same export again without Save to reuses the file, not the earlier copy's record;
+    # on a server a stored Save to is never acted on (ADR 0091).
+    again = get_render(project, _render(project, control, edit_id, v.version, "final", False))
+    assert again is not None
+    assert again.metrics.get("reused_from") == rid
+    assert "saved_to" not in again.metrics
+    before = sorted(p.name for p in folder.iterdir())
+    monkeypatch.setattr("mosaic.core.runtime.server_mode", lambda: True)
+    served = get_render(
+        project,
+        _render(project, control, edit_id, v.version, "final", False, save_to=str(folder)),
+    )
+    monkeypatch.undo()
+    assert served is not None
+    assert "saved_to" not in served.metrics
+    assert sorted(p.name for p in folder.iterdir()) == before
     with project.db.session() as s:
         edit = s.get(Edit, edit_id)
         assert edit is not None

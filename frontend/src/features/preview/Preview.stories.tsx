@@ -3,8 +3,9 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { EditFacts } from "@/components/edit/EditFacts";
 import sample from "@/stories/assets/sample.mp4";
 
-import { BEATS, EDIT, REPORT, renderRow, FINDINGS } from "./fixtures";
+import { BEATS, EDIT, EXPORT_OPTIONS, FINDINGS, REPORT, renderRow } from "./fixtures";
 import { factsRows } from "./model";
+import { ExportDialog, type ExportDialogProps } from "./ExportDialog";
 import { PreviewView, type PreviewViewProps } from "./PreviewView";
 import { ReportPanel, type ReportPanelProps } from "./ReportPanel";
 
@@ -79,3 +80,18 @@ export const ReportNothingRejected: Story = {
 };
 
 export const Facts: Story = { name: "EditFacts", render: () => <div className="w-[880px] bg-bg p-4"><EditFacts rows={factsRows(EDIT.facts)} /></div> };
+
+const exportDialog = (p: Partial<ExportDialogProps>) => (
+  <div className="h-[900px] w-[1368px]">
+    <ExportDialog open onOpenChange={noop} title="Costa Rica — 5 min cinematic" options={EXPORT_OPTIONS} onRender={noop} onChooseFolder={() => Promise.resolve(null)} {...p} />
+  </div>
+);
+export const RenderFinal: Story = { name: "S19 Render final", render: () => exportDialog({}) };
+export const RenderFinalNoHevc: Story = {
+  name: "S19 Encoder unavailable",
+  render: () => exportDialog({ options: { ...EXPORT_OPTIONS, presets: { ...EXPORT_OPTIONS.presets, hevc: { ...EXPORT_OPTIONS.presets.hevc, available: false, encoder: null, reason: "No HEVC encoder works on this computer." } } } }),
+};
+export const RenderFinalFolder: Story = { name: "S19 Folder can't be written", render: () => exportDialog({ error: "That folder can't be written to. Choose another one." }) };
+export const RenderFinalServer: Story = { name: "S19 Server", render: () => exportDialog({ options: { ...EXPORT_OPTIONS, save_to: { default: "/srv/mosaic/costa-rica/renders", can_choose: false } }, onChooseFolder: undefined }) };
+export const RenderFinalLoading: Story = { name: "S19 Loading", render: () => exportDialog({ options: undefined }) };
+export const RenderFinalLight: Story = { name: "S19 Light", globals: { theme: "light" }, render: () => exportDialog({}) };

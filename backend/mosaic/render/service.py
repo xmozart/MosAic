@@ -56,10 +56,12 @@ def create_render(
     resolution: str | None = None,
     loudness: str | None = None,
     sidecars: tuple[str, ...] = (),
+    save_to: str | None = None,
 ) -> int:
     """A render of ``version``: a preview (720p H.264 from proxies) or a final from the
     originals in ``codec`` at ``resolution`` (else the request's), with ``sidecars``
-    written beside it (ADR 0084). ``LookupError`` for an unknown version; ``RuntimeError``
+    written beside it (ADR 0084), and copied into ``save_to`` when done (ADR 0091).
+    ``LookupError`` for an unknown version; ``RuntimeError``
     when no encoder for the codec works here."""
     unknown = set(sidecars) - set(SIDECARS)
     if unknown:
@@ -96,6 +98,7 @@ def create_render(
                     ("resolution", resolution),
                     ("loudness", loudness),
                     ("sidecars", list(dict.fromkeys(sidecars))),
+                    ("save_to", save_to),  # S19: copied there when done (ADR 0091)
                 )
                 if val
             }
@@ -227,7 +230,10 @@ def cancel_render(
 
 
 def rerender(project: Project, store: JobStore, render_id: int) -> int:
-    """A new render of the same version and kind (S20 Re-render); returns its id."""
+    """A new render of the same version and kind (S20 Re-render); returns its id. A server
+    never repeats a desktop's Save to (ADR 0091)."""
+    from mosaic.core.runtime import server_mode
+
     with project.db.session() as s:
         r = _row(s, render_id)
         if render_state(r.status, job_status(store, r.job_id)) == "pending":
@@ -235,7 +241,7 @@ def rerender(project: Project, store: JobStore, render_id: int) -> int:
         edit_id, version = r.edit_id, r.version
         p = r.profile
         kind, lossless = str(p["kind"]), bool(p.get("lossless"))
-    # The same export: its codec, resolution, loudness and sidecars (ADR 0084).
+    # The same export: its codec, resolution, loudness, sidecars and folder (ADR 0084, 0091).
     return create_render(
         project,
         edit_id,
@@ -246,6 +252,7 @@ def rerender(project: Project, store: JobStore, render_id: int) -> int:
         resolution=p.get("resolution"),
         loudness=p.get("loudness"),
         sidecars=tuple(p.get("sidecars", ())),
+        save_to=None if server_mode() else p.get("save_to"),
     )
 
 

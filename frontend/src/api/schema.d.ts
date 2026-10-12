@@ -418,6 +418,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/edits/{eid}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Options
+         * @description S19: the version's length and defaults, each preset's size and time at each
+         *     resolution and whether it can be encoded here, and where files go (ADR 0091).
+         */
+        get: operations["export_options_api_edits__eid__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/edits/{eid}/findings": {
         parameters: {
             query?: never;
@@ -2224,6 +2245,8 @@ export interface components {
             loudness?: ("web" | "tv") | null;
             /** Resolution */
             resolution?: ("720p" | "1080p" | "1440p" | "4k") | null;
+            /** Save To */
+            save_to?: string | null;
             /** Sidecars */
             sidecars?: ("edl" | "srt" | "report")[];
             /** Version */
@@ -3083,6 +3106,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_options_api_edits__eid__export_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

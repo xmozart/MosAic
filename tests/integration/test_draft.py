@@ -1370,3 +1370,51 @@ def test_regenerate_with_fixes_applies_them_then_regenerates_the_beats_left(
     client.post(f"/api/edits/{eid}/findings/ignore-all")
     nothing = client.post(f"/api/edits/{eid}/findings/regenerate")
     assert nothing.status_code == 422
+
+
+def test_export_options_and_the_save_to_folder(
+    drafted: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S19 (ADR 0091): each preset's size at each resolution and whether it can be encoded
+    here, the version's defaults; "Save to" takes an existing folder this app can write
+    to, on the desktop only."""
+    _, _, client, eid = drafted
+    got = client.get(f"/api/edits/{eid}/export").json()
+    assert set(got["presets"]) == {"h264", "hevc", "prores"}
+    for codec, p in got["presets"].items():
+        assert set(p["bytes"]) == {"720p", "1080p", "1440p", "4k"}
+        sizes = [p["bytes"][r] for r in ("720p", "1080p", "1440p", "4k")]
+        assert sizes == sorted(sizes), codec
+        assert sizes[0] > 0
+        assert isinstance(p["available"], bool)
+        assert (p["reason"] is None) == p["available"]
+    h264, hevc, prores = (got["presets"][c]["bytes"]["1080p"] for c in ("h264", "hevc", "prores"))
+    assert hevc < h264 < prores
+    assert got["resolution"] in {"720p", "1080p", "1440p", "4k"}
+    assert got["save_to"]["can_choose"] is True
+    assert client.get(f"/api/edits/{eid}/export", params={"version": 99}).status_code == 404
+
+    def render(save_to: str) -> Any:
+        return client.post(
+            "/api/renders",
+            json={"edit_id": eid, "final": True, "codec": "h264", "save_to": save_to},
+        )
+
+    assert render(str(tmp_path / "nope")).status_code == 422
+    assert render("relative/folder").status_code == 422
+    project = drafted[0]
+    among = project.root / "exports-here"
+    among.mkdir(exist_ok=True)
+    try:
+        inside = render(str(among))
+        assert inside.status_code == 422, "never among the footage"
+        assert "outside your footage" in inside.text
+    finally:
+        among.rmdir()
+    monkeypatch.setattr("mosaic.storage.placement.is_writable", lambda p: False)
+    refused = render(str(tmp_path))
+    assert refused.status_code == 422
+    assert "can't be written" in refused.text
+    monkeypatch.undo()
+    monkeypatch.setattr("mosaic.core.runtime.server_mode", lambda: True)
+    assert render(str(tmp_path)).status_code == 422

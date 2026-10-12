@@ -9,6 +9,7 @@ Previews read the proxies (720p); final renders read the original files (1080p).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -67,6 +68,8 @@ from mosaic.storage.models_project import (
     MediaStream,
     Render,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _render(ctx: TaskContext) -> tuple[Render, EditVersion]:
@@ -720,7 +723,9 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     else:
         metrics = _assemble(ctx, binaries, r, v, keys, audio_keys, out)
     metrics = metrics | {"assembly_key": akey}
-    metrics.pop("sidecars", None)  # a reused render's own, never the earlier one's
+    # A reused render's own sidecars and saved copy, never the earlier one's.
+    for key in ("sidecars", "saved_to", "save_error"):
+        metrics.pop(key, None)
     if r.profile.get("sidecars"):  # the export's other files, beside the video (ADR 0084)
         metrics["sidecars"] = _sidecars(ctx, r, v, out)
     with ctx.write() as s:
@@ -734,7 +739,69 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
         row.path = str(out.relative_to(ctx.project.workspace))
         row.metrics = metrics
         row.finished_at = now_iso()
+    from mosaic.core.runtime import server_mode
+
+    # S19 "Save to": a copy there; the render stays done. Never on a server, even for a
+    # render queued by a desktop on the same project (ADR 0091).
+    if r.profile.get("save_to") and not server_mode():
+        saved = save_copies(ctx, r, out, Path(r.profile["save_to"]))
+        with ctx.write() as s:
+            row = s.get(Render, r.id)
+            assert row is not None
+            row.metrics = row.metrics | saved
+        metrics = metrics | saved
     return {"render_id": r.id, "path": str(out), **metrics}
+
+
+def export_stem(ctx: TaskContext, r: Render) -> str:
+    """ "Costa Rica — 5 min cinematic v3": the edit's name and version, safe as a file
+    name on every platform."""
+    from mosaic.storage.models_project import Edit
+
+    with ctx.project.db.session() as s:
+        edit = s.get(Edit, r.edit_id)
+        name = (edit.name if edit is not None and edit.name else None) or f"edt_{r.edit_id:04d}"
+    safe = "".join(ch if ch.isalnum() or ch in " -_.,()—" else "_" for ch in name).strip(" .")
+    return f"{safe[:120] or 'Edit'} v{r.version}"
+
+
+def _copy_new(src: Path, dest: Path) -> Path:
+    """``src`` copied to ``dest``, or to "name (2).ext" and on when that exists: a file
+    already in the folder is never overwritten."""
+    for n in range(1, 1000):
+        target = dest if n == 1 else dest.with_name(f"{dest.stem} ({n}){dest.suffix}")
+        try:
+            fout = target.open("xb")
+        except FileExistsError:
+            continue
+        try:
+            with fout, src.open("rb") as fin:
+                shutil.copyfileobj(fin, fout, 1024 * 1024)
+        except OSError:
+            target.unlink(missing_ok=True)  # never leave half a file in the owner's folder
+            raise
+        return target
+    raise FileExistsError(f"{dest.name}: too many copies in that folder")
+
+
+def save_copies(ctx: TaskContext, r: Render, out: Path, folder: Path) -> dict[str, Any]:
+    """The video and its sidecars copied into ``folder`` (ADR 0091): ``saved_to`` with the
+    video's path, or ``save_error`` when it could not be written (the render is kept)."""
+    stem = export_stem(ctx, r)
+    made: list[Path] = []
+    try:
+        video = _copy_new(out, folder / f"{stem}{out.suffix}")
+        made.append(video)
+        for part in r.profile.get("sidecars") or []:
+            side = sidecar_path(out, part)
+            if side.exists():
+                made.append(_copy_new(side, folder / f"{video.stem}{SIDECAR_SUFFIX[part]}"))
+    except OSError as exc:
+        for path in made:  # all of the export or none of it
+            path.unlink(missing_ok=True)
+        log.warning("render %s: couldn't save a copy in %s: %s", r.id, folder, exc)
+        return {"save_error": f"Couldn't save a copy in {folder}: {exc.strerror or exc}"}
+    return {"saved_to": str(video)}
 
 
 SIDECAR_SUFFIX = {"edl": ".edl.json", "srt": ".srt", "report": ".report.txt"}
