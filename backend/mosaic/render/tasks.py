@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import select
 
 from mosaic.core.clock import now_iso
-from mosaic.core.time import parse_rational
+from mosaic.core.time import Rounding, parse_rational, round_fraction
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
 from mosaic.library.devices import asset_lut
@@ -25,10 +25,11 @@ from mosaic.media.ffmpeg import render as rb
 from mosaic.media.ffmpeg.builders import (
     audio_sample_count,
     ebur128_measure,
+    ffprobe_json,
     ffprobe_stream_counts,
 )
 from mosaic.media.ffmpeg.capabilities import FFmpegBinaries
-from mosaic.media.ffmpeg.run import run
+from mosaic.media.ffmpeg.run import FFmpegError, run
 from mosaic.media.proxy import load_proxy
 from mosaic.media.tools import media_tools
 from mosaic.render.plan import (
@@ -551,6 +552,64 @@ def _audio_chunk(
     return key
 
 
+def _music_mix(
+    ctx: TaskContext,
+    binaries: FFmpegBinaries,
+    v: EditVersion,
+    sound: Path,
+    mix: Path,
+    samples: int,
+) -> None:
+    """The edit's sound with its music track under it, as one exact-length file."""
+    from mosaic.core.runtime import server_mode
+    from mosaic.editing.music import DUCK_DB, DUCK_RAMP, MusicPathError, check_path, speech_windows
+    from mosaic.editing.request import Music
+    from mosaic.storage import media_roots
+
+    music = Music.model_validate(v.request["music"])
+    try:
+        track = check_path(music.path)
+        if server_mode():  # still inside a media root now (ADR 0035), not only when saved
+            if ctx.control is None:
+                raise PermanentError("music track: the media roots can't be checked")
+            media_roots.confine(ctx.control, str(track))
+    except (MusicPathError, media_roots.PathRefusedError) as exc:
+        raise PermanentError(f"music track: {exc}") from None
+    if not _has_audio(binaries, track):
+        raise PermanentError(f"music track {track.name}: it has no audio we can read")
+    rate = parse_rational(v.rate)
+    ramp_frames = round_fraction(2 * DUCK_RAMP * rate, Rounding.CEIL)
+    duck = [
+        (Fraction(a) / rate, Fraction(b) / rate) for a, b in speech_windows(v.timeline, ramp_frames)
+    ]
+    spec = rb.MusicSpec(
+        audio=sound,
+        audio_concat=sound.suffix == ".txt",
+        music=track,
+        samples=samples,
+        level_db=music.level_db,
+        fade_in=Fraction(music.fade_in_ms, 1000),
+        fade_out=Fraction(music.fade_out_ms, 1000),
+        duck=duck,
+        duck_db=DUCK_DB,
+        ramp=DUCK_RAMP,
+        out=mix,
+    )
+    run(binaries, rb.music_mix(spec))
+    got = stream_counts(binaries, mix)[1]
+    if got != samples:
+        raise PermanentError(f"music mix: {got} samples, expected {samples}")
+
+
+def _has_audio(binaries: FFmpegBinaries, path: Path) -> bool:
+    """Whether ffprobe reads an audio stream in ``path`` (a file it can't read has none)."""
+    try:
+        streams = json.loads(run(binaries, ffprobe_json(path)).stdout).get("streams", [])
+    except (FFmpegError, ValueError):
+        return False
+    return any(st.get("codec_type") == "audio" for st in streams)
+
+
 _LOUDNORM_JSON = re.compile(r"\{[^{}]*\"input_i\"[^{}]*\}", re.S)
 _EBUR128 = re.compile(r"I:\s+(-?[\d.]+|-inf) LUFS.*?Peak:\s+(-?[\d.]+|-inf) dBFS", re.S)
 
@@ -648,12 +707,29 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     rate = parse_rational(v.rate)
     total_frames = int(v.timeline["duration"]["frames"])
     total_samples = samples_for(total_frames, rate)
-    measured = parse_loudnorm(run(binaries, rb.loudnorm_measure(audio_list or list_file)).stderr)
+    sound, concat = audio_list or list_file, True
+    mix = out.with_suffix(".music.mov")
     tmp = out.with_name(out.stem + ".part" + out.suffix)
-    run(
-        binaries,
-        rb.assemble(list_file, tmp, measured, prof.container, total_samples, rate, audio_list),
-    )
+    try:
+        if v.request.get("music"):  # the music bed goes under the edit's sound (ADR 0080)
+            _music_mix(ctx, binaries, v, sound, mix, total_samples)
+            sound, concat = mix, False
+        measured = parse_loudnorm(run(binaries, rb.loudnorm_measure(sound, concat)).stderr)
+        run(
+            binaries,
+            rb.assemble(
+                list_file,
+                tmp,
+                measured,
+                prof.container,
+                total_samples,
+                rate,
+                None if sound == list_file else sound,
+                concat,
+            ),
+        )
+    finally:
+        mix.unlink(missing_ok=True)
     frames, samples = stream_counts(binaries, tmp)
     if prof.container == "mp4":
         samples = decoded_samples(binaries, tmp)

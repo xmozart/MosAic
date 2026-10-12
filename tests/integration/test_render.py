@@ -791,3 +791,165 @@ def test_title_cards_open_and_close_the_edit_and_render_frame_exact(
     card = frames[45]
     assert card[: h // 4].max() < 30, "a dark ground"
     assert card[h // 3 : 2 * h // 3].max() > 200, "the name, drawn in the middle"
+
+
+def test_a_music_bed_plays_under_the_edit_and_ducks_under_dialogue(
+    edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries, tmp_path: Any
+) -> None:
+    """ADR 0080: a 1 kHz track, shorter than the edit, loops under it at its level and
+    drops by about 12 dB while the edit plays dialogue. Frames and samples stay exact."""
+    import copy
+
+    import numpy as np
+
+    from mosaic.media.ffmpeg.builders import audio_pcm
+    from mosaic.media.ffmpeg.command import FFmpegCommand, InputSpec, OutputSpec, media_path
+
+    project, control, edit_id, version = edit
+    track = tmp_path / "tone.wav"
+    run(
+        ffmpeg_bin,
+        FFmpegCommand(
+            inputs=[
+                InputSpec("sine=frequency=1000:sample_rate=48000:duration=7", [("-f", "lavfi")])
+            ],
+            outputs=[OutputSpec(media_path(track), [("-ac", 2), ("-c:a", "pcm_s16le")])],
+            description="a 1 kHz music track",
+        ),
+    )
+    v = get_version(project, edit_id, version)
+    rate = parse_rational(v.rate)
+    tl = copy.deepcopy(v.timeline)
+    events = tl["tracks"][0]["events"]
+    talk = next(
+        i
+        for i, e in enumerate(events)
+        if e["kind"] == "video"
+        and e["timeline_in"]["frames"] > 120
+        and e["timeline_out"]["frames"] - e["timeline_in"]["frames"] > 90
+        and e["timeline_out"]["frames"] < tl["duration"]["frames"] - 180
+    )
+    for e in events:  # one dialogue window only: the "outside" window never ducks
+        if e["audio"].get("intent") == "dialogue":
+            e["audio"]["intent"] = "natural_sound"
+    events[talk]["audio"] |= {"intent": "dialogue", "source_enabled": True}
+    request = v.request | {
+        "music": {"path": str(track), "level_db": -12, "fade_in_ms": 500, "fade_out_ms": 500}
+    }
+    with project.write() as s:
+        row = s.scalar(
+            select(EditVersion).where(
+                EditVersion.edit_id == edit_id, EditVersion.version == version
+            )
+        )
+        assert row is not None
+        top = max(s.scalars(select(EditVersion.version).where(EditVersion.edit_id == edit_id)))
+        scored = EditVersion(
+            edit_id=edit_id,
+            version=top + 1,
+            parent_version=version,
+            creator="user",
+            reason="music test",
+            key=row.key + "-music",
+            request=request,
+            rate=row.rate,
+            beats=row.beats,
+            timeline=tl,
+            metrics=row.metrics,
+            findings=row.findings,
+            provenance_id=row.provenance_id,
+            created_at=row.created_at,
+        )
+        s.add(scored)
+        s.flush()
+        new = scored.version
+    r = get_render(project, _render(project, control, edit_id, new, "final", True))
+    assert r is not None
+    path = output_path(project.workspace, r)
+    total = tl["duration"]["frames"]
+    assert _frames(ffmpeg_bin, path) == total
+    assert _samples(ffmpeg_bin, path) == samples_for(total, rate)
+    plain = get_render(project, _render(project, control, edit_id, version, "final", True))
+    assert plain is not None
+    sr = 8000
+
+    def pcm(file: Any) -> np.ndarray:
+        return np.frombuffer(run(ffmpeg_bin, audio_pcm(file, sr, 1)).stdout, dtype="<f4")
+
+    def at_1k(x: np.ndarray, a: int, b: int) -> float:
+        seg = x[round(a / rate * sr) : round(b / rate * sr)]
+        spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg))))
+        freqs = np.fft.rfftfreq(len(seg), 1 / sr)
+        return float(spec[(freqs > 980) & (freqs < 1020)].max())
+
+    a, b = events[talk]["timeline_in"]["frames"], events[talk]["timeline_out"]["frames"]
+    inside = (a + 15, b - 15)
+    outside = (60, a - 30) if a - 30 - 60 > 30 else (b + 30, b + 90)
+    heard, without = pcm(path), pcm(output_path(project.workspace, plain))
+    assert at_1k(heard, *outside) > 20 * at_1k(without, *outside), "the music plays"
+    # After loudness normalization (which may adapt its gain over time) the duck is
+    # still clearly there; the mixer's own depth is checked exactly below.
+    drop = 20 * np.log10(at_1k(heard, *inside) / at_1k(heard, *outside))
+    assert -20 < drop < -8, drop
+
+
+def test_the_music_mixer_ducks_exactly_twelve_db(ffmpeg_bin: FFmpegBinaries, tmp_path: Any) -> None:
+    """ADR 0080: over a silent edit, a 1 kHz track sits at its level, drops by exactly
+    12 dB inside a speech window and comes back after it; the mix is sample exact."""
+    import numpy as np
+
+    from mosaic.media.ffmpeg import render as rb
+    from mosaic.media.ffmpeg.builders import audio_pcm
+    from mosaic.media.ffmpeg.command import FFmpegCommand, InputSpec, OutputSpec, media_path
+
+    def make(name: str, source: str) -> Any:
+        out = tmp_path / name
+        run(
+            ffmpeg_bin,
+            FFmpegCommand(
+                inputs=[InputSpec(source, [("-f", "lavfi")])],
+                outputs=[OutputSpec(media_path(out), [("-ac", 2), ("-c:a", "pcm_s16le")])],
+                description=name,
+            ),
+        )
+        return out
+
+    from mosaic.render.tasks import _has_audio
+
+    silent = make("edit.wav", "anullsrc=r=48000:cl=stereo:d=10")
+    tone = make("tone.wav", "sine=frequency=1000:sample_rate=48000:duration=3")
+    assert _has_audio(ffmpeg_bin, tone)
+    (tmp_path / "notes.mp3").write_text("not audio")
+    assert not _has_audio(ffmpeg_bin, tmp_path / "notes.mp3"), "refused with a plain message"
+    mix = tmp_path / "mix.mov"
+    run(
+        ffmpeg_bin,
+        rb.music_mix(
+            rb.MusicSpec(
+                audio=silent,
+                audio_concat=False,
+                music=tone,
+                samples=480000,
+                level_db=-6,
+                fade_in=Fraction(0),
+                fade_out=Fraction(0),
+                duck=[(Fraction(4), Fraction(6))],
+                duck_db=-12,
+                ramp=Fraction(1, 4),
+                out=mix,
+            )
+        ),
+    )
+    x = np.frombuffer(run(ffmpeg_bin, audio_pcm(mix, 48000, 1)).stdout, dtype="<f4")
+    assert len(x) == 480000, "exact samples, the 3 s track looped"
+
+    def rms(a: float, b: float) -> float:
+        return float(np.sqrt(np.mean(x[int(a * 48000) : int(b * 48000)] ** 2)))
+
+    # lavfi's sine has a peak of 1/8 (-18 dBFS); at -6 dB it peaks at -24 dBFS. A sine's
+    # peak is √2 × its RMS.
+    level = 20 * np.log10(rms(1, 3) * np.sqrt(2))
+    assert abs(level - -24) < 0.5, level
+    assert abs(20 * np.log10(rms(4.5, 5.5) / rms(1, 3)) - -12) < 0.3
+    assert abs(20 * np.log10(rms(7, 9) / rms(1, 3))) < 0.3, "back up after the speech"
+    assert abs(20 * np.log10(rms(3.3, 3.6) / rms(1, 3))) < 0.3, "the loop has no gap"

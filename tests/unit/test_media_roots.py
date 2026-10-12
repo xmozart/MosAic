@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -329,3 +330,43 @@ def test_roots_from_the_environment_take_commas_or_colons(
     control = ControlDB()
     media_roots.seed_from_env(control)
     assert sorted(r.path.name for r in media_roots.roots(control)) == ["a", "b", "c"]
+
+
+def test_a_music_track_must_be_a_readable_file_inside_the_media_roots(
+    tree: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0080: a server reads a music track only inside its media roots and keeps the
+    canonical path; a missing or relative track is refused in any mode."""
+    from mosaic.storage.models_project import Edit
+    from mosaic.storage.projects import init_project, open_project
+
+    client, h = _signed_in(monkeypatch)
+    _add_root(client, h, tree["root"])
+    (tree["outside"] / "song.mp3").write_bytes(b"ID3")
+    (tree["root"] / "Iceland" / "song.mp3").write_bytes(b"ID3")
+    svc = client.app.state.services  # type: ignore[attr-defined]
+    project = init_project(svc.control, svc.principal, tree["trip"])
+    pid = project.id
+    project.close()
+    url = f"/api/projects/{pid}/edits"
+
+    def create(path: str) -> Any:
+        return client.post(
+            url, json={"request": {"duration_s": 30, "music": {"path": path}}}, headers=h
+        )
+
+    for bad in (str(tree["outside"] / "song.mp3"), str(tree["root"] / "escape" / "song.mp3")):
+        r = create(bad)
+        assert r.status_code == 403, (bad, r.status_code, r.text)
+        assert str(tree["outside"]) not in r.text
+    assert create(str(tree["trip"] / "missing.mp3")).status_code == 422
+    ok = create(str(tree["root"] / "inside-link" / "song.mp3"))
+    assert ok.status_code == 202, ok.text
+    project = open_project(svc.control, svc.principal, tree["trip"])
+    with project.db.session() as s:
+        stored = s.query(Edit).one().request["music"]["path"]
+    project.close()
+    assert stored == str((tree["root"] / "Iceland" / "song.mp3").resolve()), "canonical"
+    desktop, _ = _signed_in(monkeypatch, "desktop")
+    r = desktop.post(url, json={"request": {"duration_s": 30, "music": {"path": "song.mp3"}}})
+    assert r.status_code == 422

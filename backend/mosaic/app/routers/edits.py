@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, ValidationErr
 from sqlalchemy import select
 
 from mosaic.ai.registry import embedder
+from mosaic.app.auth import server_mode
 from mosaic.app.deps import principal, services
 from mosaic.app.services import Services
 from mosaic.core.principal import Principal, check
@@ -24,6 +25,8 @@ from mosaic.editing import estimate as edit_estimate
 from mosaic.editing import presets
 from mosaic.editing.cards import PAGE, edit_cards, render_rows, version_facts
 from mosaic.editing.generate import version_json
+from mosaic.editing.music import MusicPathError
+from mosaic.editing.music import check_path as check_music_path
 from mosaic.editing.request import STORY_PRESETS, Category, EditRequest
 from mosaic.editing.service import (
     EditNotFoundError,
@@ -34,6 +37,7 @@ from mosaic.editing.service import (
     resolve_edit,
     submit_generate,
 )
+from mosaic.storage import media_roots
 from mosaic.storage.config import ConfigService
 from mosaic.storage.models_project import Edit, EditVersion
 from mosaic.storage.projects import (
@@ -178,12 +182,32 @@ def _request(raw: dict[str, Any]) -> EditRequest:
         ) from None
 
 
+def _music(svc: Services, request: EditRequest) -> EditRequest:
+    """The music track must be a readable file (ADR 0080); a server reads files inside its
+    media roots only (ADR 0035), and stores the canonical path."""
+    if request.music is None:
+        return request
+    path = request.music.path
+    if server_mode():
+        try:
+            _, canonical = media_roots.confine(svc.control, path)
+        except media_roots.PathRefusedError as exc:
+            raise HTTPException(403, str(exc)) from None
+        path = str(canonical)
+    try:
+        check_music_path(path)
+    except MusicPathError as exc:
+        raise HTTPException(422, str(exc)) from None
+    music = request.music.model_copy(update={"path": path})
+    return request.model_copy(update={"music": music})
+
+
 @router.post("/projects/{pid}/edits", status_code=202)
 def create_and_generate(
     pid: str, body: dict[str, Any], svc: Services = Svc, me: Principal = Me
 ) -> dict[str, Any]:
     check(me, "edits.write", pid)
-    request = _request(body.get("request", body))
+    request = _music(svc, _request(body.get("request", body)))
     with _project(svc, me, pid, write=True) as project:
         edit_id = create_edit(project, request, svc.control, me, body.get("name"))
         job_id = submit_generate(svc.executor, me, project, edit_id)

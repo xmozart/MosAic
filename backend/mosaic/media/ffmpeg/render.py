@@ -387,10 +387,13 @@ def concat_list(paths: list[Path]) -> str:
     return "".join(lines)
 
 
-def loudnorm_measure(list_file: Path) -> FFmpegCommand:
-    """Pass 1 of two-pass loudnorm over the concatenated chunks (JSON on stderr)."""
+def loudnorm_measure(list_file: Path, concat: bool = True) -> FFmpegCommand:
+    """Pass 1 of two-pass loudnorm over the concatenated chunks (JSON on stderr), or over
+    one file (the music mix) without ``concat``."""
     return FFmpegCommand(
-        inputs=[InputSpec(media_path(list_file), [("-f", "concat"), ("-safe", 0)])],
+        inputs=[
+            InputSpec(media_path(list_file), [("-f", "concat"), ("-safe", 0)] if concat else [])
+        ],
         outputs=[
             OutputSpec(
                 "-",
@@ -434,10 +437,12 @@ def assemble(
     total_samples: int,
     rate: Fraction,
     audio_list: Path | None = None,
+    audio_concat: bool = True,
 ) -> FFmpegCommand:
     """Concatenate the chunks: video stream-copied, audio normalized (pass 2, linear) and
     encoded (AAC in MP4; PCM in Matroska for lossless test renders). With ``audio_list``
-    (a version with J- or L-cuts, ADR 0077) the audio is that list's audio chunks."""
+    (a version with J- or L-cuts, ADR 0077) the audio is that list's audio chunks; with
+    ``audio_concat`` false it is one file (the music mix, ADR 0080)."""
     afilters: list[Filter] = []
     if measured is not None:
         afilters.append(
@@ -479,7 +484,10 @@ def assemble(
         opts += [("-c:a", "pcm_s16le"), ("-f", "mov")]
     inputs = [InputSpec(media_path(list_file), [("-f", "concat"), ("-safe", 0)])]
     if audio_list is not None:
-        inputs.append(InputSpec(media_path(audio_list), [("-f", "concat"), ("-safe", 0)]))
+        opts_in: list[tuple[str, OptionValue]] = (
+            [("-f", "concat"), ("-safe", 0)] if audio_concat else []
+        )
+        inputs.append(InputSpec(media_path(audio_list), opts_in))
     return FFmpegCommand(
         inputs=inputs,
         outputs=[OutputSpec(media_path(out), opts)],
@@ -615,4 +623,112 @@ def dissolve_chunk(a: ChunkSpec, b: ChunkSpec, out: Path) -> FFmpegCommand:
         global_options=[("-copyts", None)],
         filter_complex=";".join(chains),
         description=f"dissolve {out.name}",
+    )
+
+
+@dataclass
+class MusicSpec:
+    """The edit's sound with a music track under it (ADR 0080): ``audio`` (a concat list
+    of chunks, or one file) mixed with ``music`` looped to exactly ``samples`` samples, at
+    ``level_db``, faded in and out, and ducked by ``duck_db`` over ``duck`` (start and end
+    seconds) with ``ramp``-second slopes."""
+
+    audio: Path
+    audio_concat: bool
+    music: Path
+    samples: int
+    level_db: int
+    fade_in: Fraction
+    fade_out: Fraction
+    duck: list[tuple[Fraction, Fraction]]
+    duck_db: int
+    ramp: Fraction
+    out: Path
+
+
+def duck_expr(windows: list[tuple[Fraction, Fraction]], duck_db: int, ramp: Fraction) -> str:
+    """A ``volume`` expression over time ``t``: 1 outside the windows, the duck's gain
+    inside, with linear ``ramp``-second slopes either side of each window."""
+    if not windows:
+        return "1"
+    depth = 1 - 10 ** (duck_db / 20)  # transient float inside the builder (invariant 3)
+    r = seconds_expr(ramp)
+    parts = [
+        f"clip(min((t-{seconds_expr(a)}+{r})/{r},({seconds_expr(b)}+{r}-t)/{r}),0,1)"
+        for a, b in windows
+    ]
+    inside = parts[0]
+    for p in parts[1:]:
+        inside = f"max({inside},{p})"
+    return f"1-{depth:.6f}*{inside}"
+
+
+def music_mix(spec: MusicSpec) -> FFmpegCommand:
+    """The mix as PCM in MOV, exactly ``spec.samples`` long: the edit's sound unchanged,
+    the music under it."""
+    total = Fraction(spec.samples, AUDIO_RATE)
+    music = [
+        Filter.of("aresample", str(AUDIO_RATE)),
+        Filter.of("aformat", sample_fmts="fltp", channel_layouts="stereo"),
+        Filter.of("atrim", end_sample=spec.samples),
+        Filter.of("asetpts", "PTS-STARTPTS"),
+        Filter.of("volume", f"{spec.level_db}dB"),
+    ]
+    if spec.fade_in > 0:
+        music.append(Filter.of("afade", t="in", st=0, d=seconds_expr(spec.fade_in)))
+    if spec.fade_out > 0:
+        music.append(
+            Filter.of(
+                "afade",
+                t="out",
+                st=seconds_expr(max(Fraction(0), total - spec.fade_out)),
+                d=seconds_expr(spec.fade_out),
+            )
+        )
+    if spec.duck:
+        music.append(
+            Filter.of(
+                "volume",
+                escape_filter_value(duck_expr(spec.duck, spec.duck_db, spec.ramp)),
+                eval="frame",
+            )
+        )
+    edit = [
+        Filter.of("aresample", str(AUDIO_RATE)),
+        Filter.of("aformat", sample_fmts="fltp", channel_layouts="stereo"),
+        Filter.of("apad", whole_len=spec.samples),
+        Filter.of("atrim", end_sample=spec.samples),
+    ]
+    graph_ = (
+        f"[0:a:0]{chain(*edit)}[e];[1:a:0]{chain(*music)}[m];"
+        "[e][m]"
+        + chain(
+            Filter.of("amix", inputs=2, normalize=0, duration="first"),
+            Filter.of("atrim", end_sample=spec.samples),
+        )
+        + "[aout]"
+    )
+    audio_in: list[tuple[str, OptionValue]] = (
+        [("-f", "concat"), ("-safe", 0)] if spec.audio_concat else []
+    )
+    return FFmpegCommand(
+        inputs=[
+            InputSpec(media_path(spec.audio), audio_in),
+            # The track loops when it is shorter than the edit; it is only read.
+            InputSpec(media_path(spec.music), [("-stream_loop", -1)]),
+        ],
+        outputs=[
+            OutputSpec(
+                media_path(spec.out),
+                [
+                    ("-map", "[aout]"),
+                    ("-c:a", "pcm_s16le"),
+                    ("-ar", AUDIO_RATE),
+                    ("-ac", 2),
+                    ("-f", "mov"),
+                ],
+            )
+        ],
+        filter_complex=graph_,
+        description=f"music mix {spec.out.name}",
     )

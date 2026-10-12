@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.9c, music bed.
+- **Step:** M4.10, critic v2 and findings.
 - **Checks:** full `make ci` per group of related steps, then push (AGENT_WORKFLOW §1). Groups: 7 · 8+9a · 9b+9c · 10+11 · 12+13 · S14+S15 · S16+S17 · S18+S19+S24 · 15.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
@@ -35,7 +35,7 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 8. Cut refiner v2: J- and L-cuts (audio up to 1 s, in frames), speech-aware in/out, separate audio chunks (ADR 0077)
 - [x] 9a. Transitions: dissolves and dips as transition chunks (ADR 0066 mapping; ADR 0078)
 - [x] 9b. Title cards from context only (Pillow and Geist PNGs; the build has no `drawtext`) (ADR 0079)
-- [ ] 9c. Music bed: one track, fades, static level, fixed ducking under speech; path checks
+- [x] 9c. Music bed: one track, fades, static level, fixed ducking under speech; path checks (ADR 0080)
 - [ ] 10. Critic v2 and findings: deterministic checks, the optional AI critic (event ids only), apply/ignore/apply-all creating child versions
 - [ ] 11. Compare and revert; render reuse by assembly key (acceptance 5)
 - [ ] 12. Final render profiles and exports: H.264/HEVC hardware, ProRes 422 (VideoToolbox, then `prores_ks`), 1080p/4K, SRT, report, EDL JSON

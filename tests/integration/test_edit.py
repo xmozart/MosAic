@@ -15,6 +15,7 @@ from mosaic.core.timecheck import find_float_times
 from mosaic.editing.generate import export_path
 from mosaic.editing.request import EditRequest
 from mosaic.editing.service import get_version, report, report_text
+from mosaic.editing.titles import shot_events
 from mosaic.jobs.executor import LocalExecutor
 from mosaic.jobs.store import JobStore
 from mosaic.storage.control import ControlDB
@@ -135,7 +136,7 @@ def test_edit_api(edited: tuple[Project, ControlDB, int]) -> None:
     body = client.get(f"/api/edits/{eid}").json()
     assert body["timeline"]["tracks"][0]["events"]
     facts = body["facts"]  # S17 EditFacts (ADR 0049)
-    assert facts["shots"] == len(body["timeline"]["tracks"][0]["events"])
+    assert facts["shots"] == len(shot_events(body["timeline"]["tracks"][0]["events"]))
     assert facts["duration"] == body["timeline"]["duration"]
     assert facts["target"]["frames"] == body["metrics"]["target_frames"]
     assert facts["beats"] == len(body["beats"])
@@ -165,7 +166,7 @@ def test_edit_api(edited: tuple[Project, ControlDB, int]) -> None:
 def test_selection_refs_are_unique_and_match(edited: tuple[Project, ControlDB, int]) -> None:
     project, _, edit_id = edited
     v = get_version(project, edit_id)
-    events = v.timeline["tracks"][0]["events"]
+    events = shot_events(v.timeline["tracks"][0]["events"])  # cards select nothing
     refs = [e["origin"]["selection_ref"] for e in events]
     assert len(refs) == len(set(refs))
     selections = v.timeline["selections"]
