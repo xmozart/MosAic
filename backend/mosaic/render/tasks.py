@@ -35,13 +35,20 @@ from mosaic.render.plan import (
     AUDIO_VERSION,
     RENDER_VERSION,
     STILL_VERSION,
+    TRANSITION_VERSION,
     Profile,
     SourceFile,
     audio_key,
     audio_span,
     chunk_key,
+    dips,
+    dissolve_frames,
+    dissolve_key,
+    dissolve_sides,
+    fades,
     framing,
     is_split,
+    picture,
     pieces,
     samples_for,
     still_key,
@@ -141,10 +148,22 @@ def _photo_file(ctx: TaskContext, asset_id: int) -> SourceFile:
     return SourceFile(ctx.project.root / mf.rel_path, 0, 0, Fraction(0), mf.fingerprint)
 
 
+def _picture(v: EditVersion, index: int) -> dict[str, Any]:
+    """What event ``index``'s own chunk renders: the event less its dissolves (ADR 0078)."""
+    return picture(v.timeline, index)
+
+
 def _chunk_plan(
     ctx: TaskContext, r: Render, v: EditVersion, index: int
 ) -> tuple[str, list[SourceFile]]:
-    e = _event(v, index)
+    return _video_key(ctx, r, v, _picture(v, index))
+
+
+def _video_key(
+    ctx: TaskContext, r: Render, v: EditVersion, e: dict[str, Any]
+) -> tuple[str, list[SourceFile]]:
+    """The chunk key and source files of a picture: an event, part of one, or one side
+    of a dissolve."""
     prof = _profile(r)
     if e.get("kind") == "still":  # a photo (ADR 0075): its file, never a proxy
         photo = _photo_file(ctx, int(e["asset_id"][4:]))
@@ -168,13 +187,12 @@ def _chunk_plan(
 def _spec(
     r: Render,
     v: EditVersion,
-    index: int,
+    e: dict[str, Any],
     files: list[SourceFile],
     asset: Asset,
     out: Path,
     full_range: bool,
 ) -> rb.ChunkSpec:
-    e = _event(v, index)
     prof = _profile(r)
     rate = parse_rational(v.rate)
     assert asset.tb is not None
@@ -203,8 +221,10 @@ def _spec(
         audio_index=audio_index,
         audio_enabled=bool(audio["source_enabled"]),
         gain_db=int(audio["gain_db"]),
-        fade_in=Fraction(int(audio["fade_in_frames"])) / rate,
-        fade_out=Fraction(int(audio["fade_out_frames"])) / rate,
+        fade_in=fades(e, v.rate)[0],
+        fade_out=fades(e, v.rate)[1],
+        dip_in=dips(e).get("dip_in", 0),
+        dip_out=dips(e).get("dip_out", 0),
         width=prof.width,
         height=prof.height,
         framing=framing(
@@ -259,14 +279,19 @@ def _chunk_done(ctx: TaskContext) -> bool:
     key, _ = _chunk_plan(ctx, r, v, index)
     if not ctx.project.artifacts.exists("chunk", key):
         return False
-    return not is_split(v.timeline) or ctx.project.artifacts.exists(
+    if is_split(v.timeline) and not ctx.project.artifacts.exists(
         "chunk", _audio_plan(ctx, r, v, index)[0]
+    ):
+        return False
+    return not dissolve_frames(_event(v, index)) or ctx.project.artifacts.exists(
+        "chunk", _dissolve_plan(ctx, r, v, index)[0]
     )
 
 
 @task("render.chunk", is_done=_chunk_done)
 def chunk_task(ctx: TaskContext) -> dict[str, Any]:
-    """The event's chunk and, in a version with J- or L-cuts, its audio chunk."""
+    """The event's chunk; in a version with J- or L-cuts, its audio chunk; and the
+    dissolve into the next event, if there is one (ADR 0078)."""
     binaries, caps = media_tools()
     r, v = _render(ctx)
     index = int(ctx.params["index"])
@@ -276,6 +301,8 @@ def chunk_task(ctx: TaskContext) -> dict[str, Any]:
         out = _event_chunk(ctx, r, v, index, key, files, binaries, caps)
     if is_split(v.timeline):
         out["audio"] = _audio_chunk(ctx, r, v, index, binaries)
+    if dissolve_frames(_event(v, index)):
+        out["dissolve"] = _dissolve_chunk(ctx, r, v, index, binaries, caps)
     return out
 
 
@@ -291,8 +318,48 @@ def _event_chunk(
 ) -> dict[str, Any]:
     if _event(v, index).get("kind") == "still":
         return _still_chunk(ctx, r, v, index, key, files[0], binaries)
+    prov = _provenance(ctx, key, "render.chunk", RENDER_VERSION)
+    with ctx.project.artifacts.writer("chunk", key, ".mov", provenance_id=prov) as tmp:
+        spec = _side(ctx, r, v, _picture(v, index), files, caps, tmp)
+        result = run(binaries, rb.chunk(spec))
+        # Never cache a wrong chunk: exact frames and samples, or the task fails.
+        _check(binaries, tmp, spec.frames, spec.samples, f"chunk {index}")
+    return {"chunk": key, "ms": result.duration_ms}
+
+
+def _provenance(ctx: TaskContext, key: str, kind: str, version: str) -> int:
+    with ctx.write() as s:
+        return provenance.record(
+            s,
+            provenance.ProvenanceInfo(
+                kind=kind,
+                algorithm_version=version,
+                input_keys=[key],
+                config_hash=key.rsplit("-", 1)[-1][:16],
+            ),
+        )
+
+
+def _check(binaries: FFmpegBinaries, path: Path, frames: int, samples: int, what: str) -> None:
+    got = stream_counts(binaries, path)
+    if got != (frames, samples):
+        raise PermanentError(
+            f"{what}: rendered {got[0]} frames / {got[1]} samples, expected {frames} / {samples}"
+        )
+
+
+def _side(
+    ctx: TaskContext,
+    r: Render,
+    v: EditVersion,
+    e: dict[str, Any],
+    files: list[SourceFile],
+    caps: Any,
+    out: Path,
+) -> rb.ChunkSpec:
+    """The chunk spec of a video picture ``e``, with its LUT or tone mapping."""
     with ctx.project.db.session() as s:
-        asset = s.get(Asset, int(_event(v, index)["asset_id"][4:]))
+        asset = s.get(Asset, int(e["asset_id"][4:]))
         assert asset is not None
         s.expunge(asset)
     with ctx.project.db.session() as s:
@@ -300,30 +367,41 @@ def _event_chunk(
     hdr_source = asset.color_hint in ("hlg", "pq") and r.profile["kind"] == "final"
     if hdr_source and not lut and not caps.can_tonemap:
         raise PermanentError("HDR source needs zscale + tonemap; this FFmpeg build lacks them")
-    with ctx.write() as s:
-        prov = provenance.record(
-            s,
-            provenance.ProvenanceInfo(
-                kind="render.chunk",
-                algorithm_version=RENDER_VERSION,
-                input_keys=[key],
-                config_hash=key.rsplit("-", 1)[-1][:16],
-            ),
-        )
+    spec = _spec(r, v, e, files, asset, out, _full_range(ctx, asset))
+    if lut:
+        spec.lut = ctx.project.artifacts.path("lut", lut)
+        spec.hdr = None  # the LUT replaces tone mapping (ADR 0028)
+    return spec
+
+
+def _dissolve_plan(
+    ctx: TaskContext, r: Render, v: EditVersion, index: int
+) -> tuple[str, list[tuple[dict[str, Any], list[SourceFile]]]]:
+    side_a, side_b, frames = dissolve_sides(v.timeline, index)
+    key_a, files_a = _video_key(ctx, r, v, side_a)
+    key_b, files_b = _video_key(ctx, r, v, side_b)
+    key = dissolve_key(ctx.project.id, key_a, key_b, frames, v.rate)
+    return key, [(side_a, files_a), (side_b, files_b)]
+
+
+def _dissolve_chunk(
+    ctx: TaskContext,
+    r: Render,
+    v: EditVersion,
+    index: int,
+    binaries: FFmpegBinaries,
+    caps: Any,
+) -> str:
+    """The dissolve from event ``index`` into the next (ADR 0078): its own chunk."""
+    key, sides = _dissolve_plan(ctx, r, v, index)
+    if ctx.project.artifacts.exists("chunk", key):
+        return key
+    prov = _provenance(ctx, key, "render.dissolve", f"{RENDER_VERSION}+{TRANSITION_VERSION}")
     with ctx.project.artifacts.writer("chunk", key, ".mov", provenance_id=prov) as tmp:
-        spec = _spec(r, v, index, files, asset, tmp, _full_range(ctx, asset))
-        if lut:
-            spec.lut = ctx.project.artifacts.path("lut", lut)
-            spec.hdr = None  # the LUT replaces tone mapping (ADR 0028)
-        result = run(binaries, rb.chunk(spec))
-        # Never cache a wrong chunk: exact frames and samples, or the task fails.
-        frames, samples = stream_counts(binaries, tmp)
-        if (frames, samples) != (spec.frames, spec.samples):
-            raise PermanentError(
-                f"chunk {index}: rendered {frames} frames / {samples} samples, "
-                f"expected {spec.frames} / {spec.samples}"
-            )
-    return {"chunk": key, "ms": result.duration_ms}
+        a, b = (_side(ctx, r, v, e, files, caps, tmp) for e, files in sides)
+        run(binaries, rb.dissolve_chunk(a, b, tmp))
+        _check(binaries, tmp, a.frames, a.samples, f"dissolve {index}")
+    return key
 
 
 def _still_chunk(
@@ -342,10 +420,11 @@ def _still_chunk(
     from mosaic.media.photo import PhotoError
     from mosaic.media.stills import canvas, motion_exprs
 
-    e = _event(v, index)
+    e = _picture(v, index)
     prof = _profile(r)
     rate = parse_rational(v.rate)
     frames = e["timeline_out"]["frames"] - e["timeline_in"]["frames"]
+    dip = dips(e)
     with ctx.write() as s:
         prov = provenance.record(
             s,
@@ -380,6 +459,8 @@ def _still_chunk(
             encoder=prof.encoder,
             bitrate=prof.bitrate,
             out=tmp,
+            dip_in=dip.get("dip_in", 0),
+            dip_out=dip.get("dip_out", 0),
         )
         result = run(binaries, rb.still_chunk(spec))
         got = stream_counts(binaries, tmp)
@@ -445,8 +526,8 @@ def _audio_chunk(
             pieces=parts,
             audio_index=index_in_file if parts else None,
             gain_db=int(audio["gain_db"]),
-            fade_in=Fraction(int(audio["fade_in_frames"])) / rate,
-            fade_out=Fraction(int(audio["fade_out_frames"])) / rate,
+            fade_in=fades(e, v.rate)[0],
+            fade_out=fades(e, v.rate)[1],
             samples=samples_for(frames, rate),
             out=tmp,
         )
@@ -533,6 +614,11 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
         if not ctx.project.artifacts.exists("chunk", key):
             raise PermanentError(f"chunk {index} is missing")
         paths.append(ctx.project.artifacts.path("chunk", key))
+        if dissolve_frames(events[index]):  # the dissolve sits between the two pictures
+            key = _dissolve_plan(ctx, r, v, index)[0]
+            if not ctx.project.artifacts.exists("chunk", key):
+                raise PermanentError(f"dissolve {index} is missing")
+            paths.append(ctx.project.artifacts.path("chunk", key))
     prof = _profile(r)
     out = output_path(ctx.project.workspace, r)
     out.parent.mkdir(parents=True, exist_ok=True)

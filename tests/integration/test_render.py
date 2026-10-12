@@ -617,3 +617,118 @@ def test_an_l_cut_plays_the_sound_on_under_the_next_picture(
     assert abs(tone(heard, cut + k + 2, cut + 2 * k + 2) - second) < 15
     # Everything away from the split sounds as before.
     assert abs(tone(heard, cut - 2 * k, cut - 2) - first) < 15
+
+
+def test_a_dissolve_renders_frame_exact_between_two_shots(
+    edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0078: a dissolve renders as its own chunk between the two pictures, each half
+    a dissolve shorter. The render keeps its exact frames and samples, every frame
+    outside a blend shows its source frame, and the dissolve's middle frame mixes the
+    frames either side. (The corpus clips are used almost whole, so the edit itself has
+    no handles to dissolve over; this version adds one where the files have them.)"""
+    import copy
+
+    import numpy as np
+
+    from mosaic.editing.refiner import ticks_for_frames
+
+    project, control, edit_id, version = edit
+    v = get_version(project, edit_id, version)
+    n, half = 14, 7
+    events = v.timeline["tracks"][0]["events"]
+    with project.db.session() as s:
+        length = {
+            f"ast_{a.id:04d}": a.duration_ticks or 0
+            for a in s.scalars(select(Asset).where(Asset.kind == "video"))
+        }
+
+    def handles(a: dict[str, Any], b: dict[str, Any]) -> bool:
+        t_a = ticks_for_frames(half, v.rate, parse_rational(a["source_in"]["tb"]), Rounding.CEIL)
+        t_b = ticks_for_frames(half, v.rate, parse_rational(b["source_in"]["tb"]), Rounding.CEIL)
+        return (
+            a["kind"] == b["kind"] == "video"
+            and a["asset_id"] != b["asset_id"]
+            and a["source_out"]["ticks"] + t_a <= length[a["asset_id"]]
+            and b["source_in"]["ticks"] - t_b >= 0
+            and min(
+                a["timeline_out"]["frames"] - a["timeline_in"]["frames"],
+                b["timeline_out"]["frames"] - b["timeline_in"]["frames"],
+            )
+            > 3 * n
+        )
+
+    pair = next(i for i in range(1, len(events) - 2) if handles(events[i], events[i + 1]))
+    tl = copy.deepcopy(v.timeline)
+    tl["tracks"][0]["events"][pair]["transition_out"] = {
+        "type": "dissolve",
+        "frames": n,
+        "rate": v.rate,
+    }
+    with project.write() as s:
+        row = s.scalar(
+            select(EditVersion).where(
+                EditVersion.edit_id == edit_id, EditVersion.version == version
+            )
+        )
+        assert row is not None
+        top = max(s.scalars(select(EditVersion.version).where(EditVersion.edit_id == edit_id)))
+        dissolved = EditVersion(
+            edit_id=edit_id,
+            version=top + 1,
+            parent_version=version,
+            creator="user",
+            reason="dissolve test",
+            key=row.key + "-dissolve",
+            request=row.request,
+            rate=row.rate,
+            beats=row.beats,
+            timeline=tl,
+            metrics=row.metrics,
+            findings=row.findings,
+            provenance_id=row.provenance_id,
+            created_at=row.created_at,
+        )
+        s.add(dissolved)
+        s.flush()
+        new = dissolved.version
+    r = get_render(project, _render(project, control, edit_id, new, "final", True))
+    assert r is not None
+    path = output_path(project.workspace, r)
+    total = tl["duration"]["frames"]
+    rate = parse_rational(v.rate)
+    assert _frames(ffmpeg_bin, path) == total
+    assert _samples(ffmpeg_bin, path) == samples_for(total, rate)
+    videos = {int(e["asset_id"][4:]) for e in tl["tracks"][0]["events"] if e["kind"] == "video"}
+    checks = check_render(ffmpeg_bin, path, tl, _sources(project, ffmpeg_bin, videos))
+    assert all(c.ok for c in checks), [(c.event_id, c.decoded, c.frames, c.blended) for c in checks]
+    assert checks[pair].blended == half
+    assert checks[pair + 1].blended == half
+    # Its middle frame: half the outgoing shot just past its cut, half the incoming
+    # shot's first frame - closer to their mix than to either. The plain render of the
+    # same version shows the frames on either side of the cut.
+    cut = events[pair]["timeline_out"]["frames"]
+    w, h = r.profile["width"], r.profile["height"]
+    plain = get_render(project, _render(project, control, edit_id, version, "final", True))
+    assert plain is not None
+
+    def at(file: Any, wanted: set[int]) -> dict[int, np.ndarray]:
+        got = {}
+        for k, data in enumerate(stream_frames(ffmpeg_bin, file, w, h)):
+            if k in wanted:
+                got[k] = data.astype(np.float64)
+            if k >= max(wanted):
+                break
+        return got
+
+    middle = at(path, {cut})[cut]
+    sides = at(output_path(project.workspace, plain), {cut - 1, cut})
+    out_going, in_coming = sides[cut - 1], sides[cut]
+
+    def far(x: np.ndarray, y: np.ndarray) -> float:
+        return float(np.abs(x - y).mean())
+
+    assert far(out_going, in_coming) > 5, "two different pictures"
+    mix = far(middle, (out_going + in_coming) / 2)
+    assert mix < far(middle, out_going)
+    assert mix < far(middle, in_coming)

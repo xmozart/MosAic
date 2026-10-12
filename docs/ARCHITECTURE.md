@@ -301,6 +301,8 @@ Resulting timeline event (solver and refiner output):
 
 `audio` may carry its own window when a J- or L-cut moved the picture cut: `source_in`/`source_out` (SourceTime) and `timeline_in`/`timeline_out` (TimelineTime). The audio windows are contiguous and cover the timeline exactly, like the video events; without them the sound is the event's own window (ADR 0077).
 
+`transition_out` is a `cut`, a `dissolve` into the next event or a `dip` to black, each with `frames` and `rate`; the first event may have a `transition_in` dip from black (ADR 0078).
+
 `transform.focus` is optional: the subject's position in integer thousandths of the display frame, from the segment's focus (ADR 0076). A crop to another shape centres on it.
 
 Still-photo events use `"kind": "still"` with `duration` in frames and a `motion` object: start and end crop rectangles for pan and zoom, in integer thousandths of the frame, plus an easing (ADR 0075).
@@ -311,6 +313,7 @@ The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata 
 
 - **Chunk renderer.** Each timeline event is rendered to a normalized mezzanine at the timeline format (resolution, rate, color space, 48 kHz stereo). Chunks include handles for transitions. The cache key is the event hash plus the render profile, so unchanged events are reused across versions. Chunks render in parallel.
 - **Assembler.** Concatenation, transitions (xfade / acrossfade over handles), audio mix (source audio, generated silence for silent sources, music bed later) and loudness normalization.
+  - Transitions (ADR 0078): a dip is a fade inside its event's chunk; a dissolve is its own chunk between the two pictures (each half a dissolve shorter), blended with `xfade` over handles from their usable ranges.
   - A version with J- or L-cuts also renders one audio-only chunk per event over its heard window; the assembler then takes the video from the event chunks and the audio from the audio chunks (ADR 0077).
   - Loudness targets: −14 LUFS integrated for web (default) or −23 LUFS (EBU R128) for TV.
   - True peak ≤ −1 dBTP.

@@ -266,6 +266,7 @@ def resolve(
         refiner.land_on_target(cuts, target, rate, pace)
         if not any(refiner.is_jump(a, b) for a, b in itertools.pairwise(cuts)):
             break
+    notes += refiner.choose_transitions(cuts, req.transitions, rate)
     notes += refiner.split_dialogue(cuts, rate, pace)
     fit.shots = [c.shot for c in cuts]
     metrics, findings = critic.evaluate(

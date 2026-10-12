@@ -12,8 +12,10 @@ are snapped:
 Segments never span a shot cut, so neither does an event. Then adjacent jump cuts (same
 recording, < 2 s apart) are removed by merging, reordering or dropping, and the out points
 of non-dialogue shots absorb the last frames so the edit lands on its exact target.
-Last, J- and L-cuts move the picture cut between a dialogue shot and its neighbour by up
-to 1 s while every audio window stays where it was snapped (ADR 0077).
+Last, transitions are chosen (dips to black at the opening and closing, dissolves where
+one beat changes to the next, ADR 0078), and J- and L-cuts move the picture cut between a
+dialogue shot and its neighbour by up to 1 s while every audio window stays where it was
+snapped (ADR 0077).
 All arithmetic is in integer ticks and frames (invariant 3).
 """
 
@@ -24,7 +26,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
 
-from mosaic.core.time import Rounding, parse_rational, round_fraction
+from mosaic.core.time import Rounding, frame_start_ticks, parse_rational, round_fraction
 from mosaic.editing.request import PaceFrames
 from mosaic.editing.solver import Shot, bounds
 
@@ -37,6 +39,8 @@ FADE_FRAMES = 2
 GAIN_DB = {"dialogue": 0, "natural_sound": -6, "natural_sound_low": -14, "mute": 0}
 SPLIT_MAX = Fraction(1)  # seconds: a J- or L-cut's lead or lag (M4.md)
 SPLIT_MIN_FRAMES = 6  # a smaller split is not worth a separate audio cut
+DISSOLVE = Fraction(1, 2)  # seconds: a short dissolve, half on each side of the cut
+DIP = Fraction(1, 2)  # seconds: a fade from or to black at the opening and closing
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,12 @@ class Cut:
     audio: tuple[int, int] | None = None
     head: int = 0
     tail: int = 0
+    # Transitions (ADR 0078): a dissolve of ``dissolve`` frames into the next cut (centred
+    # on the cut, using source past this out point and before the next in point), and
+    # fades from or to black over ``dip_in``/``dip_out`` frames.
+    dissolve: int = 0
+    dip_in: int = 0
+    dip_out: int = 0
 
     def __post_init__(self) -> None:
         if self.ua < 0:
@@ -467,6 +477,53 @@ def land_on_target(cuts: list[Cut], target: int, rate: str, pace: PaceFrames) ->
     return diff
 
 
+# ----------------------------------------------------------------- transitions
+
+
+def _ceiling(c: Cut) -> int:
+    """The latest out point a picture may run on to: in its usable range and before any
+    camera jolt after its current out point."""
+    edge = c.ub
+    for s, e in jolts(c.ctx):
+        if e > c.src_out:
+            edge = min(edge, max(s, c.src_out))
+    return edge
+
+
+def choose_transitions(cuts: list[Cut], mode: str, rate: str) -> list[str]:
+    """Transitions (ADR 0066's mapping, ADR 0078): ``cuts`` dips to black at the opening
+    and the closing; ``dissolves`` also dissolves where one beat changes to the next,
+    between two videos with half a dissolve of usable picture past the out point and
+    before the in point; ``minimal`` is cuts only. The edit's frames never change."""
+    notes: list[str] = []
+    if mode == "minimal" or not cuts:
+        return notes
+    r = parse_rational(rate)
+    dip = round_fraction(DIP * r, Rounding.NEAREST)
+    cuts[0].dip_in = min(dip, cuts[0].frames // 2)
+    cuts[-1].dip_out = min(dip, cuts[-1].frames // 2)
+    if mode != "dissolves":
+        return notes
+    half = round_fraction(DISSOLVE * r / 2, Rounding.NEAREST)
+    for i in range(len(cuts) - 1):
+        a, b = cuts[i], cuts[i + 1]
+        if a.shot.beat_id == b.shot.beat_id or a.shot.cand.still or b.shot.cand.still:
+            continue
+        # The renderer's own rounding (render.plan), so the handles it reads are these.
+        handle_a = frame_start_ticks(half, rate, a.tb)
+        handle_b = frame_start_ticks(half, rate, b.tb)
+        if a.src_out + handle_a > _ceiling(a) or b.src_in - handle_b < _floor(b):
+            notes.append(f"{b.shot.cand.ref}: cut, no picture to dissolve over")
+            continue
+        # Each picture keeps at least a frame of its own outside the dissolves.
+        before = cuts[i - 1].dissolve // 2 if i else 0
+        if a.frames - a.dip_in - before <= half or b.frames - b.dip_out <= half:
+            notes.append(f"{b.shot.cand.ref}: cut, too short to dissolve")
+            continue
+        a.dissolve = 2 * half
+    return notes
+
+
 # ------------------------------------------------------------------ J/L cuts
 
 
@@ -487,11 +544,7 @@ def _room(c: Cut, later: bool, rate: str, pace: PaceFrames) -> int:
         return max(0, c.shot.hi - c.frames)
     cap = max(pace.max, c.shot.hi) - c.frames
     if later:
-        edge = c.ub
-        for s, e in jolts(c.ctx):
-            if e > c.src_out:
-                edge = min(edge, max(s, c.src_out))
-        room = frames_for_ticks(edge - c.src_in, rate, c.tb, Rounding.FLOOR) - c.frames
+        room = frames_for_ticks(_ceiling(c) - c.src_in, rate, c.tb, Rounding.FLOOR) - c.frames
     else:
         room = frames_for_ticks(c.src_out - _floor(c), rate, c.tb, Rounding.FLOOR) - c.frames
     return min(room, cap)
@@ -538,6 +591,8 @@ def split_dialogue(cuts: list[Cut], rate: str, pace: PaceFrames) -> list[str]:
     for i in range(len(cuts) - 1):
         a, b = cuts[i], cuts[i + 1]
         if a.shot.dialogue == b.shot.dialogue or _fixed(a) or _fixed(b):
+            continue
+        if a.dissolve:  # a dissolve already blends this cut (ADR 0078)
             continue
         if a.shot.cand.asset_id == b.shot.cand.asset_id:
             continue
@@ -605,7 +660,7 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
                 "speed": "1/1",
                 "transform": transform(s.cand.focus),
                 "audio": audio | audio_window(c, pos, rate),
-                "transition_out": {"type": "cut"},
+                **transitions(c, rate),
                 "role": s.role,
                 "beat_id": s.beat_id,
                 "origin": {
@@ -617,6 +672,19 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
             }
         )
         pos += c.frames
+    return out
+
+
+def transitions(c: Cut, rate: str) -> dict[str, Any]:
+    """An event's transitions (ADR 0078): ``transition_out`` always (a cut, a dissolve
+    into the next event or a dip to black), ``transition_in`` only for a dip from black."""
+    out: dict[str, Any] = {"transition_out": {"type": "cut"}}
+    if c.dissolve:
+        out["transition_out"] = {"type": "dissolve", "frames": c.dissolve, "rate": rate}
+    elif c.dip_out:
+        out["transition_out"] = {"type": "dip", "frames": c.dip_out, "rate": rate}
+    if c.dip_in:
+        out["transition_in"] = {"type": "dip", "frames": c.dip_in, "rate": rate}
     return out
 
 
@@ -687,7 +755,7 @@ def still_event(c: Cut, index: int, pos: int, rate: str) -> dict[str, Any]:
             "intent": "mute",
         }
         | audio_window(c, pos, rate),
-        "transition_out": {"type": "cut"},
+        **transitions(c, rate),
         "role": s.role,
         "beat_id": s.beat_id,
         "origin": {

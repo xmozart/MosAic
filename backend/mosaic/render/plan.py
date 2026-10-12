@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mosaic.core.keys import artifact_key
-from mosaic.core.time import Rounding, parse_rational, round_fraction
+from mosaic.core.time import Rounding, frame_start_ticks, parse_rational, round_fraction
 from mosaic.media.ffmpeg.render import AUDIO_RATE, SEEK_MARGIN, Piece
 
 Fill = Literal["auto", "crop"]
@@ -223,6 +223,7 @@ def chunk_key(
             "audio": {k: v for k, v in event["audio"].items() if k not in AUDIO_WINDOW},
             "transform": event.get("transform"),
             "speed": event.get("speed"),
+            **dips(event),
         },
         config={"profile": prof.as_json(), "rate": rate},
         version=RENDER_VERSION,
@@ -244,6 +245,7 @@ def still_key(project_id: str, event: dict[str, Any], photo: str, prof: Profile,
             "asset": event["asset_id"],
             "frames": event["timeline_out"]["frames"] - event["timeline_in"]["frames"],
             "motion": event.get("motion"),
+            **dips(event),
         },
         config={"profile": prof.as_json(), "rate": rate, "still": STILL_VERSION},
         version=RENDER_VERSION,
@@ -251,6 +253,7 @@ def still_key(project_id: str, event: dict[str, Any], photo: str, prof: Profile,
 
 
 AUDIO_VERSION = "audio/1"  # separate audio chunks for J- and L-cuts (ADR 0077)
+TRANSITION_VERSION = "transition/1"  # dissolves as xfade chunks, dips as fades (ADR 0078)
 
 
 def is_split(timeline: dict[str, Any]) -> bool:
@@ -285,7 +288,125 @@ def audio_key(
             "audio": {
                 k: a[k] for k in ("source_enabled", "gain_db", "fade_in_frames", "fade_out_frames")
             },
+            **dips(event),
         },
         config={"profile": prof.kind, "rate": rate, "audio": AUDIO_VERSION},
+        version=RENDER_VERSION,
+    )
+
+
+# ------------------------------------------------------------------ transitions
+# ADR 0078: a dip is a fade inside its event's chunk; a dissolve of D frames is its own
+# chunk, centred on the cut, so the pictures either side are D/2 frames shorter and the
+# dissolve chunk blends D/2 frames of each past the cut (handles the refiner checked).
+
+
+def _transition(event: dict[str, Any], side: str, kind: str) -> int:
+    t = event.get(side) or {}
+    return int(t["frames"]) if t.get("type") == kind else 0
+
+
+def dissolve_frames(event: dict[str, Any]) -> int:
+    """Frames of the dissolve from this event into the next (0: none)."""
+    return _transition(event, "transition_out", "dissolve")
+
+
+def dips(event: dict[str, Any]) -> dict[str, int]:
+    """An event's fades from and to black, for its chunk key (nothing without one, so
+    events without a dip keep their keys)."""
+    d_in = _transition(event, "transition_in", "dip")
+    d_out = _transition(event, "transition_out", "dip")
+    return {k: v for k, v in (("dip_in", d_in), ("dip_out", d_out)) if v}
+
+
+def fades(event: dict[str, Any], rate: str) -> tuple[Fraction, Fraction]:
+    """An event's sound fades in seconds: its own, or its dip's when longer (a dip to
+    black takes the sound with it)."""
+    a = event["audio"]
+    d = dips(event)
+    r = parse_rational(rate)
+    return (
+        Fraction(max(int(a["fade_in_frames"]), d.get("dip_in", 0))) / r,
+        Fraction(max(int(a["fade_out_frames"]), d.get("dip_out", 0))) / r,
+    )
+
+
+def _window(event: dict[str, Any], start: int, frames: int, rate: str) -> dict[str, Any]:
+    """``event`` cut to ``frames`` frames starting ``start`` frames after its own start
+    (negative: before it, into the handle)."""
+    tb = event["source_in"]["tb"]
+    s0 = event["source_in"]["ticks"]
+    a = (
+        s0 + frame_start_ticks(start, rate, tb)
+        if start >= 0
+        else s0 - frame_start_ticks(-start, rate, tb)
+    )
+    b = s0 + frame_start_ticks(start + frames, rate, tb)
+    t0 = event["timeline_in"]["frames"] + start
+    return event | {
+        "source_in": {"ticks": a, "tb": tb},
+        "source_out": {"ticks": b, "tb": tb},
+        "timeline_in": {"frames": t0, "rate": rate},
+        "timeline_out": {"frames": t0 + frames, "rate": rate},
+    }
+
+
+def picture(timeline: dict[str, Any], index: int) -> dict[str, Any]:
+    """The part of event ``index`` its own chunk renders: the event less half of each
+    dissolve it takes part in. Where a dissolve takes over, its sound is not faded."""
+    events = timeline["tracks"][0]["events"]
+    e = events[index]
+    head = dissolve_frames(events[index - 1]) // 2 if index else 0
+    tail = dissolve_frames(e) // 2
+    if not head and not tail:
+        return dict(e)
+    frames = e["timeline_out"]["frames"] - e["timeline_in"]["frames"]
+    out = _window(e, head, frames - head - tail, timeline["rate"])
+    audio = dict(e["audio"])
+    if head:
+        audio["fade_in_frames"] = 0
+    if tail:
+        audio["fade_out_frames"] = 0
+    out["audio"] = audio
+    return out
+
+
+def dissolve_sides(
+    timeline: dict[str, Any], index: int
+) -> tuple[dict[str, Any], dict[str, Any], int]:
+    """The two pictures a dissolve from event ``index`` into the next blends, each the
+    dissolve's frames long and centred on the cut, with the outgoing sound fading out
+    and the incoming one fading in over it."""
+    events = timeline["tracks"][0]["events"]
+    a, b = events[index], events[index + 1]
+    n = dissolve_frames(a)
+    if n % 2:
+        raise ValueError(f"{a['event_id']}: a dissolve has an even number of frames")
+    half = n // 2
+    rate = timeline["rate"]
+    frames_a = a["timeline_out"]["frames"] - a["timeline_in"]["frames"]
+    side_a = _window(a, frames_a - half, n, rate)
+    # The handle past the out point is what the refiner checked: from the out point itself.
+    tb_a = a["source_out"]["tb"]
+    side_a["source_out"] = {
+        "ticks": a["source_out"]["ticks"] + frame_start_ticks(half, rate, tb_a),
+        "tb": tb_a,
+    }
+    side_b = _window(b, -half, n, rate)
+    side_a["audio"] = dict(a["audio"]) | {"fade_in_frames": 0, "fade_out_frames": n}
+    side_b["audio"] = dict(b["audio"]) | {"fade_in_frames": n, "fade_out_frames": 0}
+    for side in (side_a, side_b):
+        side.pop("transition_in", None)
+        side["transition_out"] = {"type": "cut"}
+    return side_a, side_b, n
+
+
+def dissolve_key(project_id: str, key_a: str, key_b: str, frames: int, rate: str) -> str:
+    """A dissolve chunk's key: the keys of the two pictures it blends."""
+    return artifact_key(
+        "dissolve",
+        project_id=project_id,
+        inputs={"a": key_a, "b": key_b, "frames": frames},
+        config={"rate": rate, "transition": TRANSITION_VERSION},
         version=RENDER_VERSION,
     )

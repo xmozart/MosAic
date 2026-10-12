@@ -34,10 +34,11 @@ class EventCheck:
     worst: int = 0
     errors: dict[int, int] = field(default_factory=dict)  # error → count
     still: bool = False  # a photo (ADR 0075): no source frames to match
+    blended: int = 0  # frames inside a dip or dissolve (ADR 0078): not matched
 
     @property
     def ok(self) -> bool:
-        return self.still or (self.decoded == self.frames and self.worst <= 1)
+        return self.still or (self.decoded == self.frames - self.blended and self.worst <= 1)
 
 
 DECODE_W, DECODE_H = 640, 360  # renders are 16:9; barcodes decode fine at this size
@@ -77,6 +78,11 @@ class SourceInfo:
     display: tuple[int, int]  # display width, height (after rotation)
 
 
+def _frames(event: dict[str, Any], side: str, kind: str) -> int:
+    t = event.get(side) or {}
+    return int(t["frames"]) if t.get("type") == kind else 0
+
+
 def check_render(
     binaries: FFmpegBinaries, path: Path, timeline: dict[str, Any], sources: dict[str, SourceInfo]
 ) -> list[EventCheck]:
@@ -88,6 +94,18 @@ def check_render(
         EventCheck(e["event_id"], e["asset_id"], b - a, still=e.get("kind") == "still")
         for e, (a, b) in zip(events, bounds, strict=True)
     ]
+    # Frames that fade to black or blend two pictures carry no clean barcode.
+    clear: list[tuple[int, int]] = []
+    for i, (e, c) in enumerate(zip(events, checks, strict=True)):
+        lo = max(
+            _frames(e, "transition_in", "dip"),
+            _frames(events[i - 1], "transition_out", "dissolve") // 2 if i else 0,
+        )
+        hi = c.frames - max(
+            _frames(e, "transition_out", "dip"), _frames(e, "transition_out", "dissolve") // 2
+        )
+        clear.append((lo, hi))
+        c.blended = c.frames - max(0, hi - lo)
     ev = 0
     for n, frame in enumerate(frames_of(binaries, path)):
         while ev < len(events) and n >= bounds[ev][1]:
@@ -98,6 +116,8 @@ def check_render(
         if e.get("kind") == "still":
             continue
         k = n - bounds[ev][0]
+        if not clear[ev][0] <= k < clear[ev][1]:
+            continue
         src = sources[e["asset_id"]]
         tb = parse_rational(e["source_in"]["tb"])
         t = Fraction(e["source_in"]["ticks"]) * tb + Fraction(k) / rate
