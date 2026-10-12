@@ -362,3 +362,175 @@ def test_content_weights_rank_and_avoid(tmp_path: Path) -> None:
         )
     assert locked in {c.segment_id for c in held}
     project.close()
+
+
+def test_photos_by_share_with_bursts_and_capture_twins(tmp_path: Path) -> None:
+    """ADR 0075: photos are candidates unless the share is "none"; a burst gives only
+    its best frame; a photo of a moment that also has video is that video's look-alike;
+    "many" ranks photos up."""
+    from mosaic.storage.models_project import PhotoGroup, PhotoGroupMember
+
+    project = _build(tmp_path)
+    with project.write() as s:
+        prov = provenance.record(s, provenance.ProvenanceInfo(kind="photos"))
+        ids = []
+        for n in range(4):
+            a = Asset(
+                kind="photo",
+                status="ok",
+                profile="generic",
+                group_key=f"p{n}",
+                capture_time=f"2026-07-15T09:{20 + n:02d}:00+00:00",
+                tb="1/1",
+                duration_ticks=0,
+                provenance_id=prov,
+                created_at=T,
+            )
+            s.add(a)
+            s.flush()
+            sh = Shot(
+                asset_id=a.id,
+                index=0,
+                start_ticks=0,
+                end_ticks=0,
+                method="photo",
+                provenance_id=prov,
+            )
+            s.add(sh)
+            s.flush()
+            g = Segment(
+                asset_id=a.id,
+                shot_id=sh.id,
+                index=0,
+                start_ticks=0,
+                end_ticks=0,
+                usable_start_ticks=0,
+                usable_end_ticks=0,
+                provenance_id=prov,
+            )
+            s.add(g)
+            s.flush()
+            ids.append(g.id)
+        burst = PhotoGroup(kind="burst", best_segment_id=ids[1], provenance_id=prov)
+        capture = PhotoGroup(kind="capture", provenance_id=prov)
+        s.add_all([burst, capture])
+        s.flush()
+        video_seg = s.scalars(
+            select(Segment.id)
+            .join(Asset, Asset.id == Segment.asset_id)
+            .where(Asset.kind == "video")
+            .order_by(Segment.id)
+        ).first()
+        s.add_all(
+            [
+                PhotoGroupMember(group_id=burst.id, segment_id=ids[0]),
+                PhotoGroupMember(group_id=burst.id, segment_id=ids[1]),
+                PhotoGroupMember(group_id=capture.id, segment_id=ids[3]),
+                PhotoGroupMember(group_id=capture.id, segment_id=video_seg),
+            ]
+        )
+    with project.db.session() as s:
+        none, _ = retrieval.retrieve(s, Fraction(1), Fraction(10_000))
+        some, counts = retrieval.retrieve(s, Fraction(1), Fraction(10_000), photo_share="some")
+        many, _ = retrieval.retrieve(s, Fraction(1), Fraction(10_000), photo_share="many")
+    assert not any(c.still for c in none)
+    stills = {c.segment_id: c for c in some if c.still}
+    assert ids[0] not in stills, "a burst gives only its best frame"
+    assert counts["burst"] == 1
+    assert {ids[1], ids[2], ids[3]} <= set(stills), "the twin comes back in the fallback"
+    assert stills[ids[3]].similar_to == video_seg, "a look-alike of its video"
+    assert stills[ids[1]].similar_to is None
+    assert all(c.bonus == 0 for c in stills.values())
+    assert all(c.bonus == 1.0 for c in many if c.still), "many ranks photos up"
+    assert all("photos" in c.categories for c in stills.values())
+    # A storyboard's lock keeps a burst's other frame and a twin as candidates in their
+    # own right (invariant 10).
+    with project.db.session() as s:
+        held, _ = retrieval.retrieve(
+            s, Fraction(1), Fraction(10_000), keep=frozenset({ids[0], ids[3]}), photo_share="some"
+        )
+    by_id = {c.segment_id: c for c in held}
+    assert ids[0] in by_id, "a locked burst frame stays"
+    assert by_id[ids[3]].similar_to is None, "a locked twin is no look-alike"
+    project.close()
+
+
+def test_some_photos_never_crowd_out_the_video() -> None:
+    def cand(n: int, still: bool, user: bool = False) -> Candidate:
+        return Candidate(
+            segment_id=n,
+            asset_id=n,
+            shot_id=n,
+            tb="1/1" if still else "1/1000",
+            rate=None,
+            start=0,
+            end=0 if still else 4000,
+            usable_start=0,
+            usable_end=0 if still else 4000,
+            has_speech=False,
+            status="USE",
+            user_use=user,
+            capture=None,
+            day=1,
+            quality=n / 1000,
+            group_id=None,
+            shake_percentile=None,
+            still=still,
+        )
+
+    photos = [cand(n, True) for n in range(1, 101)] + [cand(500, True, user=True)]
+    videos = [cand(n, False) for n in range(1000, 1010)]
+    counts: dict[str, int] = {}
+    kept = retrieval.cap_stills(photos + videos, "some", frozenset({1}), counts)
+    stills = [c for c in kept if c.still]
+    assert len([c for c in stills if not c.user_use and c.segment_id != 1]) == 50
+    assert {1, 500} <= {c.segment_id for c in stills}, "locks and the owner's picks stay"
+    assert counts["photos_capped"] == 49
+    assert len([c for c in kept if not c.still]) == 10
+    assert retrieval.cap_stills(photos, "many", frozenset(), {}) == photos
+
+
+def test_a_photo_before_the_first_video_never_renumbers_the_trip(tmp_path: Path) -> None:
+    """Day 1 is the first video's date everywhere (ADR 0075): an earlier photo is day 0,
+    and the videos' days are the same whatever the photo share."""
+    project = _build(tmp_path)
+    with project.write() as s:
+        prov = provenance.record(s, provenance.ProvenanceInfo(kind="photos"))
+        a = Asset(
+            kind="photo",
+            status="ok",
+            profile="generic",
+            group_key="early",
+            capture_time="2026-07-14T08:00:00+00:00",
+            tb="1/1",
+            duration_ticks=0,
+            provenance_id=prov,
+            created_at=T,
+        )
+        s.add(a)
+        s.flush()
+        sh = Shot(
+            asset_id=a.id, index=0, start_ticks=0, end_ticks=0, method="photo", provenance_id=prov
+        )
+        s.add(sh)
+        s.flush()
+        s.add(
+            Segment(
+                asset_id=a.id,
+                shot_id=sh.id,
+                index=0,
+                start_ticks=0,
+                end_ticks=0,
+                usable_start_ticks=0,
+                usable_end_ticks=0,
+                provenance_id=prov,
+            )
+        )
+    with project.db.session() as s:
+        none, _ = retrieval.retrieve(s, Fraction(1), Fraction(10_000))
+        some, _ = retrieval.retrieve(s, Fraction(1), Fraction(10_000), photo_share="some")
+    days = {c.segment_id: c.day for c in none}
+    assert {c.segment_id: c.day for c in some if not c.still} == days
+    assert min(days.values()) == 1
+    assert [c.day for c in some if c.still] == [0]
+    project.close()

@@ -13,7 +13,7 @@ from hypothesis import strategies as st
 
 from mosaic.ai.prompts.planner.schema_v1 import Output as PlanOut
 from mosaic.ai.prompts.selector.schema_v1 import Output as SelectOut
-from mosaic.core.time import Rounding
+from mosaic.core.time import Rounding, parse_rational
 from mosaic.editing import critic, refiner, solver
 from mosaic.editing.generate import check_plan, check_selection
 from mosaic.editing.request import (
@@ -582,3 +582,49 @@ def test_a_pinned_cut_is_never_merged_or_moved_in_a_jump() -> None:
     out, notes = refiner.fix_jump_cuts([a, b], RATE, pace)
     assert out == [a, b]
     assert any("jump cut between locked shots" in n for n in notes)
+
+
+@settings(max_examples=80, deadline=None)
+@given(
+    st.sampled_from(["very_slow", "balanced", "very_fast"]),
+    st.sampled_from(["24000/1001", "25/1", "30000/1001", "60/1"]),
+    st.integers(-400, 400),
+    st.booleans(),
+)
+def test_a_still_stays_two_to_five_seconds_and_never_moves_its_source(
+    pace_name: str, rate: str, nudge: int, locked: bool
+) -> None:
+    """ADR 0075: at any pace and rate a still holds 2–5 s, its source range stays 0–0,
+    it never makes a jump cut, and a locked still keeps its frames."""
+    pace = pace_frames(pace_name, rate)
+    c = cand(900, asset=900)
+    c = Candidate(
+        **{
+            **c.__dict__,
+            "tb": "1/1",
+            "start": 0,
+            "end": 0,
+            "usable_start": 0,
+            "usable_end": 0,
+            "still": True,
+        }
+    )
+    s = shot(c, locked=locked)
+    lo, hi = solver.bounds(s, pace, rate)
+    r = Fraction(parse_rational(rate))
+    assert lo == round(2 * r)
+    assert hi == round(5 * r)
+    s.lo, s.hi = lo, hi
+    s.frames = (lo + hi) // 2
+    if locked:
+        s.pin = (0, 0, s.frames)
+    cut = refiner.refine(s, refiner.ClipContext(), pace, rate)
+    video = _cut(cand(901, asset=901), 0, 3)
+    before = cut.frames
+    refiner.land_on_target([video, cut], video.frames + cut.frames + nudge, rate, pace)
+    assert (cut.src_in, cut.src_out) == (0, 0)
+    assert lo <= cut.frames <= hi
+    if locked:
+        assert cut.frames == before
+    assert not refiner.is_jump(video, cut)
+    assert not refiner.is_jump(cut, video)

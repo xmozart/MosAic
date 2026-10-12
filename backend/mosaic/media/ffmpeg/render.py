@@ -364,3 +364,63 @@ def assemble(
         outputs=[OutputSpec(media_path(out), opts)],
         description=f"assemble {out.name}",
     )
+
+
+@dataclass
+class StillSpec:
+    """A still event: ``canvas`` (an image of the output's shape, made by
+    ``media.stills``) panned and zoomed over ``frames`` frames, with silence."""
+
+    canvas: Path
+    zoom: str  # zoompan expressions over the output frame number ``on``
+    x: str
+    y: str
+    width: int
+    height: int
+    rate: Fraction
+    frames: int
+    samples: int
+    encoder: str
+    bitrate: str
+    out: Path
+    threads: int = 0
+
+
+def still_chunk(spec: StillSpec) -> FFmpegCommand:
+    """One still event (ADR 0075): the canvas looped, ``zoompan`` at the timeline rate to
+    exactly ``frames`` frames at the output size, and generated silence."""
+    video = chain(
+        Filter.of(
+            "zoompan",
+            z=spec.zoom,
+            x=spec.x,
+            y=spec.y,
+            d=1,
+            s=f"{spec.width}x{spec.height}",
+            fps=spec.rate,
+        ),
+        Filter.of("trim", end_frame=spec.frames),
+        Filter.of("setpts", "N/FRAME_RATE/TB"),
+        Filter.of("scale", in_range="pc", out_range="tv", out_color_matrix="bt709"),
+        Filter.of("setsar", "1"),
+        Filter.of("format", "yuv420p"),
+        Filter.of(
+            "setparams", color_primaries="bt709", color_trc="bt709", colorspace="bt709", range="tv"
+        ),
+    )
+    audio = chain(
+        Filter.of("anullsrc", r=AUDIO_RATE, cl="stereo"),
+        Filter.of("atrim", end_sample=spec.samples),
+    )
+    out: list[tuple[str, OptionValue]] = [("-map", "[vout]"), ("-map", "[aout]")]
+    out += _video_codec(spec.encoder, spec.bitrate, spec.rate)
+    out += [("-c:a", "pcm_s16le"), ("-ar", AUDIO_RATE), ("-ac", 2)]
+    if spec.threads:
+        out.append(("-threads", spec.threads))
+    out += [("-video_track_timescale", spec.rate.numerator), ("-f", "mov")]
+    return FFmpegCommand(
+        inputs=[InputSpec(media_path(spec.canvas), [("-loop", 1), ("-framerate", spec.rate)])],
+        outputs=[OutputSpec(media_path(spec.out), out)],
+        filter_complex=f"[0:v]{video}[vout];{audio}[aout]",
+        description=f"still {spec.out.name}",
+    )

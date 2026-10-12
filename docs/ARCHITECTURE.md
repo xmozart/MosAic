@@ -295,7 +295,7 @@ Resulting timeline event (solver and refiner output):
 }
 ```
 
-Still-photo events use `"kind": "still"` with `duration` in frames and a `motion` object (start/end crop rectangles for pan and zoom, plus easing).
+Still-photo events use `"kind": "still"` with `duration` in frames and a `motion` object: start and end crop rectangles for pan and zoom, in integer thousandths of the frame, plus an easing (ADR 0075).
 
 The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata dictionaries. Exporters come later.
 

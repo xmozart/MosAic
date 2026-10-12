@@ -41,6 +41,9 @@ from mosaic.storage.models_project import (
 )
 
 MAX_CANDIDATES = 200
+# A still holds 2 to 5 seconds, by pace (ADR 0075).
+STILL_SECONDS = (Fraction(2), Fraction(5))
+PHOTO_BONUS = {"none": 0.0, "some": 0.0, "many": 1.0}  # photo share (PRODUCT.md §4)
 FALLBACK_FACTOR = 3
 MIN_PER_DAY = 3
 TRANSCRIPT_CHARS = 160
@@ -82,6 +85,7 @@ class Candidate:
     similar_to: int | None = None  # the group's recommended segment, for non-best members
     categories: frozenset[str] = frozenset()  # content categories (ADR 0072)
     bonus: float = 0.0  # the owner's content weights for those categories
+    still: bool = False  # a photo: a still event on the timeline (ADR 0075)
 
     @property
     def ref(self) -> str:
@@ -89,6 +93,8 @@ class Candidate:
 
     @property
     def usable_seconds(self) -> Fraction:
+        if self.still:  # a photo holds as long as a still may (ADR 0075)
+            return STILL_SECONDS[1]
         return Fraction(self.usable_end - self.usable_start) * parse_rational(self.tb)
 
     def score(self) -> float:
@@ -112,7 +118,7 @@ class Candidate:
             self.ref,
             f"day {self.day}" if self.day else "day ?",
             when,
-            f"{dur:.1f}s",
+            "photo" if self.still else f"{dur:.1f}s",
             f"{o.get('shot_type', '?')}/{o.get('camera_motion', '?')}",
             f"interest {o.get('interest', '?')}",
         ]
@@ -320,10 +326,13 @@ def retrieve(
     want_seconds: Fraction,
     weights: Mapping[str, str] | None = None,
     keep: frozenset[int] = frozenset(),
+    photo_share: str = "none",
 ) -> tuple[list[Candidate], dict[str, int]]:
     """All eligible candidates (capped), sorted by capture time, plus filter counts.
     ``keep``: segment ids a storyboard locked; a content weight never avoids them
-    (invariant 10)."""
+    (invariant 10). ``photo_share``: whether photos are candidates (none, some or many;
+    ADR 0075): a burst gives only its best frame, and a photo of a moment that also has
+    video is that video's look-alike."""
     weights = weights or {}
     counts = {"segments": 0, "rejected": 0, "too_short": 0, "duplicate": 0, "analysis_only": 0}
     if any(w == "avoid" for w in weights.values()):
@@ -337,8 +346,15 @@ def retrieve(
         )
         if gid is not None
     }
-    assets = list(session.scalars(select(Asset).where(Asset.kind == "video").order_by(Asset.id)))
-    first_day = min(capture_dates(assets).values(), default=None)
+    kinds = ("video",) if photo_share == "none" else ("video", "photo", "live_photo")
+    assets = list(
+        session.scalars(
+            select(Asset).where(Asset.kind.in_(kinds), Asset.status == "ok").order_by(Asset.id)
+        )
+    )
+    burst_rest, photo_twin = _photo_groups(session) if photo_share != "none" else (set(), {})
+    # Day 1 is the first video's date, as everywhere in the project (review, summaries).
+    first_day = min(capture_dates([a for a in assets if a.kind == "video"]).values(), default=None)
     eligible = []
     for asset in assets:
         if asset.tb is None:
@@ -362,21 +378,36 @@ def retrieve(
             if status == "REJECT":
                 counts["rejected"] += 1
                 continue
+            still = asset.kind != "video"
+            if still and g.id in burst_rest and not user_use and g.id not in keep:
+                counts["burst"] = counts.get("burst", 0) + 1  # the burst's best frame stays
+                continue
             usable = Fraction(g.usable_end_ticks - g.usable_start_ticks) * tb
-            if usable < min_seconds and not user_use:
+            if not still and usable < min_seconds and not user_use:
                 counts["too_short"] += 1
                 continue
             cats = classify(
-                obs.get(g.id, {}), has_speech=g.has_speech, rate=asset.rate, tags=clip.tags
+                obs.get(g.id, {}),
+                has_speech=g.has_speech,
+                rate=asset.rate,
+                tags=clip.tags,
+                photo=still,
             )
             if weights and avoided(cats, weights) and not user_use and g.id not in keep:
                 counts["avoided"] += 1  # the owner asked to avoid it (ADR 0072)
                 continue
-            duplicate = g.similarity_group_id is not None and not g.group_best and not user_use
+            twin = photo_twin.get(g.id) if still else None
+            duplicate = (
+                not user_use
+                and g.id not in keep
+                and (twin is not None or (g.similarity_group_id is not None and not g.group_best))
+            )
             capture = (
                 base + timedelta(seconds=float(Fraction(g.start_ticks) * tb)) if base else None
             )
             day = trip_day(asset.capture_time, Fraction(g.start_ticks) * tb, first_day)
+            if day < 0:  # a photo taken before the first video: its day is not a trip day
+                day = 0
             (similar if duplicate else found).append(
                 Candidate(
                     segment_id=g.id,
@@ -397,20 +428,83 @@ def retrieve(
                     group_id=g.similarity_group_id,
                     shake_percentile=None,  # read for the final candidates only
                     obs=obs.get(g.id, {}),
-                    similar_to=best_of.get(g.similarity_group_id or -1) if duplicate else None,
+                    similar_to=(
+                        (twin if twin is not None else best_of.get(g.similarity_group_id or -1))
+                        if duplicate
+                        else None
+                    ),
                     categories=cats,
-                    bonus=weight_bonus(cats, weights),
+                    bonus=weight_bonus(cats, weights)
+                    + (PHOTO_BONUS.get(photo_share, 0.0) if still else 0.0),
+                    still=still,
                 )
             )
     counts["duplicate"] = len(similar)
-    if sum((c.usable_seconds for c in found), Fraction(0)) < FALLBACK_FACTOR * want_seconds:
+    # Footage is video: photos never stand in for it when deciding to fall back (ADR 0075).
+    video_s = sum((c.usable_seconds for c in found if not c.still), Fraction(0))
+    if video_s < FALLBACK_FACTOR * want_seconds:
         found += similar
         counts["duplicate_fallback"] = len(similar)
+    found = cap_stills(found, photo_share, keep, counts)
     capped = cap_by_day(found, MAX_CANDIDATES, keep)
     _describe(session, capped)
     counts["candidates"] = len(capped)
     counts["capped"] = len(found) - len(capped)
     return sorted(capped, key=Candidate.sort_key), counts
+
+
+# Under photo share "some", photos take at most this share of the AI's candidates.
+SOME_STILLS = Fraction(1, 4)
+
+
+def cap_stills(
+    cands: list[Candidate], photo_share: str, keep: frozenset[int], counts: dict[str, int]
+) -> list[Candidate]:
+    """Under "some", the best photos up to a quarter of ``MAX_CANDIDATES`` (the owner's
+    picks and locks always stay), so a photo-heavy library never crowds out its video;
+    "many" lifts the limit (ADR 0075)."""
+    if photo_share != "some":
+        return cands
+    limit = int(MAX_CANDIDATES * SOME_STILLS)
+    stills = [c for c in cands if c.still and not (c.user_use or c.segment_id in keep)]
+    if len(stills) <= limit:
+        return cands
+    stills.sort(key=lambda c: (-c.score(), c.segment_id))
+    dropped = {c.segment_id for c in stills[limit:]}
+    counts["photos_capped"] = len(dropped)
+    return [c for c in cands if c.segment_id not in dropped]
+
+
+def _photo_groups(session: Session) -> tuple[set[int], dict[int, int]]:
+    """Burst members other than the recommended frame, and each photo that shares a
+    capture with video: the video segment it shows (ADR 0026, ADR 0075)."""
+    from mosaic.storage.models_project import PhotoGroup, PhotoGroupMember
+
+    rest: set[int] = set()
+    for best, sid in session.execute(
+        select(PhotoGroup.best_segment_id, PhotoGroupMember.segment_id)
+        .join(PhotoGroupMember, PhotoGroupMember.group_id == PhotoGroup.id)
+        .where(PhotoGroup.kind == "burst")
+    ):
+        if sid != best:
+            rest.add(sid)
+    members: dict[int, list[tuple[int, str]]] = {}
+    for gid, sid, kind in session.execute(
+        select(PhotoGroup.id, PhotoGroupMember.segment_id, Asset.kind)
+        .join(PhotoGroupMember, PhotoGroupMember.group_id == PhotoGroup.id)
+        .join(Segment, Segment.id == PhotoGroupMember.segment_id)
+        .join(Asset, Asset.id == Segment.asset_id)
+        .where(PhotoGroup.kind == "capture")
+    ):
+        members.setdefault(gid, []).append((sid, kind))
+    twin: dict[int, int] = {}
+    for group in members.values():
+        videos = sorted(sid for sid, kind in group if kind == "video")
+        if videos:
+            for sid, kind in group:
+                if kind != "video":
+                    twin[sid] = videos[0]
+    return rest, twin
 
 
 def cap_by_day(

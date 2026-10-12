@@ -33,12 +33,14 @@ from mosaic.media.proxy import load_proxy
 from mosaic.media.tools import media_tools
 from mosaic.render.plan import (
     RENDER_VERSION,
+    STILL_VERSION,
     Profile,
     SourceFile,
     chunk_key,
     framing,
     pieces,
     samples_for,
+    still_key,
 )
 from mosaic.storage import provenance
 from mosaic.storage.models_project import (
@@ -119,11 +121,30 @@ def _sources(ctx: TaskContext, asset: Asset, kind: str) -> list[SourceFile]:
     return out
 
 
+def _photo_file(ctx: TaskContext, asset_id: int) -> SourceFile:
+    """A still's photo: its first file (the still of a Live Photo), read-only."""
+    with ctx.project.db.session() as s:
+        row = s.execute(
+            select(MediaFile)
+            .join(AssetFile, AssetFile.media_file_id == MediaFile.id)
+            .where(AssetFile.asset_id == asset_id)
+            .order_by(AssetFile.order)
+            .limit(1)
+        ).first()
+    if row is None:
+        raise PermanentError(f"ast_{asset_id:04d}: no photo file")
+    mf = row[0]
+    return SourceFile(ctx.project.root / mf.rel_path, 0, 0, Fraction(0), mf.fingerprint)
+
+
 def _chunk_plan(
     ctx: TaskContext, r: Render, v: EditVersion, index: int
 ) -> tuple[str, list[SourceFile]]:
     e = _event(v, index)
     prof = _profile(r)
+    if e.get("kind") == "still":  # a photo (ADR 0075): its file, never a proxy
+        photo = _photo_file(ctx, int(e["asset_id"][4:]))
+        return still_key(ctx.project.id, e, photo.fingerprint, prof, v.rate), [photo]
     with ctx.project.db.session() as s:
         asset = s.get(Asset, int(e["asset_id"][4:]))
         if asset is None or asset.tb is None or asset.video_stream_index is None:
@@ -234,6 +255,8 @@ def chunk_task(ctx: TaskContext) -> dict[str, Any]:
     r, v = _render(ctx)
     index = int(ctx.params["index"])
     key, files = _chunk_plan(ctx, r, v, index)
+    if _event(v, index).get("kind") == "still":
+        return _still_chunk(ctx, r, v, index, key, files[0], binaries)
     with ctx.project.db.session() as s:
         asset = s.get(Asset, int(_event(v, index)["asset_id"][4:]))
         assert asset is not None
@@ -264,6 +287,71 @@ def chunk_task(ctx: TaskContext) -> dict[str, Any]:
         if (frames, samples) != (spec.frames, spec.samples):
             raise PermanentError(
                 f"chunk {index}: rendered {frames} frames / {samples} samples, "
+                f"expected {spec.frames} / {spec.samples}"
+            )
+    return {"chunk": key, "ms": result.duration_ms}
+
+
+def _still_chunk(
+    ctx: TaskContext,
+    r: Render,
+    v: EditVersion,
+    index: int,
+    key: str,
+    photo: SourceFile,
+    binaries: FFmpegBinaries,
+) -> dict[str, Any]:
+    """A still event (ADR 0075): its canvas made with Pillow from the photo, then panned
+    and zoomed by FFmpeg to exactly its frames, with silence."""
+    import tempfile
+
+    from mosaic.media.photo import PhotoError
+    from mosaic.media.stills import canvas, motion_exprs
+
+    e = _event(v, index)
+    prof = _profile(r)
+    rate = parse_rational(v.rate)
+    frames = e["timeline_out"]["frames"] - e["timeline_in"]["frames"]
+    with ctx.write() as s:
+        prov = provenance.record(
+            s,
+            provenance.ProvenanceInfo(
+                kind="render.chunk",
+                algorithm_version=f"{RENDER_VERSION}+{STILL_VERSION}",
+                input_keys=[key],
+                config_hash=key.rsplit("-", 1)[-1][:16],
+            ),
+        )
+    with (
+        tempfile.TemporaryDirectory(prefix="mosaic-still-") as tmpdir,
+        ctx.project.artifacts.writer("chunk", key, ".mov", provenance_id=prov) as tmp,
+    ):
+        try:
+            image = canvas(photo.path, prof.width, prof.height)
+        except PhotoError as exc:
+            raise PermanentError(f"{e['asset_id']}: {exc}") from None
+        canvas_path = Path(tmpdir) / "canvas.png"
+        image.save(canvas_path, compress_level=1)  # decoded again for every frame
+        zoom, x, y = motion_exprs(e["motion"], frames)
+        spec = rb.StillSpec(
+            canvas=canvas_path,
+            zoom=zoom,
+            x=x,
+            y=y,
+            width=prof.width,
+            height=prof.height,
+            rate=rate,
+            frames=frames,
+            samples=samples_for(frames, rate),
+            encoder=prof.encoder,
+            bitrate=prof.bitrate,
+            out=tmp,
+        )
+        result = run(binaries, rb.still_chunk(spec))
+        got = stream_counts(binaries, tmp)
+        if got != (spec.frames, spec.samples):
+            raise PermanentError(
+                f"chunk {index}: rendered {got[0]} frames / {got[1]} samples, "
                 f"expected {spec.frames} / {spec.samples}"
             )
     return {"chunk": key, "ms": result.duration_ms}

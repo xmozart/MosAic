@@ -85,7 +85,12 @@ def edit_inputs(s: Session, req: EditRequest, keep: frozenset[int] = frozenset()
     pace = pace_frames(req.pace, rate, req.shot_lengths)
     weights: dict[str, str] = dict(req.weights.items())
     cands, counts = retrieve(
-        s, Fraction(pace.min) / parse_rational(rate), Fraction(req.duration_s), weights, keep
+        s,
+        Fraction(pace.min) / parse_rational(rate),
+        Fraction(req.duration_s),
+        weights,
+        keep,
+        req.photo_share,
     )
     return EditInputs(rate, pace, cands, counts, _inputs_digest(s, cands), load_context(s))
 
@@ -170,6 +175,8 @@ def preferences_text(req: EditRequest) -> str:
         lines.append("Remove dead time aggressively: skip clips where little happens.")
     if r.long_holds:
         lines.append("Long cinematic holds are welcome on the strongest shots.")
+    if req.photo_share == "many":
+        lines.append("Use many photos: stills (marked photo) wherever they tell the story.")
     a = req.audio
     if a.keep_dialogue:
         lines.append("Keep dialogue: never cut someone mid-sentence.")
@@ -324,6 +331,8 @@ def _inputs_digest(session: Session, cands: list[Candidate]) -> str:
         )
         if c.bonus:  # the owner's weights met its categories (tags included; ADR 0072)
             h.update(f"b{c.bonus};".encode())
+        if c.still and c.similar_to is not None:  # a photo's video twin (ADR 0075)
+            h.update(f"s{c.similar_to};".encode())
     ids = [c.segment_id for c in cands]
     for chunk in range(0, len(ids), 500):
         part = ids[chunk : chunk + 500]

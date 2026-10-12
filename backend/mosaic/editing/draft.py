@@ -71,7 +71,10 @@ class Pin(BaseModel):
     def _range(self) -> Pin:
         if self.source_out.tb != self.source_in.tb:
             raise ValueError("a pin's in and out share one time base")
-        if self.source_out.ticks <= self.source_in.ticks:
+        still = self.source_in.tb == "1/1" and self.source_in.ticks == 0  # ADR 0075
+        if self.source_out.ticks < self.source_in.ticks or (
+            self.source_out.ticks == self.source_in.ticks and not still
+        ):
             raise ValueError("a pin's out point is after its in point")
         return self
 

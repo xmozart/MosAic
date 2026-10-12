@@ -335,3 +335,71 @@ def test_a_cancelled_render_keeps_no_file(
     assert not out.exists()
     assert not out.with_suffix(".concat.txt").exists()
     assert [p for p in out.parent.glob(f"*r{rid:04d}*")] == []
+
+
+def test_a_photo_renders_as_a_still_with_no_orientation_artifact(
+    analyzed_session: Any, ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """M4 acceptance 4 (ADR 0075): a photo-heavy edit mixes stills and video. The
+    corpus's photo is stored landscape with an EXIF rotation; on a 16:9 edit it shows
+    upright and whole, on a blurred fill, never stretched or sideways."""
+    import numpy as np
+
+    from mosaic.editing.draft import LockShot
+    from mosaic.editing.service import change_draft, save_draft
+
+    project, control = analyzed_session
+    edit_id = create_edit(
+        project, EditRequest(duration_s=20, photo_share="many"), control, control.local_principal
+    )
+    job = submit_generate(
+        LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id
+    )
+    assert run_job(control, job, timeout=600) == "done"
+    v = get_version(project, edit_id)
+    photo = next(
+        ref for ref, sel in v.timeline["selections"].items() if sel["segment_id"] == "seg_000001"
+    )
+    change_draft(project, edit_id, "op", LockShot(ref=photo))  # kept, however short the edit
+    version = save_draft(project, edit_id)
+    assert version is not None
+    v = get_version(project, edit_id, version)
+    events = v.timeline["tracks"][0]["events"]
+    still = next(e for e in events if e["kind"] == "still")
+    assert {e["kind"] for e in events} == {"video", "still"}
+    rid = _render(project, control, edit_id, version, "preview", lossless=False)
+    r = get_render(project, rid)
+    assert r is not None
+    path = output_path(project.workspace, r)
+    total = v.timeline["duration"]["frames"]
+    assert _frames(ffmpeg_bin, path) == total
+    videos = {int(e["asset_id"][4:]) for e in events if e["kind"] == "video"}
+    checks = check_render(ffmpeg_bin, path, v.timeline, _sources(project, ffmpeg_bin, videos))
+    assert all(c.ok for c in checks), [(c.event_id, c.decoded, c.frames) for c in checks]
+    # The still's middle frame: a sharp portrait in the middle, a soft fill at the sides.
+    middle = (still["timeline_in"]["frames"] + still["timeline_out"]["frames"]) // 2
+    w, h = r.profile["width"], r.profile["height"]
+    frame = None
+    for n, data in enumerate(stream_frames(ffmpeg_bin, path, w, h)):
+        if n == middle:
+            frame = data
+            break
+    assert frame is not None
+
+    def detail(region: np.ndarray) -> float:
+        return float(np.abs(np.diff(region.astype(np.int32), axis=1)).mean())
+
+    centre = frame[:, w * 2 // 5 : w * 3 // 5]
+    sides = np.concatenate([frame[:, : w // 10], frame[:, -w // 10 :]], axis=1)
+    assert detail(centre) > 4 * detail(sides), (detail(centre), detail(sides))
+
+
+def stream_frames(ffmpeg_bin: FFmpegBinaries, path: Any, w: int, h: int) -> Any:
+    """Gray frames of a render at its own size, one at a time."""
+    import numpy as np
+
+    from mosaic.media.ffmpeg.builders import raw_frames
+    from mosaic.media.ffmpeg.run import stream_stdout
+
+    for data in stream_stdout(ffmpeg_bin, raw_frames(path, w, h, "gray"), w * h):
+        yield np.frombuffer(data, dtype=np.uint8).reshape(h, w)

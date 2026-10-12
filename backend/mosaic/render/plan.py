@@ -25,6 +25,7 @@ from mosaic.media.ffmpeg.render import AUDIO_RATE, SEEK_MARGIN, Piece
 Fill = Literal["auto", "crop"]
 Framing = Literal["fit", "crop"]
 RENDER_VERSION = "render/3"  # aspect framing: crop near the target shape, else fit (ADR 0046)
+STILL_VERSION = "still/1"  # canvas, blurred fill and pan/zoom (ADR 0075)
 ASPECTS = {
     "16:9": Fraction(16, 9),
     "9:16": Fraction(9, 16),
@@ -226,3 +227,20 @@ def chunk_key(
 
 def parse_rate(rate: str) -> Fraction:
     return parse_rational(rate)
+
+
+def still_key(project_id: str, event: dict[str, Any], photo: str, prof: Profile, rate: str) -> str:
+    """A still chunk's key (ADR 0075): the photo's fingerprint, its frames and motion,
+    and the profile."""
+    return artifact_key(
+        "still",
+        project_id=project_id,
+        inputs={
+            "photo": photo,
+            "asset": event["asset_id"],
+            "frames": event["timeline_out"]["frames"] - event["timeline_in"]["frames"],
+            "motion": event.get("motion"),
+        },
+        config={"profile": prof.as_json(), "rate": rate, "still": STILL_VERSION},
+        version=RENDER_VERSION,
+    )

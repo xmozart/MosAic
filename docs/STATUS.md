@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.6a, photos in edits (bursts and duplicates, still events, subject-aware pan/zoom).
+- **Step:** M4.7, saliency: subject crop for non-native aspect ratios and subject-aware still motion.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
 ## M4 plan
@@ -28,9 +28,9 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 5a. Content categories (derived, no AI), weights in retrieval, `/edit-categories` by library frequency (ADR 0072)
 - [x] 5b. Planner and selector v3: arc and custom beats, preferences (weights, rules, sound), itinerary beats; `edit/2` (ADR 0073)
 - [x] 4c. More/less of a category (weight step + regenerate), stronger opening, different ending (`reselect` v2 directives; ADR 0074)
-- [ ] 6a. Photos in edits: bursts and duplicates, still events, subject-aware pan/zoom from saliency (no faces)
-- [ ] 6b. Still rendering: pan/zoom, blurred fill with `gblur` (never the GPL `boxblur`), EXIF orientation
-- [ ] 7. Subject crop for non-native aspect ratios (smoothed saliency, center fallback)
+- [x] 6a. Photos in edits: bursts and capture twins, photo share, still events 2–5 s with pan/zoom (ADR 0075)
+- [x] 6b. Still rendering: Pillow canvas (EXIF orientation, blurred fill, never `boxblur`), FFmpeg zoompan (ADR 0075; acceptance 4)
+- [ ] 7. Saliency (no faces): subject crop for non-native aspect ratios (smoothed, centre fallback) and subject-aware still motion
 - [ ] 8. Cut refiner v2: J- and L-cuts (audio up to 1 s, in frames), speech-aware in/out, separate audio chunks
 - [ ] 9a. Transitions: dissolves and dips as transition chunks (ADR 0066 mapping)
 - [ ] 9b. Title cards from context only (Pillow and Geist PNGs; the build has no `drawtext`)

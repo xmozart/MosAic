@@ -441,7 +441,9 @@ def report(
                     "source_out": e["source_out"],
                     "timeline_in": e["timeline_in"],
                     "timeline_out": e["timeline_out"],
-                    "display": (
+                    "display": "photo"
+                    if e.get("kind") == "still"
+                    else (
                         f"{format_display(Fraction(e['source_in']['ticks']) * tb)}–"
                         f"{format_display(Fraction(e['source_out']['ticks']) * tb)}"
                     ),

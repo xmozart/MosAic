@@ -169,7 +169,11 @@ def test_locking_a_cut_of_two_picks_absorbs_the_second() -> None:
     other = {**pin, "segment_id": "seg_000002"}
     with pytest.raises(DraftError, match="changed since it was timed"):
         apply(_board(), OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": other}))
-    backwards = {**pin, "source_out": {"ticks": 0, "tb": "1/1000"}}
+    backwards = {
+        **pin,
+        "source_in": {"ticks": 100, "tb": "1/1000"},
+        "source_out": {"ticks": 0, "tb": "1/1000"},
+    }
     with pytest.raises(ValidationError, match="out point is after its in point"):
         OP.validate_python({"kind": "lock_shot", "ref": "b1#0", "pin": backwards})
     mixed = {**pin, "source_out": {"ticks": 9000, "tb": "1/90000"}}

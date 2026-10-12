@@ -199,6 +199,17 @@ def align(cut: Cut, rate: str) -> None:
 
 
 def refine(shot: Shot, ctx: ClipContext, pace: PaceFrames, rate: str) -> Cut:
+    if shot.cand.still:  # a photo has no source range to place: its length is its cut
+        return Cut(
+            shot,
+            0,
+            0,
+            shot.pin[2] if shot.pin else shot.frames,
+            ctx,
+            [shot.selection_ref],
+            ua=0,
+            ub=0,
+        )
     if shot.pin is not None:  # a locked shot's exact cut (ADR 0068)
         a, b, n = shot.pin
         c = shot.cand
@@ -408,6 +419,12 @@ def land_on_target(cuts: list[Cut], target: int, rate: str, pace: PaceFrames) ->
                 break
             c = cuts[i]
             n = c.frames + step
+            if c.shot.cand.still:  # a photo's length moves within its own 2–5 s
+                if c.shot.lo <= n <= c.shot.hi:
+                    c.frames = n
+                    diff -= step
+                    progress = True
+                continue
             if step < 0 and n < min(pace.min, c.frames):
                 continue
             if step > 0 and n > max(c.shot.hi, c.frames):
@@ -436,6 +453,10 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
     pos = 0
     for i, c in enumerate(cuts, 1):
         s = c.shot
+        if s.cand.still:
+            out.append(still_event(c, i, pos, rate))
+            pos += c.frames
+            continue
         audio_on = s.audio_intent != "mute"
         out.append(
             {
@@ -469,3 +490,45 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
         )
         pos += c.frames
     return out
+
+
+# A still's pan and zoom: start and end rectangles in thousandths of the frame (so they
+# hold at any output size), eased. Stills alternate a slow push in and pull out; the
+# subject-aware motion of M4 step 6c moves the rectangles onto the subject (ADR 0075).
+FULL = {"x": 0, "y": 0, "w": 1000, "h": 1000}
+PUSHED = {"x": 75, "y": 75, "w": 850, "h": 850}
+
+
+def still_event(c: Cut, index: int, pos: int, rate: str) -> dict[str, Any]:
+    s = c.shot
+    start, end = (FULL, PUSHED) if index % 2 else (PUSHED, FULL)
+    return {
+        "event_id": f"evt_{index:04d}",
+        "kind": "still",
+        "asset_id": f"ast_{s.cand.asset_id:04d}",
+        "segment_id": s.cand.ref,
+        "source_in": {"ticks": 0, "tb": s.cand.tb},
+        "source_out": {"ticks": 0, "tb": s.cand.tb},
+        "timeline_in": {"frames": pos, "rate": rate},
+        "timeline_out": {"frames": pos + c.frames, "rate": rate},
+        "duration": {"frames": c.frames, "rate": rate},
+        "speed": "1/1",
+        "motion": {"start": dict(start), "end": dict(end), "easing": "ease_in_out"},
+        "transform": {"crop": None, "reframe": None, "stabilize": False},
+        "audio": {
+            "source_enabled": False,
+            "gain_db": 0,
+            "fade_in_frames": 0,
+            "fade_out_frames": 0,
+            "intent": "mute",
+        },
+        "transition_out": {"type": "cut"},
+        "role": s.role,
+        "beat_id": s.beat_id,
+        "origin": {
+            "selection_ref": c.merged_refs[0],
+            "merged": c.merged_refs[1:],
+            "merged_segments": [m.cand.ref for m in c.merged_shots],
+            "locked": s.locked,
+        },
+    }

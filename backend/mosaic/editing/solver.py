@@ -90,6 +90,12 @@ def desired_frames(length: str, pace: PaceFrames, dialogue: bool) -> int:
 
 
 def bounds(shot: Shot, pace: PaceFrames, rate: str) -> tuple[int, int]:
+    if shot.cand.still:  # a photo: 2 to 5 seconds, whatever its clip length (ADR 0075)
+        from mosaic.editing.retrieval import STILL_SECONDS
+
+        r = parse_rational(rate)
+        lo, hi = (round_fraction(sec * r, Rounding.NEAREST) for sec in STILL_SECONDS)
+        return lo, hi
     avail = available_frames(shot.cand, rate)
     hi = min(avail, pace.dialogue_max if shot.dialogue else pace.max)
     lo = min(pace.min, hi)

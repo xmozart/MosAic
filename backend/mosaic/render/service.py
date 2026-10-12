@@ -20,7 +20,10 @@ from mosaic.storage.projects import Project
 
 
 def _native(s: Session, events: list[dict[str, Any]]) -> Fraction | None:
-    """The display shape covering most of the edit's running time (ADR 0046)."""
+    """The display shape covering most of the edit's video running time (ADR 0046).
+    Stills never count: they are framed on their own canvas (ADR 0075), so photos never
+    turn a video edit into a cropped one."""
+    events = [e for e in events if e.get("kind") != "still"]
     ids = {int(e["asset_id"][4:]) for e in events}
     sizes = {
         aid: (w, h)

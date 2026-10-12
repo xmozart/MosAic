@@ -64,7 +64,7 @@ bundle the GPL x265 encoder.
   recording) do not apply to stills (`dispositions/5`).
 - **Not yet:**
   - **Edits:** photos are not edit candidates (retrieval reads video assets only) until
-    stills are supported on the timeline.
+    stills are supported on the timeline. (Superseded by ADR 0075: photos are stills on the timeline since M4.)
   - **Video similarity:** photos stay out of video similarity groups, so a photo never
     turns a video segment into a non-recommended look-alike. Bursts and photo + video
     moments get their own grouping (step 9b).

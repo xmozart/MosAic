@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from fractions import Fraction
 from typing import Any
 
 import pytest
@@ -487,3 +488,25 @@ def test_the_m4_request_reaches_the_plan(
             for sid in s.scalars(select(Segment.id).where(Segment.has_speech.is_(True)))
         }
     assert not picked & speech, "the avoided category stays out"
+
+
+def test_photos_become_stills(analyzed_session: Any) -> None:
+    """M4 step 6 (ADR 0075): with photo share "many", the corpus's photo is a still event
+    of 2–5 s, silent, with its pan and zoom; with "none" there is no still."""
+    project, control = analyzed_session
+    # Long enough that the solver drops nothing: the fake selector's photo pick is the
+    # last of its beat, the first to go when an edit must shrink.
+    edit_id = generate(project, control, EditRequest(duration_s=600, photo_share="many"))
+    events = get_version(project, edit_id).timeline["tracks"][0]["events"]
+    stills = [e for e in events if e["kind"] == "still"]
+    assert stills, [e["kind"] for e in events]
+    rate = Fraction(30000, 1001)
+    for e in stills:
+        frames = e["timeline_out"]["frames"] - e["timeline_in"]["frames"]
+        assert 2 * rate - 1 <= frames <= 5 * rate + 1
+        assert e["duration"]["frames"] == frames
+        assert e["audio"]["source_enabled"] is False
+        assert set(e["motion"]) == {"start", "end", "easing"}
+    none = generate(project, control, EditRequest(duration_s=600, photo_share="none"))
+    kinds = {e["kind"] for e in get_version(project, none).timeline["tracks"][0]["events"]}
+    assert kinds == {"video"}

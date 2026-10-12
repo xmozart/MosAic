@@ -33,10 +33,11 @@ class EventCheck:
     decoded: int = 0
     worst: int = 0
     errors: dict[int, int] = field(default_factory=dict)  # error → count
+    still: bool = False  # a photo (ADR 0075): no source frames to match
 
     @property
     def ok(self) -> bool:
-        return self.decoded == self.frames and self.worst <= 1
+        return self.still or (self.decoded == self.frames and self.worst <= 1)
 
 
 DECODE_W, DECODE_H = 640, 360  # renders are 16:9; barcodes decode fine at this size
@@ -84,7 +85,7 @@ def check_render(
     events = timeline["tracks"][0]["events"]
     bounds = [(e["timeline_in"]["frames"], e["timeline_out"]["frames"]) for e in events]
     checks = [
-        EventCheck(e["event_id"], e["asset_id"], b - a)
+        EventCheck(e["event_id"], e["asset_id"], b - a, still=e.get("kind") == "still")
         for e, (a, b) in zip(events, bounds, strict=True)
     ]
     ev = 0
@@ -94,6 +95,8 @@ def check_render(
         if ev >= len(events):
             break
         e = events[ev]
+        if e.get("kind") == "still":
+            continue
         k = n - bounds[ev][0]
         src = sources[e["asset_id"]]
         tb = parse_rational(e["source_in"]["tb"])
