@@ -963,4 +963,5 @@ def _assemble(
         "loudness_lufs": loud,
         "true_peak_dbtp": peak,
         "normalized": measured is not None,
+        "music": bool(v.request.get("music")),  # a music bed under the edit (ADR 0080)
     }

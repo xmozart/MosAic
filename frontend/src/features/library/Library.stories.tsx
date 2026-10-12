@@ -131,6 +131,17 @@ const helpLabel = (p: Partial<HelpLabelDialogProps>) => (
 export const HelpLabelPlace: Story = { name: "S24 Place question", render: () => helpLabel({}) };
 export const HelpLabelSamePerson: Story = { name: "S24 Same person", render: () => helpLabel({ questions: QUESTIONS.slice(1) }) };
 export const HelpLabelEvent: Story = { name: "S24 Event", render: () => helpLabel({ questions: QUESTIONS.slice(2) }) };
+export const HelpLabelDone: Story = {
+  name: "S24 Done summary",
+  render: () =>
+    helpLabel({
+      given: {
+        q1: { outcome: "answered", answer: { text: "La Fortuna" } },
+        q2: { outcome: "answered", answer: { choice: "yes", name: "Maya" } },
+        q3: { outcome: "skipped" },
+      },
+    }),
+};
 export const HelpLabelNothing: Story = { name: "S24 Nothing to ask", render: () => helpLabel({ questions: [] }) };
 export const HelpLabelLoading: Story = { name: "S24 Loading", render: () => helpLabel({ questions: undefined }) };
 export const HelpLabelLight: Story = { name: "S24 Light", globals: { theme: "light" }, render: () => helpLabel({ questions: QUESTIONS.slice(1) }) };

@@ -31,6 +31,7 @@ const page = (p: Partial<VersionsViewProps>) => (
 export const Comparing: Story = { name: "S18 Comparing", render: () => page({}) };
 export const OlderPair: Story = { name: "S18 Compare v1 with the latest", render: () => page({ pair: [1, 3], compare: { ...COMPARE, a: 1 } }) };
 export const NoPreview: Story = { name: "S18 Preview missing", render: () => page({ previews: { 2: { onRender: noop }, 3: { status: "Rendering 45%" } } }) };
+export const Reverting: Story = { name: "S18 Reverting", render: () => page({ reverting: true }) };
 export const Same: Story = { name: "S18 Same versions", render: () => page({ compare: { ...COMPARE, same: true, changes: [] } }) };
 export const Single: Story = { name: "S18 Single version", render: () => page({ versions: VERSIONS.slice(0, 1), pair: null, compare: undefined }) };
 export const Loading: Story = { name: "S18 Loading", render: () => page({ versions: undefined, pair: null, compare: undefined }) };

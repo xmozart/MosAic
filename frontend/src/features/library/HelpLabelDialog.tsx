@@ -33,6 +33,9 @@ export interface HelpLabelDialogProps {
   frame: (sampleId: number) => string;
   /** Records an answer; rejects with the reason when it isn't taken. */
   onAnswer: (questionId: string, answer: LabelAnswer) => Promise<void>;
+  /** Questions already answered or skipped, with the answers given (stories: the
+   * summary). The dialog starts at the first one not in it. */
+  given?: Record<string, { outcome: "answered" | "skipped"; answer?: LabelAnswer }>;
 }
 
 const CHOICES: { value: Choice; label: string }[] = [
@@ -111,9 +114,13 @@ function Header({ at, of }: { at?: number; of?: number }) {
 
 function Questions(p: HelpLabelDialogProps & { questions: LabelingQuestion[]; onKeys: (fn: (e: KeyboardEvent) => void) => void }) {
   const qs = p.questions;
-  const [i, setI] = useState(0);
-  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
-  const [drafts, setDrafts] = useState<Record<string, LabelAnswer>>({});
+  const given = p.given ?? {};
+  const [i, setI] = useState(() => {
+    const first = qs.findIndex((q) => !given[q.question_id]);
+    return first === -1 ? qs.length : first;
+  });
+  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>(() => Object.fromEntries(Object.entries(given).map(([k, v]) => [k, v.outcome])));
+  const [drafts, setDrafts] = useState<Record<string, LabelAnswer>>(() => Object.fromEntries(Object.entries(given).map(([k, v]) => [k, v.answer ?? {}])));
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null);

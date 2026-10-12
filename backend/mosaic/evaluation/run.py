@@ -36,15 +36,27 @@ from mosaic.storage.control import ControlDB
 REPO = Path(__file__).resolve().parents[3]
 RESULTS = REPO / "tests" / "evaluation" / "results"
 CORPUS_META = REPO / "tests" / "evaluation" / "corpus"
-MILESTONE = "M1"
+MILESTONE = "M4"
 EXIT_GATE = 3  # stopped at a human gate (G1/G2)
 
-# The M0 edits (M0.md acceptance 3). Other trips get a 60 s cinematic journey.
-TRIP_EDITS: dict[str, dict[str, Any]] = {
-    "airshow": {"duration_s": 180, "story": "cinematic_journey", "chronology": "mostly"},
-    "dubai": {"duration_s": 75, "story": "cinematic_journey", "chronology": "mostly"},
+# The v3 benchmark request (M4 acceptance 1): a 5-minute cinematic film, mostly
+# chronological, wildlife, people and reactions, drone establishing shots, no shaky or
+# repetitive shots, natural audio, a user music track (a generated stand-in here). A trip
+# with less footage asks for what it can fill (the M0 lengths).
+DEFAULT_EDIT: dict[str, Any] = {
+    "duration_s": 300,
+    "story": "cinematic_journey",
+    "chronology": "mostly",
+    "weights": {"wildlife": "more", "people": "more", "reactions": "more"},
+    "rules": {"drone_openers": True, "avoid_repetition": True, "allow_imperfect": False},
+    "audio": {"natural_sound": True, "keep_dialogue": True},
 }
-DEFAULT_EDIT: dict[str, Any] = {"duration_s": 60, "story": "cinematic_journey"}
+TRIP_EDITS: dict[str, dict[str, Any]] = {
+    "airshow": {"duration_s": 180},
+    "dubai": {"duration_s": 75},
+}
+MUSIC_SECONDS = 330  # longer than the longest benchmark edit
+MUSIC_VERSION = 1  # builders.stand_in_music's sound
 
 
 class GateStop(Exception):  # noqa: N818 - control flow for a human gate
@@ -146,6 +158,25 @@ def trips(corpus: Path) -> list[Path]:
     subs = sorted(p for p in corpus.iterdir() if p.is_dir() and not p.name.startswith("."))
     found = [p for p in subs if p.name != "MosAic" and has_video(p)]
     return found or ([corpus] if has_video(corpus) else [])
+
+
+def stand_in_music() -> Path:
+    """The benchmark's music track: generated once into the app-data folder (never the
+    corpus or the repository)."""
+    from mosaic.core.paths import app_data_dir
+    from mosaic.media.ffmpeg import builders
+    from mosaic.media.ffmpeg.run import run
+    from mosaic.media.tools import media_tools
+
+    # Named by how it is made, so a change to either never reuses an older track.
+    out = app_data_dir() / "eval" / f"stand-in-music-v{MUSIC_VERSION}-{MUSIC_SECONDS}s.m4a"
+    if not out.is_file():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        part = out.with_name(out.stem + ".part.m4a")
+        binaries, _ = media_tools()
+        run(binaries, builders.stand_in_music(part, MUSIC_SECONDS))
+        part.replace(out)
+    return out
 
 
 class _Paused(Exception):  # noqa: N818 - internal control flow
@@ -253,7 +284,12 @@ def run_trip(
             shown = meta.relative_to(REPO) if meta.is_relative_to(REPO) else meta
             print(f"  drafted {shown} (draft: true)", flush=True)
 
-        spec = DEFAULT_EDIT | TRIP_EDITS.get(name.lower(), {}) | expect.get("edit", {})
+        spec = (
+            DEFAULT_EDIT
+            | {"music": {"path": str(stand_in_music())}}
+            | TRIP_EDITS.get(name.lower(), {})
+            | expect.get("edit", {})
+        )
         request = EditRequest.model_validate(spec)
         edit_id = create_edit(project, request, control, me)
         if budget.remaining <= 0:
@@ -345,6 +381,13 @@ def _files(project: Any) -> dict[str, int]:
 
 def write_results(result: dict[str, Any]) -> Path:
     out = RESULTS / MILESTONE / f"{result['trip'].lower()}.json"
+    music = (result.get("request") or {}).get("music")
+    if music:  # the results are committed: no home folder in them
+        from mosaic.core.paths import app_data_dir
+
+        path = Path(music["path"])
+        if path.is_relative_to(app_data_dir()):
+            music["path"] = "<app-data>/" + str(path.relative_to(app_data_dir()))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     md = out.with_suffix(".md")

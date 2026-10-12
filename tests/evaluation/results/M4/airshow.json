@@ -1,0 +1,278 @@
+{
+  "trip": "Airshow",
+  "started_at": "2026-10-12T14:03:37-04:00",
+  "edit": "edt_0002",
+  "version": 1,
+  "request": {
+    "duration_s": 180,
+    "story": "cinematic_journey",
+    "chronology": "mostly",
+    "pace": "balanced",
+    "tolerance_pct": 5,
+    "instructions": "",
+    "fps": null,
+    "variant": 0,
+    "aspect": "16:9",
+    "resolution": "1080p",
+    "arc": "classic_travel",
+    "beats": [],
+    "weights": {
+      "people": "more",
+      "reactions": "more",
+      "wildlife": "more"
+    },
+    "rules": {
+      "avoid_repetition": true,
+      "allow_imperfect": false,
+      "unique_over_quality": true,
+      "drone_openers": true,
+      "remove_dead_time": false,
+      "long_holds": false
+    },
+    "photo_share": "some",
+    "shot_lengths": null,
+    "transitions": "cuts",
+    "audio": {
+      "keep_dialogue": true,
+      "natural_sound": true,
+      "reduce_wind": true
+    },
+    "loudness": "web",
+    "music": {
+      "path": "/Users/michaeldemb/Library/Application Support/MosAic/eval/stand-in-music.m4a",
+      "level_db": -18,
+      "fade_in_ms": 2000,
+      "fade_out_ms": 3000
+    }
+  },
+  "rate": "30000/1001",
+  "metrics": {
+    "target_frames": 5395,
+    "total_frames": 5395,
+    "duration_error_frames": 0,
+    "tolerance_frames": 269,
+    "duration_ok": true,
+    "events": 46,
+    "mid_word_cuts": 0,
+    "dialogue_truncations": 0,
+    "adjacent_jump_cuts": 0,
+    "reject_used": 0,
+    "same_group_within_5": 0,
+    "same_group_per_5min": 0.0,
+    "shake_percentile_median": 0.577,
+    "days_used": [
+      1
+    ],
+    "days_available": [
+      1
+    ],
+    "beats_used": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6"
+    ],
+    "beats_planned": [
+      "b1",
+      "b2",
+      "b3",
+      "b4",
+      "b5",
+      "b6"
+    ],
+    "blocking_ok": true,
+    "retrieval": {
+      "segments": 503,
+      "rejected": 89,
+      "too_short": 1,
+      "duplicate": 217,
+      "analysis_only": 0,
+      "candidates": 196,
+      "capped": 0
+    },
+    "locks": {
+      "shots": 0,
+      "pinned": 0,
+      "frames": 0,
+      "over_frames": 0
+    },
+    "solver": {
+      "target_frames": 5215,
+      "total_frames_before_refine": 5215,
+      "tolerance_frames": 269,
+      "underfilled": false,
+      "dropped": [],
+      "notes": [
+        "seg_000573: merged into seg_000572 (same take)"
+      ]
+    },
+    "titles": {
+      "cards": 2,
+      "frames": 180
+    },
+    "preliminary": false,
+    "ai": {
+      "planner": {
+        "provider": "claude-cli",
+        "model": "claude-sonnet-5-5",
+        "cached": false
+      },
+      "selector": {
+        "provider": "claude-cli",
+        "model": "claude-sonnet-5-5",
+        "cached": false
+      },
+      "cost_usd": 0.0,
+      "critic": {
+        "provider": "claude-cli",
+        "model": "claude-sonnet-5-5",
+        "cached": false
+      }
+    }
+  },
+  "findings": [
+    {
+      "code": "shake",
+      "severity": "warning",
+      "frame": 90,
+      "text": "used shots are shakier than the project median"
+    },
+    {
+      "code": "ai_note",
+      "severity": "warning",
+      "frame": 0,
+      "text": "The F-35 peak is thin. Only a few stills show fighter jets, and several of the other sky shots are smoke trails from aerobatic aircraft. The viewer may not feel a clear jump in power and speed. Add more real F-35 video if you have it.",
+      "source": "ai"
+    },
+    {
+      "code": "ai_remove",
+      "severity": "info",
+      "frame": 682,
+      "text": "This is another crowd shot in the opening, and it comes before the viewer has seen any aircraft. Cutting it keeps the setting beat shorter and avoids the crowd emphasis.",
+      "event_id": "evt_0008",
+      "ops": [
+        {
+          "kind": "remove_shot",
+          "ref": "b1#7"
+        }
+      ],
+      "source": "ai"
+    },
+    {
+      "code": "ai_remove",
+      "severity": "info",
+      "frame": 512,
+      "text": "The waterfront crowd looks the same as the neighbouring shots, so it adds little. Cutting it lets the bay and skyline carry the establishing beat.",
+      "event_id": "evt_0006",
+      "ops": [
+        {
+          "kind": "remove_shot",
+          "ref": "b1#4"
+        }
+      ],
+      "source": "ai"
+    },
+    {
+      "code": "ai_remove",
+      "severity": "warning",
+      "frame": 1491,
+      "text": "This is the third telescope shot in a row, after the pier group and the close-up. The viewer has seen the idea already, and the crowd context is dragging.",
+      "event_id": "evt_0015",
+      "ops": [
+        {
+          "kind": "remove_shot",
+          "ref": "b2#6"
+        }
+      ],
+      "source": "ai"
+    },
+    {
+      "code": "ai_remove",
+      "severity": "info",
+      "frame": 2188,
+      "text": "This cuts away from the sky to a crowd while the smoke display is building. Staying on the aircraft keeps the energy up.",
+      "event_id": "evt_0021",
+      "ops": [
+        {
+          "kind": "remove_shot",
+          "ref": "b3#4"
+        }
+      ],
+      "source": "ai"
+    },
+    {
+      "code": "ai_replace",
+      "severity": "info",
+      "frame": 3332,
+      "text": "A helicopter over a ship, then a rescue lowering, comes just before the F-35 peak and uses two stills. Tighten this to one clear shot so the rescue surprise lands and the build to the jets is not slowed.",
+      "event_id": "evt_0032",
+      "ops": [
+        {
+          "kind": "replace_shot",
+          "ref": "b4#4",
+          "segment_id": "seg_000503"
+        }
+      ],
+      "source": "ai"
+    },
+    {
+      "code": "ai_replace",
+      "severity": "info",
+      "frame": 4981,
+      "text": "This long, low-interest shot of an empty horizon is the final image. A more memorable closer would be fading trails over calm water, or the seabird at the pier, held gently.",
+      "event_id": "evt_0046",
+      "ops": [
+        {
+          "kind": "replace_shot",
+          "ref": "b6#5",
+          "segment_id": "seg_000870"
+        }
+      ],
+      "source": "ai"
+    },
+    {
+      "code": "ai_replace",
+      "severity": "info",
+      "frame": 4430,
+      "text": "This shot is mostly dark, with a small contrail in one corner. It ends the climax weakly. Finish on a strong jet shot before the calm.",
+      "event_id": "evt_0041",
+      "ops": [
+        {
+          "kind": "replace_shot",
+          "ref": "b5#7",
+          "segment_id": "seg_000495"
+        }
+      ],
+      "source": "ai"
+    }
+  ],
+  "expectations": {
+    "draft": false,
+    "must_include_total": 8,
+    "must_include_hit": 0,
+    "must_include_recall": 0.0,
+    "must_exclude_total": 92,
+    "must_exclude_violations": 0,
+    "violations": []
+  },
+  "subject_shares": {
+    "aircraft": 0.316,
+    "crowd": 0.057
+  },
+  "render": {
+    "path": "/Volumes/Extreme SSD/Samples/Airshow/MosAic/renders/edt_0002/v001-final-r0011.mp4",
+    "metrics": {
+      "frames": 5395,
+      "rate": "30000/1001",
+      "samples": 8640632,
+      "loudness_lufs": -14.0,
+      "true_peak_dbtp": -1.3,
+      "normalized": true,
+      "music": true,
+      "assembly_key": "assembly-a193701564f7f091c29dde8fe5c98bd20d7e8550"
+    }
+  },
+  "finished_at": "2026-10-12T14:08:09-04:00"
+}

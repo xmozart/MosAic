@@ -604,6 +604,21 @@ def bench_source(
     )
 
 
+def stand_in_music(out: Path, seconds: int) -> FFmpegCommand:
+    """A generated stand-in music track for the benchmark edit (M4 acceptance 1 asks for "a
+    user music track"; the eval has none of its own): a slow major chord that swells
+    every four seconds, stereo AAC. Copyright free by construction."""
+    tones = "+".join(
+        f"0.18*sin(2*PI*{hz}*t)" for hz in (220, 277.18, 329.63, 440)
+    )  # A major, with the octave
+    graph = f"aevalsrc=({tones})*(0.6+0.4*sin(2*PI*t/4)):s=48000:d={seconds}"
+    return FFmpegCommand(
+        inputs=[InputSpec(graph, [("-f", "lavfi")])],
+        outputs=[OutputSpec(media_path(out), [("-ac", 2), ("-c:a", "aac"), ("-b:a", "192k")])],
+        description=f"stand-in music {seconds} s",
+    )
+
+
 def still_frame(
     src: Path,
     stream_index: int,

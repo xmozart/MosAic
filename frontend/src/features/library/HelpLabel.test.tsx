@@ -74,6 +74,11 @@ describe("S24 HelpLabelDialog", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("the done summary", () => {
+    render(<Dialog given={{ q1: { outcome: "answered", answer: { text: "Arenal" } }, q2: { outcome: "answered", answer: { choice: "no" } }, q3: { outcome: "skipped" } }} />);
+    expect(screen.getByText("2 answered, 1 skipped. Places and notes are in your trip details.")).toBeInTheDocument();
+  });
+
   it("nothing to ask", () => {
     render(<Dialog questions={[]} />);
     expect(screen.getByText(/Nothing to ask right now/)).toBeInTheDocument();

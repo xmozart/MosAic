@@ -56,6 +56,16 @@ def test_one_trip_end_to_end_offline(
     data = json.loads(out.read_text())
     assert data["metrics"]["blocking_ok"]
     assert data["request"]["duration_s"] == 30
+    # The v3 benchmark request (M4 acceptance 1), with its generated stand-in music track.
+    assert data["request"]["weights"] == {"wildlife": "more", "people": "more", "reactions": "more"}
+    assert data["request"]["rules"]["drone_openers"] is True
+    from mosaic.core.paths import app_data_dir
+
+    shown = data["request"]["music"]["path"]
+    assert shown.startswith("<app-data>/eval/stand-in-music-v"), "no home folder in results"
+    music = app_data_dir() / shown.removeprefix("<app-data>/")
+    assert music.is_file(), "made in the app-data folder, never the corpus"
+    assert data["render"]["metrics"].get("music"), "the track is mixed under the edit"
     assert Path(data["render"]["path"]).is_file()
     assert data["render"]["metrics"]["frames"] == data["metrics"]["total_frames"]
     assert out.with_suffix(".md").read_text().startswith("# Mini")

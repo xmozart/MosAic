@@ -39,7 +39,9 @@ def _served(method: str, path: str, served: list[tuple[str, list[str]]]) -> bool
 METHOD = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)\b")
 
 
-def documented_m2_endpoints() -> list[tuple[str, str, str]]:
+def documented_m2_endpoints(
+    screens_of_interest: set[str] = M2_SCREENS, skip_note: str | None = "not in M2"
+) -> list[tuple[str, str, str]]:
     """(method, path, row's screens) for each endpoint of an M2 screen's row. A token that
     doesn't start at a top-level API segment continues the previous one (`/foo/{id}/pause`
     · `/resume`). A method written after a `·` (`· POST /x`) applies from there on;
@@ -49,11 +51,13 @@ def documented_m2_endpoints() -> list[tuple[str, str, str]]:
     tops = {p.split("/")[2] for p in spec["paths"]}
     out: list[tuple[str, str, str]] = []
     for line in (ROOT / "docs/ui/API_MAP.md").read_text().splitlines():
-        if not line.startswith("| ") or line.startswith("| Method") or "not in M2" in line:
+        if not line.startswith("| ") or line.startswith("| Method"):
+            continue
+        if skip_note and skip_note in line:
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         screens = set(re.findall(r"S\d+", cells[-1]))
-        if not screens & M2_SCREENS:
+        if not screens & screens_of_interest:
             continue
         methods = METHOD.findall(cells[0])
         cell = "|".join(cells[1:-1])

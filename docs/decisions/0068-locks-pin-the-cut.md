@@ -31,5 +31,5 @@ Locks are hard constraints until the user resets them (invariant 10). M4 accepta
 
 - Version storyboards (`beats[].shots`) carry `pin` and `absorbed_by`, so a lock survives saves and every later version made from them.
 - A version saved from a draft keeps its whole storyboard, including picks whose segment is gone from the library. They are left out of the timing with a note, and come back if the segment does. Before M4.3a, such picks fell out of the next version's storyboard.
-- S14's infeasible-locks warning needs the edit's locks. Wizard steps for an existing edit ("Change settings") pass the edit's id to the estimate in M4 step 14a. A brand-new edit has no locks.
+- S14's infeasible-locks warning needs the edit's locks. Wizard steps for an existing edit ("Change settings") pass the edit's id to the estimate in M4 step 14a. A brand-new edit has no locks. *(Superseded by ADR 0093: "Change settings" starts a new edit (ADR 0088), and the lock warning is S16's.)*
 - Pins are in the source's ticks and the timeline's frames at the edit's rate. The rate is fixed per edit until the owner changes the request's frame rate. That change is a regeneration, which re-times pinned shots from their source range (step 4).

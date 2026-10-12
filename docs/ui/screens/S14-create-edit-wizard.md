@@ -23,7 +23,7 @@
 
 ## States
 
-- Infeasible locks warning in the summary panel ("Locked shots add up to 5:22 — Allow 5:30 / Review locks").
+- Infeasible locks warning in the summary panel (not applicable in v1: the wizard makes a new edit, which has no locks; the warning is S16's, ADR 0093) ("Locked shots add up to 5:22 — Allow 5:30 / Review locks").
 - Preliminary analysis banner: Create now (preliminary) / Wait.
 - Start from a template or previous edit.
 - Estimate loading.
