@@ -63,8 +63,8 @@ export function StageList({ stages }: { stages: Stage[] }) {
           <span role="img" aria-label={spoken(s)}>
             {ICON[s.state](s)}
           </span>
-          <span className={cn("text-body", s.state === "pending" ? "text-text-faint" : "text-text")}>{s.label}</span>
-          {s.note && <span className="mono ml-auto truncate text-timecode-sm text-text-muted">{s.note}</span>}
+          <span className={cn("shrink-0 whitespace-nowrap text-body", s.state === "pending" ? "text-text-faint" : "text-text")}>{s.label}</span>
+          {s.note && <span className="mono ml-auto min-w-0 text-right text-timecode-sm text-text-muted">{s.note}</span>}
         </li>
       ))}
     </ol>

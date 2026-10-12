@@ -678,3 +678,30 @@ def test_the_estimate_counts_the_ai_critics_call_when_it_is_on(analyzed_session:
     assert not on["reuses_plan"]
     assert on["wall_seconds"][0] == 3 * estimate.CALL_SECONDS[0]
     assert off["wall_seconds"][0] == 2 * estimate.CALL_SECONDS[0]
+
+
+def test_a_generation_reports_its_steps_and_beats_for_s15(analyzed_session: Any) -> None:
+    """ADR 0087: the job's result carries S15's live view - the step, moments and
+    candidates, and the plan's beats with frames of each beat's first shots."""
+    from mosaic.editing.service import create_edit, submit_generate
+    from mosaic.storage.models_project import SampleFrame
+
+    project, control = analyzed_session
+    store = JobStore(control.db)
+    edit_id = create_edit(
+        project, EditRequest(duration_s=40, variant=47), control, control.local_principal
+    )
+    job = submit_generate(LocalExecutor(store), control.local_principal, project, edit_id)
+    assert run_job(control, job, timeout=600) == "done"
+    row = store.job(job)
+    assert row is not None
+    creating = row.result["creating"]
+    assert creating["step"] == "checking", "the last step it reached before the version"
+    assert creating["moments"] >= creating["candidates"] > 0
+    v = get_version(project, edit_id)
+    assert [b["title"] for b in creating["beats"]] == [b["title"] for b in v.beats]
+    framed = [sid for b in creating["beats"] for sid in b["sample_ids"]]
+    assert framed, "beats show frames of their first shots"
+    assert all(len(b["sample_ids"]) <= 3 for b in creating["beats"])
+    with project.db.session() as s:
+        assert all(s.get(SampleFrame, sid) is not None for sid in framed)

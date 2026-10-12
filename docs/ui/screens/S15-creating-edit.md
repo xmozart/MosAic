@@ -19,7 +19,7 @@
 
 ## Data & API
 
-- SSE `edit.progress`, `/jobs/{id}/cancel`.
+- `GET /jobs/{id}` (its `result.creating`, polled each second; ADR 0087), `/jobs/{id}/cancel`, `/edits/{eid}/generate` (retry), `GET /edits/{eid}` and `POST /renders` (the preview).
 
 ## Acceptance
 

@@ -413,7 +413,7 @@ it("WizardScreen estimates the request (debounced) and creates the edit", async 
   await waitFor(() => expect(posts.filter((p) => p.path === "/api/edits/estimate").at(-1)?.body).toMatchObject({ project_id: "P1", request: { duration_s: 90 } }));
   expect(posts.filter((p) => p.path === "/api/edits/estimate").some((p) => (p.body as { request: EditRequest }).request.duration_s === 60)).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "Create edit" }));
-  expect(await screen.findByRole("heading", { name: "Edits" })).toBeInTheDocument();
+  expect(await screen.findByTestId("where")).toHaveTextContent("/p/P1/edits/01JNEW/creating?job=7"); // S15
   const created = posts.find((p) => p.path === "/api/projects/{pid}/edits")!.body as { request: EditRequest; name: string };
   expect(created.name).toBe("Costa Rica — 90 s cinematic");
   expect(created.request).toMatchObject({ duration_s: 90, aspect: "16:9", story: "cinematic_journey" });

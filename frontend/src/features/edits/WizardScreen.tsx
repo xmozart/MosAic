@@ -119,10 +119,9 @@ function Wizard() {
       if (error || !data) throw new Error("create");
       return data as unknown as { edit_id: string; job_id: number };
     },
-    onSuccess: () => {
+    onSuccess: (made) => {
       void qc.invalidateQueries({ queryKey: ["edits", pid] });
-      toast({ kind: "info", message: `Creating “${title}”. It shows on Edits as it's made.` });
-      navigate(`/p/${pid}/edits`);
+      navigate(`/p/${pid}/edits/${made.edit_id}/creating?job=${made.job_id}`); // S15
     },
     onError: () => toast({ kind: "error", message: "Couldn't start the edit. Try again." }),
   });

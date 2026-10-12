@@ -41,7 +41,7 @@ from mosaic.editing.resolve import (
     resolve,
     shots_from_selection,
 )
-from mosaic.editing.retrieval import Candidate, retrieve
+from mosaic.editing.retrieval import Candidate, parse_ref, retrieve
 from mosaic.editing.titles import shot_events
 from mosaic.jobs.context import TaskContext
 from mosaic.jobs.registry import PermanentError, task
@@ -56,6 +56,8 @@ from mosaic.storage.models_project import (
     Disposition,
     Edit,
     EditVersion,
+    SampleFrame,
+    Segment,
     TechMetric,
     TranscriptSegment,
     VisualObservation,
@@ -462,6 +464,8 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     by_ref = {c.ref: c for c in cands}
     preliminary = analysing(ctx)  # also checked at the end: either makes it preliminary
     client = AIClient(ctx)
+    creating = Creating(ctx)
+    creating.update(step="planning", moments=inp.counts.get("segments", 0), candidates=len(cands))
     ctx.set_stage("planning")
     pctx = planner_context(req, cands, trip)
     plan_res = client.structured(
@@ -475,6 +479,10 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     plan = plan_res.data
     assert isinstance(plan, PlanOut)
     plan = owners_titles(plan, req)
+    creating.update(
+        step="selecting",
+        beats=[{"beat_id": b.beat_id, "title": b.title, "intent": b.intent} for b in plan.beats],
+    )
     pref_s = Fraction(pace.preferred) / parse_rational(rate)
     sctx = selector_context(req, plan, by_ref, pref_s, trip)
     ctx.set_stage("selecting shots")
@@ -490,9 +498,12 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
     assert isinstance(sel, SelectOut)
 
     shots = shots_from_selection(plan, sel, by_ref)
+    creating.thumbnails(sel)
+    creating.update(step="fitting")
     ctx.set_stage("timing")
     with ctx.project.db.session() as s:
         done = resolve(s, req, inp, plan, shots, rejected)
+    creating.update(step="checking")
     crit_res, crit_note = _review(ctx, client, req, trip, plan, done)
     metrics = done.metrics
     # Made while the library was still being analysed.
@@ -608,3 +619,45 @@ def _review(
     assert isinstance(answer, CriticOut)
     done.findings.extend(ai_critic.findings(answer, done))
     return res, None
+
+
+class Creating:
+    """S15's live view of a generation (ADR 0087), in the job's result under ``creating``:
+    the step it is on, how many moments became candidates, and the plan's beats as soon
+    as they exist, each with frames of its first three chosen shots once shots are chosen."""
+
+    def __init__(self, ctx: TaskContext) -> None:
+        self.ctx = ctx
+        self.state: dict[str, Any] = {}
+
+    def update(self, **change: Any) -> None:
+        self.state |= change
+        self.ctx.store.set_job_result(self.ctx.task.job_id, {"creating": dict(self.state)})
+
+    def thumbnails(self, sel: SelectOut) -> None:
+        """A kept frame of each of a beat's first three selections (inside the segment)."""
+        firsts = {b.beat_id: [x.segment_id for x in b.selections[:3]] for b in sel.beats}
+        frames: dict[str, list[int]] = {}
+        with self.ctx.project.db.session() as s:
+            for beat_id, ref in ((b, r) for b, refs in firsts.items() for r in refs):
+                seg = s.get(Segment, parse_ref(ref) or 0)
+                if seg is None:
+                    continue
+                sid = s.scalar(
+                    select(SampleFrame.id)
+                    .where(
+                        SampleFrame.asset_id == seg.asset_id,
+                        SampleFrame.kept.is_(True),
+                        SampleFrame.image_key.is_not(None),
+                        SampleFrame.ticks >= seg.start_ticks,
+                        SampleFrame.ticks < max(seg.end_ticks, seg.start_ticks + 1),
+                    )
+                    .order_by(SampleFrame.ticks)
+                    .limit(1)
+                )
+                if sid is not None:
+                    frames.setdefault(beat_id, []).append(sid)
+        beats = [
+            b | {"sample_ids": frames.get(b["beat_id"], [])} for b in self.state.get("beats", [])
+        ]
+        self.update(beats=beats)

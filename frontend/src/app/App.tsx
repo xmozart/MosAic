@@ -10,6 +10,7 @@ import { DiagnosticsScreen } from "@/features/diagnostics/DiagnosticsScreen";
 import { TripContextScreen } from "@/features/context/TripContextScreen";
 import { EditsScreen } from "@/features/edits/EditsScreen";
 import { ExportsIndex, ExportsScreen } from "@/features/exports/ExportsScreen";
+import { CreatingScreen } from "@/features/edits/CreatingScreen";
 import { WizardScreen } from "@/features/edits/WizardScreen";
 import { HomeScreen } from "@/features/home/HomeScreen";
 import { InventoryScreen } from "@/features/inventory/InventoryScreen";
@@ -49,6 +50,7 @@ export function App() {
                 <Route path="search" element={<SearchScreen />} />
                 <Route path="edits" element={<EditsScreen />} />
                 <Route path="edits/new" element={<WizardScreen />} />
+                <Route path="edits/:eid/creating" element={<CreatingScreen />} />
                 <Route path="edits/:eid" element={<PreviewScreen />} />
                 <Route path="exports" element={<ExportsScreen />} />
                 <Route path="settings" element={<ProjectSettingsScreen />} />
