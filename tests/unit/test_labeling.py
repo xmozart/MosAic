@@ -173,7 +173,8 @@ def test_the_api_asks_and_records_answers(project: Project) -> None:
     items = client.get(f"/api/projects/{project.id}/labeling-questions").json()["items"]
     assert [q["kind"] for q in items] == ["place", "same_person", "event"]
     same = items[1]
-    assert same["people"] == ["Maya"], "the name field's suggestions"
+    assert [p["label"] for p in same["people"]] == ["Maya"], "the name field's suggestions"
+    assert all(isinstance(p["description"], str) for p in same["people"]), "S24's match line"
     url = f"/api/projects/{project.id}/labeling-questions/{same['question_id']}/answer"
     assert client.post(url, json={"choice": "maybe"}).status_code == 422
     ok = client.post(url, json={"choice": "yes", "name": "Maya"})

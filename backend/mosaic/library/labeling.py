@@ -253,7 +253,9 @@ def as_json(q: LabelingQuestion, trip: TripContext | None = None) -> dict[str, A
         "status": q.status,
     }
     if q.kind == "same_person" and trip is not None:
-        out["people"] = [p.label for p in trip.people]  # the name field's suggestions
+        # The name field's suggestions, with what the trip context says of each (S24's
+        # "Matches your trip details").
+        out["people"] = [{"label": p.label, "description": p.description} for p in trip.people]
     return out
 
 

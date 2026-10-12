@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.14g, S24 Help me label.
+- **Step:** M4.15, acceptance tests, `make eval`, report, then G6.
 - **Checks:** full `make ci` per group of related steps, then push (AGENT_WORKFLOW §1). Groups: 7 · 8+9a · 9b+9c · 10+11 · 12+13 · S14+S15 · S16+S17 · S18+S19+S24 · 15.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
@@ -43,13 +43,15 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 12. Final render profiles and exports: H.264/HEVC hardware, ProRes 422 (VideoToolbox, then `prores_ks`), 1080p/4K, SRT, report, EDL JSON (ADR 0084)
   - Follow-up: warm the per-codec encoder probe at startup (today the first `/system/info` call runs the trials).
 - [x] 13. S24 Help me label: questions from co-occurrence, `person_link` and context records only, no face data (acceptance 7; ADR 0085)
-- [ ] 14. Screens with stories in both themes: a S14 full, b S15, c S16, d S17 findings, e S18, f S19, g S24
+- [x] 14. Screens with stories in both themes: a S14 full, b S15, c S16, d S17 findings, e S18, f S19, g S24
   - [x] 14a. S14 full: steps 3–5, custom beats, music track card (ADR 0086)
   - [x] 14b. S15 Creating edit: steps, beats as planned, background, cancel, retry, preview (ADR 0087)
   - [x] 14c. S16 Storyboard: beats and shots, drag, popover, locks, regenerate, undo, Save version (ADR 0088)
   - [x] 14d. S17 findings: FindingCards, markers, Apply/Ignore (all), Undo, Regenerate with fixes, N/P/A (ADR 0089)
   - [x] 14e. S18 Versions: list, compare with synced players, what changed, revert (ADR 0090)
   - [x] 14f. S19 Render final: presets with estimates, encoder availability, sidecars, Save to (ADR 0091)
+  - [x] 14g. S24 Help me label: Library entry after analysis, dialog with keys, summary (ADR 0092)
+    - Follow-up: give the "answered already" 422 a machine-readable code; S24 matches its text today.
 - [ ] 15. Acceptance tests, `make eval`, `docs/reports/M4.md`, then G6
 
 ## M0 plan

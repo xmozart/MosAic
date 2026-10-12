@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { api } from "@/api/client";
@@ -11,6 +11,7 @@ import { media } from "@/lib/media";
 import { useToasts } from "@/lib/toasts";
 
 import { ClipInspector } from "./ClipInspector";
+import { HelpLabelDialog, type LabelAnswer, type LabelingQuestion } from "./HelpLabelDialog";
 import { useClipUpdates, useDecide, useLibrary } from "./hooks";
 import { BulkBar, DayScrubber, KeyHints } from "./LibraryChrome";
 import { LibraryGrid, type LibraryGridHandle } from "./LibraryGrid";
@@ -53,6 +54,27 @@ export function LibraryScreen() {
   const days = useQuery(choices("day"));
   const cameras = useQuery(choices("camera"));
   const analyzing = useActivity((s) => Object.values(s.jobs).some((j) => j.projectId === pid && j.kind === "analysis" && j.state === "running"));
+
+  // S24 Help me label (ADR 0085, 0092): offered once the analysis is done and has questions.
+  const questions = useQuery({
+    queryKey: ["labeling-questions", pid],
+    enabled: !analyzing,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/projects/{pid}/labeling-questions", { params: { path: { pid } } });
+      if (error || !data) throw new Error("questions");
+      return (data as unknown as { items: LabelingQuestion[] }).items;
+    },
+  });
+  const [notNow, setNotNow] = useState(false);
+  // The batch shown stays as it was opened while it is answered.
+  const [labeling, setLabeling] = useState<LabelingQuestion[] | null>(null);
+  const answer = async (qid: string, body: LabelAnswer) => {
+    const { error } = await api.POST("/api/projects/{pid}/labeling-questions/{qid}/answer", { params: { path: { pid, qid } }, body: body as never });
+    if (error) {
+      const detail = (error as { detail?: unknown }).detail;
+      throw new Error(typeof detail === "string" ? detail : "That answer couldn't be saved.");
+    }
+  };
 
   const focus = v.focus;
   const clip = useQuery({
@@ -234,6 +256,37 @@ export function LibraryScreen() {
               Analysis is still running. Clips without a decision yet show no chip, and early edits are marked preliminary.</Banner>
           </div>
         )}
+        {!analyzing && !notNow && (questions.data?.length ?? 0) > 0 && (
+          <div className="px-6 pt-3">
+            <Banner
+              kind="info"
+              action={
+                <span className="flex gap-1.5">
+                  <Button size="sm" onClick={() => setLabeling(questions.data!)}>
+                    Help me label
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setNotNow(true)}>
+                    Not now
+                  </Button>
+                </span>
+              }
+            >
+              {questions.data!.length === 1 ? "One quick question" : `${questions.data!.length} quick questions`} can make your labels better. Each one is optional.
+            </Banner>
+          </div>
+        )}
+        <HelpLabelDialog
+          open={labeling !== null}
+          onOpenChange={(o) => {
+            if (o) return;
+            setLabeling(null);
+            void qc.invalidateQueries({ queryKey: ["labeling-questions", pid] });
+            void qc.invalidateQueries({ queryKey: ["trip-context", pid] });
+          }}
+          questions={labeling ?? undefined}
+          frame={(sid) => media.frame(pid, sid)}
+          onAnswer={answer}
+        />
         {(hidden > 0 || v.showRejected) && !v.filters.status && (
           <div className="px-6 pt-3">
             <Button size="sm" variant="ghost" onClick={() => v.set({ showRejected: !v.showRejected })}>

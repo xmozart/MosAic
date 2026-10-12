@@ -31,3 +31,8 @@ Footer: Skip / Back / Next.
 ## Acceptance
 
 - Answers link clips through the `person_link` table only. There is no face recognition or biometric storage.
+
+## M4 notes (ADR 0092)
+
+- Entry: an info banner in the Library once analysis is done and questions exist (Help me label / Not now).
+- With Yes, the name is needed (a link needs a label); otherwise it is optional.

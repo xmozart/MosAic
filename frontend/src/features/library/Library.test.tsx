@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 
-import { DETAIL, GROUPS, item, page } from "./fixtures";
+import { DETAIL, GROUPS, item, page, QUESTIONS } from "./fixtures";
 import { buildRows, gridLayout, headerText, MAX_TILES, MIN_TILE, wantsMoreAt } from "./layout";
 import { LibraryScreen } from "./LibraryScreen";
 import { aiVersusYou, optimistic } from "./model";
@@ -11,11 +11,14 @@ import { useLibraryView } from "./store";
 type Opts = { body?: unknown; params?: { path?: Record<string, unknown>; query?: Record<string, unknown> } };
 const calls: { method: string; path: string; opts?: Opts }[] = [];
 let libraryReply: (q: Record<string, unknown>) => unknown = () => page();
+let questions: unknown[] = [];
 const reply = (method: string, path: string, opts?: Opts) => {
   calls.push({ method, path, opts });
   if (path === "/api/projects/{pid}/library") return Promise.resolve({ data: libraryReply(opts?.params?.query ?? {}) });
   if (path === "/api/projects/{pid}/clips/{aid}") return Promise.resolve({ data: DETAIL });
   if (path === "/api/media/{pid}/filmstrip/{aid}") return Promise.resolve({ data: { frames: [] } });
+  if (path === "/api/projects/{pid}/labeling-questions") return Promise.resolve({ data: { items: questions } });
+  if (path === "/api/projects/{pid}/labeling-questions/{qid}/answer") return Promise.resolve({ data: { status: "answered" } });
   if (method !== "GET") return new Promise((r) => setTimeout(() => r({ data: {} }), 50));
   return Promise.resolve({ error: { detail: "unmocked" } });
 };
@@ -44,6 +47,7 @@ function mount() {
 
 beforeEach(() => {
   calls.length = 0;
+  questions = [];
   libraryReply = () => page();
   useLibraryView.setState({ pid: null });
 });
@@ -231,4 +235,20 @@ describe("LibraryScreen paging", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(calls.some((c) => c.opts?.params?.query?.cursor === "c1")).toBe(false);
   });
+});
+
+it("S24: the Library offers Help me label when the analysis has questions", async () => {
+  questions = QUESTIONS;
+  mount();
+  const banner = await screen.findByText(/3 quick questions can make your labels better/);
+  fireEvent.click(within(banner.closest("[role=status]")!).getByRole("button", { name: "Help me label" }));
+  const dialog = await screen.findByRole("dialog", { name: "Help me label" });
+  fireEvent.change(within(dialog).getByLabelText("Place"), { target: { value: "Arenal" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Next" }));
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/projects/{pid}/labeling-questions/{qid}/answer")).toBe(true));
+  const sent = calls.find((c) => c.path === "/api/projects/{pid}/labeling-questions/{qid}/answer")!;
+  expect(sent.opts).toMatchObject({ params: { path: { pid: "P1", qid: "q1" } }, body: { text: "Arenal" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
+  expect(screen.queryByText(/quick questions/)).toBeNull();
 });

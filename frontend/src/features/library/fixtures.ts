@@ -1,4 +1,5 @@
 import type { ClipDetail, LibraryGroup, LibraryItem, LibraryPage } from "./model";
+import type { LabelingQuestion } from "./HelpLabelDialog";
 
 const CAMS = [
   { label: "DJI Mini 4 Pro", kind: "drone" as const },
@@ -134,3 +135,22 @@ export const UNSUPPORTED: ClipDetail = {
 };
 
 export const THREE_SIXTY: ClipDetail = { ...DETAIL, asset_id: 10, name: "VID_20260717_101244.insv", analysis_only: true, badges: ["360"] };
+
+/** S24's questions (ADR 0085). */
+export const QUESTIONS: LabelingQuestion[] = [
+  { question_id: "q1", kind: "place", day: 3, text: "Where were you on Day 3 (Sunday 14 June)?", asset_ids: [11, 12, 13], sample_ids: [11, 12, 13], status: "open" },
+  {
+    question_id: "q2",
+    kind: "same_person",
+    day: 4,
+    text: "Is this the same person in these clips?",
+    asset_ids: [21, 22, 23],
+    sample_ids: [21, 22, 23],
+    status: "open",
+    people: [
+      { label: "Maya", description: "younger daughter, yellow raincoat" },
+      { label: "Leo", description: "older son" },
+    ],
+  },
+  { question_id: "q3", kind: "event", day: 6, text: "What happened on Day 6 (Wednesday 17 June)?", asset_ids: [31, 32], sample_ids: [31, null], status: "open" },
+];

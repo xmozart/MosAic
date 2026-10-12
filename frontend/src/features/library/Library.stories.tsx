@@ -8,7 +8,8 @@ import type { Density } from "@/lib/domain";
 import { frame } from "@/stories/frames";
 
 import { ClipInspector } from "./ClipInspector";
-import { DETAIL, GROUPS, item } from "./fixtures";
+import { DETAIL, GROUPS, item, QUESTIONS } from "./fixtures";
+import { HelpLabelDialog, type HelpLabelDialogProps } from "./HelpLabelDialog";
 import { BulkBar, DayScrubber, KeyHints } from "./LibraryChrome";
 import { LibraryGrid } from "./LibraryGrid";
 import { LibraryToolbar } from "./LibraryToolbar";
@@ -121,3 +122,15 @@ export const UserDecisions: Story = {
 export const EmptyFilter: Story = { render: () => <Screen empty inspector={false} rejectedButton="Show rejected (14)" /> };
 export const OfflineSource: Story = { render: () => <Screen items={Array.from({ length: 6 }, (_, i) => item(i, { offline: i === 1 }))} /> };
 export const Light: Story = { globals: { theme: "light" }, render: () => <Screen /> };
+
+const helpLabel = (p: Partial<HelpLabelDialogProps>) => (
+  <div className="h-[900px] w-[1368px]">
+    <HelpLabelDialog open onOpenChange={() => {}} questions={QUESTIONS} frame={(sid) => frame(sid, sid % 5)} onAnswer={() => Promise.resolve()} {...p} />
+  </div>
+);
+export const HelpLabelPlace: Story = { name: "S24 Place question", render: () => helpLabel({}) };
+export const HelpLabelSamePerson: Story = { name: "S24 Same person", render: () => helpLabel({ questions: QUESTIONS.slice(1) }) };
+export const HelpLabelEvent: Story = { name: "S24 Event", render: () => helpLabel({ questions: QUESTIONS.slice(2) }) };
+export const HelpLabelNothing: Story = { name: "S24 Nothing to ask", render: () => helpLabel({ questions: [] }) };
+export const HelpLabelLoading: Story = { name: "S24 Loading", render: () => helpLabel({ questions: undefined }) };
+export const HelpLabelLight: Story = { name: "S24 Light", globals: { theme: "light" }, render: () => helpLabel({ questions: QUESTIONS.slice(1) }) };
