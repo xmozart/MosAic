@@ -116,7 +116,7 @@ SSE event types:
 | POST | `/edits/{eid}/beats/{bid}/regenerate` (job; locks keep their cut and slot, ADR 0069) · `/edits/{eid}/regenerate?scope=story\|all\|opening\|ending` (job; locks kept, ADR 0070, 0074) · `/edits/{eid}/category` `{category, more}` → `{job_id, category, weight}` (a weight step, then the whole edit regenerated; 409 at either end of the scale; ADR 0074). `opening`/`ending` regenerate the first/last beat (422 when all its shots are locked) | S16, S17 |
 | GET | `/edits/{eid}/shots/{shot}/alternatives` (a storyboard ref such as `b2#1`, percent-encoded; ADR 0071) | S16 |
 | POST | `/edits/{eid}/duration` `{duration_s}` ("Make it N seconds": a new version re-timed with no AI call; ADR 0071) | S16, S17 |
-| GET | `/edits/{eid}/findings` · POST `/findings/{fid}/apply` · `/ignore` · `/findings/apply-all` (the AI critic; M4, not in M2) | S17 |
+| GET | `/edits/{eid}/findings?version=` → `{version, items [{finding_id, version, source: critic\|ai, code, severity, frame, event_id, text, can_apply, status: open\|applied\|ignored, applied_in_version}]}` (the latest version by default) · POST `/edits/{eid}/findings/{fid}/apply` · `/findings/apply-all` → the child version (201) with `skipped_findings`; 409 when the finding is on an older version or the storyboard has unsaved changes, 422 when nothing can be applied · POST `/findings/{fid}/ignore` · `/findings/ignore-all` → `{ignored}` (ADR 0081) | S17 |
 | POST | `/edits/{eid}/preview` (render job) | S16, S17 |
 | POST | `/edits/{eid}/revert` `{version}` | S18 |
 | GET | `/edits/{eid}/report?version=&rejected_offset=` (selection/rejection report and metrics; rejected list follows ADR 0042, clip-level included) | S17, CLI `mosaic report` |

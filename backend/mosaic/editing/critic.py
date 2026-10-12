@@ -4,6 +4,9 @@ Zero-target metrics: duration outside tolerance, mid-word cuts (audible cuts ins
 word), dialogue truncations (a dialogue shot ending inside a sentence), adjacent jump cuts
 and REJECT segments used without a user lock. Also reported: repetition of a similarity
 group within 5 events, the shake percentile of used shots, and day and beat coverage.
+v2 (M4; ADR 0081): a finding about one shot names it and carries the storyboard ops that
+fix it (an unused alternative, or removing the shot), never for a shot the owner locked
+or chose; very shaky shots are findings too.
 """
 
 from __future__ import annotations
@@ -19,20 +22,52 @@ from mosaic.editing.refiner import Cut, inside, is_jump, margin_ticks
 REPEAT_WINDOW = 5
 
 
+SHAKY = 0.9  # a shot shakier than 90 % of the project's is worth replacing
+
+
 @dataclass(frozen=True)
 class Finding:
+    """A critic finding. ``ref``: the shot it is about (its selection ref), when it is
+    about one; ``ops``: the storyboard ops (``draft.Op`` as JSON) that would fix it, None
+    when there is nothing to apply (ADR 0081). ``event_id`` is filled in once the
+    timeline's events exist."""
+
     code: str
     severity: str  # blocking|warning|info
     frame: int
     text: str
+    ref: str | None = None
+    ops: list[dict[str, Any]] | None = None
+    event_id: str | None = None
 
     def as_json(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "code": self.code,
             "severity": self.severity,
             "frame": self.frame,
             "text": self.text,
         }
+        if self.event_id:
+            out["event_id"] = self.event_id
+        if self.ops:
+            out["ops"] = self.ops
+        return out
+
+
+def fix_for(c: Cut, used: set[str], *, remove: bool) -> list[dict[str, Any]] | None:
+    """Ops that take shot ``c`` out of the edit: its first alternative that is not in the
+    edit already, else (``remove``) dropping it. None for a shot the owner locked or
+    chose (invariant 10), or one cut together with such a shot. The alternative chosen
+    joins ``used``, so no two fixes offer the same one."""
+    for sh in (c.shot, *c.merged_shots):
+        if sh.locked or sh.cand.user_use or sh.pin is not None:
+            return None
+    ref = c.merged_refs[0]
+    alt = next((a["segment_id"] for a in c.shot.alternatives if a["segment_id"] not in used), None)
+    if alt is not None:
+        used.add(alt)
+        return [{"kind": "replace_shot", "ref": ref, "segment_id": alt}]
+    return [{"kind": "remove_shot", "ref": ref}] if remove else None
 
 
 def evaluate(
@@ -98,20 +133,29 @@ def evaluate(
             reject_used += 1
             findings.append(Finding("reject_used", "blocking", at, f"{c.shot.cand.ref} is REJECT"))
 
+    used = {sh.cand.ref for c in cuts for sh in (c.shot, *c.merged_shots)}
     repeats = 0
+    flagged: set[int] = set()  # a later shot is one finding, however many it repeats
     for i, c in enumerate(cuts):
         g = c.shot.cand.group_id
         if g is None:
             continue
-        for d in cuts[i + 1 : i + REPEAT_WINDOW]:
+        for j in range(i + 1, min(len(cuts), i + REPEAT_WINDOW)):
+            d = cuts[j]
             if d.shot.cand.group_id == g:
                 repeats += 1
+                if j in flagged:
+                    continue
+                flagged.add(j)
+                # The later one goes: replaced by an alternative, or dropped.
                 findings.append(
                     Finding(
                         "repetition",
                         "warning",
-                        starts[i],
-                        f"{c.shot.cand.ref} and {d.shot.cand.ref} look alike",
+                        starts[j],
+                        f"{d.shot.cand.ref} looks like {c.shot.cand.ref}, shown just before",
+                        ref=d.merged_refs[0],
+                        ops=fix_for(d, used, remove=True),
                     )
                 )
     minutes = Fraction(total) / parse_rational(rate) / 60
@@ -121,6 +165,21 @@ def evaluate(
         c.shot.cand.shake_percentile for c in cuts if c.shot.cand.shake_percentile is not None
     ]
     shake_median = statistics.median(shakes) if shakes else None
+    for c, at in zip(cuts, starts, strict=True):
+        p = c.shot.cand.shake_percentile
+        if p is not None and p >= SHAKY and not c.shot.cand.still:
+            ops = fix_for(c, used, remove=False)
+            findings.append(
+                Finding(
+                    "shaky_shot",
+                    "warning" if ops else "info",
+                    at,
+                    f"{c.shot.cand.ref} is shakier than most of the trip"
+                    + ("; an alternative is steadier" if ops else ""),
+                    ref=c.merged_refs[0],
+                    ops=ops,
+                )
+            )
     if shake_median is not None and shake_median > 0.5:
         findings.append(
             Finding("shake", "warning", 0, "used shots are shakier than the project median")

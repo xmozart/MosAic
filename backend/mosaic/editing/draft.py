@@ -23,7 +23,7 @@ from mosaic.ai.prompts.planner.schema_v2 import Output as PlanOut
 from mosaic.ai.prompts.selector.schema_v2 import Length
 from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
-from mosaic.editing import solver
+from mosaic.editing import findings, solver
 from mosaic.editing.request import Category, EditRequest, Weight
 from mosaic.editing.resolve import EditInputs, Resolved, rejected_segments, resolve
 from mosaic.editing.retrieval import Candidate, parse_ref
@@ -754,6 +754,7 @@ def commit(
         edit.request = {**edit.request, "weights": row.request.get("weights", {})}  # ADR 0074
     s.execute(delete(EditDraftOp).where(EditDraftOp.edit_id == edit_id))
     s.flush()
+    findings.record(s, row)
     return row
 
 

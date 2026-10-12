@@ -26,6 +26,7 @@ from mosaic.core.clock import now_iso
 from mosaic.core.keys import artifact_key
 from mosaic.core.settings import ProviderChoice
 from mosaic.core.time import parse_rational
+from mosaic.editing import findings
 from mosaic.editing.request import (
     STORY_PRESETS,
     EditRequest,
@@ -537,6 +538,7 @@ def generate_task(ctx: TaskContext) -> dict[str, Any]:
         )
         s.add(row)
         s.flush()
+        findings.record(s, row)
         edit_row = s.get(Edit, edit_id)
         assert edit_row is not None
         payload = version_json(edit_row, row)

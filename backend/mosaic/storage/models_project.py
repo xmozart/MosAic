@@ -478,6 +478,32 @@ class EditDraftOp(ProjectBase):
     __table_args__ = (Index("ux_edit_draft_op", "edit_id", "seq", unique=True),)
 
 
+class EditFinding(ProjectBase):
+    """A critic finding on one edit version (ARCHITECTURE.md §13; ADR 0081): what it says,
+    where (a timeline frame and, for a shot, its event), the draft ops that would fix it,
+    and what the owner did with it. ``version.findings`` keeps the critic's JSON; the
+    status lives here."""
+
+    __tablename__ = "edit_finding"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(26), unique=True)  # ULID: the API's finding id
+    edit_id: Mapped[int] = mapped_column(ForeignKey("edit.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    seq: Mapped[int] = mapped_column(Integer)  # its place in the version's list
+    source: Mapped[str] = mapped_column(String(8))  # critic|ai
+    code: Mapped[str] = mapped_column(String(40))
+    severity: Mapped[str] = mapped_column(String(10))  # blocking|warning|info
+    frame: Mapped[int] = mapped_column(Integer)
+    event_id: Mapped[str | None] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(String(500))
+    ops: Mapped[list[Any] | None] = mapped_column(JSON)  # draft ops; None: nothing to apply
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open|applied|ignored
+    applied_in_version: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[str] = mapped_column(String(40))
+
+    __table_args__ = (Index("ux_edit_finding", "edit_id", "version", "seq", unique=True),)
+
+
 class Render(ProjectBase):
     """A preview or final render of one edit version (ARCHITECTURE.md §10). The output file
     lives under the workspace's ``renders/``; chunks are cached artifacts."""

@@ -299,6 +299,14 @@ def resolve(
     metrics["solver"] = solver.describe(fit) | {"notes": notes}
     findings = _after_cards(findings, cuts, cards)
     evts = refiner.events(cuts, rate, cards, req.transitions)
+    event_of = {
+        ref: e["event_id"]
+        for e in titles.shot_events(evts)
+        for ref in (e["origin"]["selection_ref"], *e["origin"].get("merged", []))
+    }
+    findings = [
+        dataclasses.replace(f, event_id=event_of.get(f.ref)) if f.ref else f for f in findings
+    ]
     in_edit = [sh for c in cuts for sh in (c.shot, *c.merged_shots)]
     used = {sh.cand.segment_id for sh in in_edit}
     inserted = [sh for sh in in_edit if sh.alt_of is not None]

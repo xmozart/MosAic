@@ -643,3 +643,91 @@ def render_file(
         filename=path.name if download else None,
         content_disposition_type="attachment" if download else "inline",
     )
+
+
+# ------------------------------------------------------------------- findings (S17)
+
+
+@router.get("/edits/{eid}/findings")
+def list_findings(
+    eid: str, version: int | None = None, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """A version's critic findings (the latest version's by default) with their status
+    (ADR 0081)."""
+    from mosaic.editing import draft, findings
+
+    check(me, "edits.read", eid)
+    with _edit(svc, me, eid) as (project, edit_id), project.db.session() as s:
+        if version is None:
+            latest = draft.latest(s, edit_id)
+            if latest is None:
+                raise HTTPException(404, "this edit has no version yet")
+            version = latest.version
+        items = [findings.as_json(f) for f in findings.of_version(s, edit_id, version)]
+        return {"version": version, "items": items}
+
+
+def _apply_findings(svc: Services, me: Principal, eid: str, which: list[str] | None) -> Any:
+    from mosaic.editing import draft, findings
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        if which is None:  # apply all: every open finding with a fix on the latest version
+            with project.db.session() as s:
+                latest = draft.latest(s, edit_id)
+                if latest is None:
+                    raise HTTPException(404, "this edit has no version yet")
+                rows = findings.of_version(s, edit_id, latest.version)
+                which = [f.uid for f in rows if f.status == "open" and f.ops]
+            if not which:
+                raise HTTPException(422, "None of these findings can be applied now.")
+        try:
+            number, skipped = findings.apply(project, edit_id, which)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except findings.FindingStateError as exc:
+            raise HTTPException(409, str(exc)) from None
+        except findings.FindingError as exc:
+            raise HTTPException(422, str(exc)) from None
+        out = _version(svc, project, edit_id, number)
+        out["skipped_findings"] = skipped
+        return out
+
+
+@router.post("/edits/{eid}/findings/{fid}/apply", status_code=201)
+def apply_finding(eid: str, fid: str, svc: Services = Svc, me: Principal = Me) -> Any:
+    """Apply one finding: a child version with its fix (ADR 0081)."""
+    return _apply_findings(svc, me, eid, [fid])
+
+
+@router.post("/edits/{eid}/findings/apply-all", status_code=201)
+def apply_all_findings(eid: str, svc: Services = Svc, me: Principal = Me) -> Any:
+    """Apply every open finding that has a fix: one child version."""
+    return _apply_findings(svc, me, eid, None)
+
+
+def _ignore(svc: Services, me: Principal, eid: str, fid: str | None) -> dict[str, Any]:
+    from mosaic.editing import draft, findings
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        uids = [fid] if fid else []
+        if fid is None:
+            with project.db.session() as s:
+                latest = draft.latest(s, edit_id)
+                rows = findings.of_version(s, edit_id, latest.version) if latest else []
+                uids = [f.uid for f in rows if f.status == "open"]
+        try:
+            return {"ignored": findings.ignore(project, edit_id, uids) if uids else 0}
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+
+@router.post("/edits/{eid}/findings/{fid}/ignore")
+def ignore_finding(eid: str, fid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    return _ignore(svc, me, eid, fid)
+
+
+@router.post("/edits/{eid}/findings/ignore-all")
+def ignore_all_findings(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    return _ignore(svc, me, eid, None)

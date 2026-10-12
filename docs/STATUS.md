@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.10, critic v2 and findings.
+- **Step:** M4.10b, the optional AI critic.
 - **Checks:** full `make ci` per group of related steps, then push (AGENT_WORKFLOW §1). Groups: 7 · 8+9a · 9b+9c · 10+11 · 12+13 · S14+S15 · S16+S17 · S18+S19+S24 · 15.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
@@ -37,6 +37,9 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 9b. Title cards from context only (Pillow and Geist PNGs; the build has no `drawtext`) (ADR 0079)
 - [x] 9c. Music bed: one track, fades, static level, fixed ducking under speech; path checks (ADR 0080)
 - [ ] 10. Critic v2 and findings: deterministic checks, the optional AI critic (event ids only), apply/ignore/apply-all creating child versions
+  - [x] 10a. Critic v2 with fixes as storyboard ops, `edit_finding` rows, apply/ignore/apply-all as child versions (ADR 0081)
+  - [ ] 10b. The optional AI critic (event ids only)
+  - S17's "Regenerate with fixes" comes with the S17 findings screen (14d).
 - [ ] 11. Compare and revert; render reuse by assembly key (acceptance 5)
 - [ ] 12. Final render profiles and exports: H.264/HEVC hardware, ProRes 422 (VideoToolbox, then `prores_ks`), 1080p/4K, SRT, report, EDL JSON
 - [ ] 13. S24 Help me label: questions from co-occurrence, `person_link` and context records only, no face data (acceptance 7)

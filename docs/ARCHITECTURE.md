@@ -128,7 +128,7 @@ Other tables:
 - **Labeling (S24):** `labeling_question` (kind: place, same_person or event; candidate asset ids; status), `person_link` (asset ids linked to a trip-context person label). This is a user-confirmed link only: no face embeddings or biometric data are stored.
 - **Devices and time:** `device` (make, model, serial or camera profile; `clock_offset_ms`, its source, the zone adopted from a reference device, `lut_path`), `device_suggestion` (suggested offset, agreeing evidence pairs), and on `asset`: `device_id`, `capture_time_raw` (as the file says) and `capture_time` (corrected; read by everything that orders or groups by time) (ADR 0027).
 - **Photos:** `asset.live_motion_enabled` for Live Photos; `photo_group` (kind `burst`, with `best_segment_id`, or `capture`: photos and video segments of one moment) and `photo_group_member` (ADR 0026).
-- **Editing:** `edit`, `edit_version`, `edit_draft_op`, `finding` (severity, timecode, text, suggested op, status: open, applied or ignored, applied_in_version), `render`, `provenance`.
+- **Editing:** `edit`, `edit_version`, `edit_draft_op`, `finding` (table `edit_finding`: severity, timecode, text, suggested ops, status: open, applied or ignored, applied_in_version; ADR 0081), `render`, `provenance`.
 - **Control DB additions:** `saved_preset` (named edit-request templates per user), `local_model` (name, size, checksum, status).
 
 Every AI or algorithmic row links to a `provenance` row with:

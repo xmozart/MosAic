@@ -894,3 +894,131 @@ def test_a_weight_step_that_cannot_be_queued_is_put_back_and_keeps_the_owners_ch
     d = client.get(f"/api/edits/{eid}/draft").json()
     assert next(s for s in _shots(d) if s["ref"] == ref)["locked"], "the owner's op stays"
     assert d["board"]["weight_changes"]["water"] == "neutral", "the weight is back"
+
+
+def test_findings_apply_as_child_versions_or_are_ignored(
+    drafted: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S17 (ADR 0081): a finding's fix is applied as a child version and the finding is
+    marked applied in it; one whose shot can't take the fix is skipped; one without a fix
+    can only be ignored. Applying waits for unsaved storyboard changes."""
+    from sqlalchemy import select
+
+    from mosaic.core.clock import now_iso
+    from mosaic.core.ids import new_ulid
+    from mosaic.storage.models_project import Edit, EditFinding
+
+    project, control, client, _ = drafted
+    edit_id = generate(project, control, EditRequest(duration_s=30, variant=17))
+    with project.db.session() as s:
+        eid = s.scalar(select(Edit.uid).where(Edit.id == edit_id))
+    start = client.get(f"/api/edits/{eid}/draft").json()
+    version = start["base_version"]
+    refs = [
+        e["origin"]["selection_ref"]
+        for e in start["timeline"]["tracks"][0]["events"]
+        if e["kind"] != "title" and not e["origin"]["locked"]
+    ]
+    victim = refs[-1]
+    with project.write() as s:
+        s.query(EditFinding).filter(EditFinding.edit_id == edit_id).delete()
+        for i, (code, ops) in enumerate(
+            [
+                ("repetition", [{"kind": "remove_shot", "ref": victim}]),
+                (
+                    "shaky_shot",
+                    [{"kind": "replace_shot", "ref": refs[0], "segment_id": "seg_999999"}],
+                ),
+                ("beat_coverage", None),
+            ]
+        ):
+            s.add(
+                EditFinding(
+                    uid=new_ulid(),
+                    edit_id=edit_id,
+                    version=version,
+                    seq=i,
+                    source="critic",
+                    code=code,
+                    severity="warning",
+                    frame=0,
+                    event_id=None,
+                    text=code,
+                    ops=ops,
+                    status="open",
+                    applied_in_version=None,
+                    created_at=now_iso(),
+                )
+            )
+    listed = client.get(f"/api/edits/{eid}/findings").json()
+    assert listed["version"] == version
+    items = listed["items"]
+    assert [(f["code"], f["can_apply"], f["status"]) for f in items] == [
+        ("repetition", True, "open"),
+        ("shaky_shot", True, "open"),
+        ("beat_coverage", False, "open"),
+    ]
+    rep, shaky, note = (f["finding_id"] for f in items)
+
+    # Unsaved storyboard changes come first.
+    client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": refs[0]}})
+    held = client.post(f"/api/edits/{eid}/findings/{rep}/apply")
+    assert held.status_code == 409
+    assert "storyboard" in held.text
+    client.post(f"/api/edits/{eid}/draft/undo")
+
+    assert client.post(f"/api/edits/{eid}/findings/{shaky}/apply").status_code == 422
+
+    # A failure while saving leaves the draft clean and the finding open (atomic).
+    from mosaic.editing import draft as draft_mod
+
+    real_commit = draft_mod.commit
+
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(draft_mod, "commit", broken)
+    with pytest.raises(RuntimeError, match="disk full"):
+        client.post(f"/api/edits/{eid}/findings/{rep}/apply")
+    monkeypatch.setattr(draft_mod, "commit", real_commit)
+    assert not client.get(f"/api/edits/{eid}/draft").json()["dirty"]
+    statuses = [f["status"] for f in client.get(f"/api/edits/{eid}/findings").json()["items"]]
+    assert statuses == ["open", "open", "open"]
+    from mosaic.storage.projects import Project as ProjectClass
+
+    snapshots: list[int] = []
+    real_checkpoint = ProjectClass.checkpoint
+
+    def counted(self: Any, *args: Any, **kwargs: Any) -> Any:
+        snapshots.append(1)
+        return real_checkpoint(self, *args, **kwargs)
+
+    monkeypatch.setattr(ProjectClass, "checkpoint", counted)
+    applied = client.post(f"/api/edits/{eid}/findings/apply-all")
+    monkeypatch.setattr(ProjectClass, "checkpoint", real_checkpoint)
+    assert applied.status_code == 201, applied.text
+    assert snapshots, "a snapshot follows the new version (ARCHITECTURE §4)"
+    child = applied.json()
+    assert child["version"] == version + 1
+    assert child["skipped_findings"] == [shaky]
+    events = child["timeline"]["tracks"][0]["events"]
+    assert all(e["origin"].get("selection_ref") != victim for e in events)
+    old = client.get(f"/api/edits/{eid}/findings", params={"version": version}).json()["items"]
+    assert [(f["status"], f["applied_in_version"]) for f in old] == [
+        ("applied", version + 1),
+        ("open", None),
+        ("open", None),
+    ]
+    again = client.post(f"/api/edits/{eid}/findings/{shaky}/apply")
+    assert again.status_code == 409, "a finding on an older version"
+    assert client.post(f"/api/edits/{eid}/findings/{note}/ignore").json() == {"ignored": 1}
+    assert client.post(f"/api/edits/{eid}/findings/nope/ignore").status_code == 404
+    new = client.get(f"/api/edits/{eid}/findings").json()
+    assert new["version"] == version + 1, "the child version has its own findings"
+    stored = client.get(f"/api/edits/{eid}").json()["findings"]
+    assert [f["code"] for f in new["items"]] == [f["code"] for f in stored], "one row each"
+    client.post(f"/api/edits/{eid}/findings/ignore-all")
+    assert all(
+        f["status"] == "ignored" for f in client.get(f"/api/edits/{eid}/findings").json()["items"]
+    )
+    assert client.post(f"/api/edits/{eid}/findings/apply-all").status_code == 422

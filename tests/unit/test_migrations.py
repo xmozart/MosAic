@@ -139,3 +139,34 @@ def test_broken_references_roll_the_migration_back(tmp_path: Path) -> None:
         assert not names & {"parent", "child"}
         assert conn.execute(text("PRAGMA foreign_keys")).scalar() == 1
     engine.dispose()
+
+
+def test_findings_of_older_versions_become_open_rows(tmp_path: Path) -> None:
+    """ADR 0081: versions made before the findings table keep their findings - each one
+    becomes an open row, so S17 never shows "no issues" for a version that has some."""
+    import json
+
+    db = tmp_path / "project.db"
+    command.upgrade(alembic_config("project", f"sqlite:///{db}"), "d9f2b6c41e08")
+    _populate(db)
+    found = [
+        {"code": "repetition", "severity": "warning", "frame": 90, "text": "alike"},
+        {"code": "duration", "severity": "blocking", "frame": 0, "text": "short"},
+    ]
+    con = sqlite3.connect(db)
+    con.execute("UPDATE edit_version SET findings = ?", (json.dumps(found),))
+    con.commit()
+    con.close()
+    engine = make_engine(db, wal=False)
+    migrate(engine, "project")
+    engine.dispose()
+    con = sqlite3.connect(db)
+    rows = con.execute(
+        "SELECT seq, source, code, severity, frame, status, length(uid) FROM edit_finding "
+        "ORDER BY seq"
+    ).fetchall()
+    con.close()
+    assert rows == [
+        (0, "critic", "repetition", "warning", 90, "open", 26),
+        (1, "critic", "duration", "blocking", 0, "open", 26),
+    ]
