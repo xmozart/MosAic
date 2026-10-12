@@ -306,6 +306,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/edits/{eid}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Versions
+         * @description S18's "What changed": the shot-level differences from version ``a`` to ``b``.
+         */
+        get: operations["compare_versions_api_edits__eid__compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/edits/{eid}/draft": {
         parameters: {
             query?: never;
@@ -560,6 +580,27 @@ export interface paths {
         get: operations["get_report_api_edits__eid__report_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/edits/{eid}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert Version
+         * @description A new version equal to ``version`` (never a destructive change; ADR 0083): its
+         *     render reuses the earlier one's chunks. 409 when it is the latest already.
+         */
+        post: operations["revert_version_api_edits__eid__revert_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2098,6 +2139,11 @@ export interface components {
             /** Cost Limit Usd */
             cost_limit_usd?: number | null;
         };
+        /** RevertBody */
+        RevertBody: {
+            /** Version */
+            version: number;
+        };
         /** RootBody */
         RootBody: {
             /** Label */
@@ -2719,6 +2765,42 @@ export interface operations {
             };
         };
     };
+    compare_versions_api_edits__eid__compare_get: {
+        parameters: {
+            query: {
+                a: number;
+                b: number;
+            };
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_draft_api_edits__eid__draft_get: {
         parameters: {
             query?: never;
@@ -3174,6 +3256,43 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_version_api_edits__eid__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevertBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

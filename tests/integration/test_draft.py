@@ -1022,3 +1022,49 @@ def test_findings_apply_as_child_versions_or_are_ignored(
         f["status"] == "ignored" for f in client.get(f"/api/edits/{eid}/findings").json()["items"]
     )
     assert client.post(f"/api/edits/{eid}/findings/apply-all").status_code == 422
+
+
+def test_versions_compare_and_revert_over_the_api(drafted: Any) -> None:
+    """S18 (ADR 0083): compare lists shot changes between two versions; revert makes a
+    new version equal to an older one and never rewrites history."""
+    from sqlalchemy import select
+
+    from mosaic.storage.models_project import Edit
+
+    project, control, client, _ = drafted
+    edit_id = generate(project, control, EditRequest(duration_s=30, variant=29))
+    with project.db.session() as s:
+        eid = s.scalar(select(Edit.uid).where(Edit.id == edit_id))
+    longer = client.post(f"/api/edits/{eid}/duration", json={"duration_s": 40})
+    assert longer.status_code == 201, longer.text
+    diff = client.get(f"/api/edits/{eid}/compare", params={"a": 1, "b": 2}).json()
+    assert diff["a"] == 1
+    assert diff["b"] == 2
+    assert diff["changes"], "a longer cut changes shots"
+    assert not diff["same"]
+    assert {c["kind"] for c in diff["changes"]} <= {
+        "replaced",
+        "trimmed",
+        "moved",
+        "added",
+        "removed",
+    }
+    first = _shots(client.get(f"/api/edits/{eid}/draft").json())[0]["ref"]
+    client.post(f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": first}})
+    assert client.get(f"/api/edits/{eid}/draft").json()["dirty"]
+    back = client.post(f"/api/edits/{eid}/revert", json={"version": 1})
+    assert back.status_code == 201, back.text
+    v3 = back.json()
+    assert v3["version"] == 3
+    assert not client.get(f"/api/edits/{eid}/draft").json()["dirty"], "unsaved changes dropped"
+    v1 = client.get(f"/api/edits/{eid}/versions/1").json()
+    assert v3["timeline"] == v1["timeline"]
+    assert client.get(f"/api/edits/{eid}/compare", params={"a": 1, "b": 3}).json()["same"]
+    assert [v["version"] for v in client.get(f"/api/edits/{eid}/versions").json()["items"]] == [
+        1,
+        2,
+        3,
+    ]
+    assert client.post(f"/api/edits/{eid}/revert", json={"version": 3}).status_code == 409
+    assert client.post(f"/api/edits/{eid}/revert", json={"version": 9}).status_code == 404
+    assert client.get(f"/api/edits/{eid}/compare", params={"a": 1, "b": 9}).status_code == 404

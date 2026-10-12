@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy import select
 
 from mosaic.ai.registry import embedder
@@ -731,3 +731,45 @@ def ignore_finding(eid: str, fid: str, svc: Services = Svc, me: Principal = Me) 
 @router.post("/edits/{eid}/findings/ignore-all")
 def ignore_all_findings(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
     return _ignore(svc, me, eid, None)
+
+
+# --------------------------------------------------------------- versions (S18)
+
+
+class RevertBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(ge=1)
+
+
+@router.post("/edits/{eid}/revert", status_code=201)
+def revert_version(
+    eid: str, body: RevertBody, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """A new version equal to ``version`` (never a destructive change; ADR 0083): its
+    render reuses the earlier one's chunks. 409 when it is the latest already."""
+    from mosaic.editing import versions
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            number = versions.revert(project, edit_id, body.version)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except versions.RevertError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return _version(svc, project, edit_id, number)
+
+
+@router.get("/edits/{eid}/compare")
+def compare_versions(
+    eid: str, a: int, b: int, svc: Services = Svc, me: Principal = Me
+) -> dict[str, Any]:
+    """S18's "What changed": the shot-level differences from version ``a`` to ``b``."""
+    from mosaic.editing import versions
+
+    check(me, "edits.read", eid)
+    with _edit(svc, me, eid) as (project, edit_id):
+        try:
+            return versions.compare(project, edit_id, a, b)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None

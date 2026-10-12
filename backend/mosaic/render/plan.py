@@ -253,6 +253,9 @@ def still_key(project_id: str, event: dict[str, Any], photo: str, prof: Profile,
 
 
 AUDIO_VERSION = "audio/1"  # separate audio chunks for J- and L-cuts (ADR 0077)
+# The assembler and the music mixer (concat, loudnorm, music bed): bump it whenever either
+# changes how a render's file is made, so no earlier render is reused (ADR 0083).
+ASSEMBLY_VERSION = "assembly/1"
 TRANSITION_VERSION = "transition/1"  # dissolves as xfade chunks, dips as fades (ADR 0078)
 
 
@@ -433,4 +436,32 @@ def title_key(project_id: str, event: dict[str, Any], prof: Profile, rate: str) 
             "still": STILL_VERSION,
         },
         version=RENDER_VERSION,
+    )
+
+
+def assembly_key(
+    project_id: str,
+    chunks: list[str],
+    audio: list[str],
+    music: dict[str, Any] | None,
+    prof: Profile,
+    rate: str,
+    frames: int,
+) -> str:
+    """A whole render's key (ADR 0083): its chunks in order (with dissolves), its audio
+    chunks, the music track as it is on disk, the length and the profile. Two renders with
+    the same key are the same file, so the later one reuses it (a revert, M4 acceptance 5).
+    ``music``: the track as the mix depends on it, with its duck windows and settings."""
+    from mosaic.media.ffmpeg.render import LOUDNESS_TARGET, LRA, TRUE_PEAK
+
+    return artifact_key(
+        "assembly",
+        project_id=project_id,
+        inputs={"chunks": chunks, "audio": audio, "music": music, "frames": frames},
+        config={
+            "profile": prof.as_json(),
+            "rate": rate,
+            "loudness": [LOUDNESS_TARGET, TRUE_PEAK, LRA],
+        },
+        version=f"{RENDER_VERSION}+{ASSEMBLY_VERSION}",
     )

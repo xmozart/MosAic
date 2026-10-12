@@ -9,7 +9,9 @@ Previews read the proxies (720p); final renders read the original files (1080p).
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -39,6 +41,7 @@ from mosaic.render.plan import (
     TRANSITION_VERSION,
     Profile,
     SourceFile,
+    assembly_key,
     audio_key,
     audio_span,
     chunk_key,
@@ -678,32 +681,108 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     if r.status == "cancelled":  # cancelled from S20 while its chunks ran
         return {"render_id": r.id, "cancelled": True}
     events = v.timeline["tracks"][0]["events"]
-    paths = []
+    keys: list[str] = []  # the picture chunks in order, dissolves between their pictures
     for index in range(len(events)):
-        key, _ = _chunk_plan(ctx, r, v, index)
-        if not ctx.project.artifacts.exists("chunk", key):
-            raise PermanentError(f"chunk {index} is missing")
-        paths.append(ctx.project.artifacts.path("chunk", key))
+        keys.append(_chunk_plan(ctx, r, v, index)[0])
         if dissolve_frames(events[index]):  # the dissolve sits between the two pictures
-            key = _dissolve_plan(ctx, r, v, index)[0]
-            if not ctx.project.artifacts.exists("chunk", key):
-                raise PermanentError(f"dissolve {index} is missing")
-            paths.append(ctx.project.artifacts.path("chunk", key))
+            keys.append(_dissolve_plan(ctx, r, v, index)[0])
+    audio_keys: list[str] = []
+    if is_split(v.timeline):  # J- and L-cuts: the sound from the audio chunks (ADR 0077)
+        audio_keys = [_audio_plan(ctx, r, v, index)[0] for index in range(len(events))]
+    for key in (*keys, *audio_keys):
+        if not ctx.project.artifacts.exists("chunk", key):
+            raise PermanentError(f"chunk {key} is missing")
     prof = _profile(r)
     out = output_path(ctx.project.workspace, r)
     out.parent.mkdir(parents=True, exist_ok=True)
+    total_frames = int(v.timeline["duration"]["frames"])
+    akey = assembly_key(
+        ctx.project.id, keys, audio_keys, _music_signature(v), prof, v.rate, total_frames
+    )
+    earlier = _same_render(ctx, r, akey)
+    if earlier is not None:  # an identical render exists: its file, not a new one (ADR 0083)
+        source, metrics = earlier
+        tmp = out.with_name(out.stem + ".part" + out.suffix)
+        tmp.unlink(missing_ok=True)
+        try:
+            os.link(source, tmp)
+        except OSError:
+            shutil.copy2(source, tmp)
+        tmp.replace(out)
+    else:
+        metrics = _assemble(ctx, binaries, r, v, keys, audio_keys, out)
+    metrics = metrics | {"assembly_key": akey}
+    with ctx.write() as s:
+        row = s.get(Render, r.id)
+        assert row is not None
+        if row.status == "cancelled":  # cancelled while assembling: no file is kept
+            out.unlink(missing_ok=True)
+            return {"render_id": r.id, "cancelled": True}
+        row.status = "done"
+        row.path = str(out.relative_to(ctx.project.workspace))
+        row.metrics = metrics
+        row.finished_at = now_iso()
+    return {"render_id": r.id, "path": str(out), **metrics}
+
+
+def _music_signature(v: EditVersion) -> dict[str, Any] | None:
+    """The music track as the assembly depends on it: its settings, the file's size and
+    modification time (a replaced track makes a new render), and the speech windows and
+    duck it follows (they come from the events' audio intents, not from the chunks)."""
+    from mosaic.editing.music import DUCK_DB, DUCK_RAMP, speech_windows
+
+    music = v.request.get("music")
+    if not music:
+        return None
+    ramp_frames = round_fraction(2 * DUCK_RAMP * parse_rational(v.rate), Rounding.CEIL)
+    sig = dict(music) | {
+        "duck": [list(w) for w in speech_windows(v.timeline, ramp_frames)],
+        "duck_db": DUCK_DB,
+        "ramp": str(DUCK_RAMP),
+    }
+    try:
+        st = Path(str(music["path"])).stat()
+    except OSError:  # gone: the mix will fail with a plain message; nothing to reuse
+        return sig
+    return sig | {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _same_render(ctx: TaskContext, r: Render, akey: str) -> tuple[Path, dict[str, Any]] | None:
+    """A finished render of this edit with the same assembly key, whose file is there."""
+    with ctx.project.db.session() as s:
+        rows = s.scalars(
+            select(Render)
+            .where(Render.edit_id == r.edit_id, Render.status == "done", Render.id != r.id)
+            .order_by(Render.id.desc())
+        )
+        for row in rows:
+            if (row.metrics or {}).get("assembly_key") != akey or not row.path:
+                continue
+            path = ctx.project.workspace / row.path
+            if path.is_file() and path.stat().st_size > 0:
+                return path, dict(row.metrics) | {"reused_from": row.id}
+    return None
+
+
+def _assemble(
+    ctx: TaskContext,
+    binaries: FFmpegBinaries,
+    r: Render,
+    v: EditVersion,
+    keys: list[str],
+    audio_keys: list[str],
+    out: Path,
+) -> dict[str, Any]:
+    """Concatenate the chunks, mix the music, normalize loudness; the render's metrics."""
+    prof = _profile(r)
     list_file = out.with_suffix(".concat.txt")
-    list_file.write_text(rb.concat_list(paths))
+    list_file.write_text(rb.concat_list([ctx.project.artifacts.path("chunk", k) for k in keys]))
     audio_list = None
-    if is_split(v.timeline):  # J- and L-cuts: the sound from the audio chunks (ADR 0077)
-        audio_paths = []
-        for index in range(len(events)):
-            key = _audio_plan(ctx, r, v, index)[0]
-            if not ctx.project.artifacts.exists("chunk", key):
-                raise PermanentError(f"audio chunk {index} is missing")
-            audio_paths.append(ctx.project.artifacts.path("chunk", key))
+    if audio_keys:
         audio_list = out.with_suffix(".audio.txt")
-        audio_list.write_text(rb.concat_list(audio_paths))
+        audio_list.write_text(
+            rb.concat_list([ctx.project.artifacts.path("chunk", k) for k in audio_keys])
+        )
     rate = parse_rational(v.rate)
     total_frames = int(v.timeline["duration"]["frames"])
     total_samples = samples_for(total_frames, rate)
@@ -745,7 +824,7 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     if audio_list is not None:
         audio_list.unlink(missing_ok=True)
     loud, peak = parse_ebur128(run(binaries, ebur128_measure(out)).stderr)
-    metrics = {
+    return {
         "frames": total_frames,
         "rate": v.rate,
         "samples": total_samples,
@@ -753,14 +832,3 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
         "true_peak_dbtp": peak,
         "normalized": measured is not None,
     }
-    with ctx.write() as s:
-        row = s.get(Render, r.id)
-        assert row is not None
-        if row.status == "cancelled":  # cancelled while assembling: no file is kept
-            out.unlink(missing_ok=True)
-            return {"render_id": r.id, "cancelled": True}
-        row.status = "done"
-        row.path = str(out.relative_to(ctx.project.workspace))
-        row.metrics = metrics
-        row.finished_at = now_iso()
-    return {"render_id": r.id, "path": str(out), **metrics}

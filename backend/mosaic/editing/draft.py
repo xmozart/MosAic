@@ -743,19 +743,24 @@ def commit(
     )
     s.add(row)
     edit = s.get(Edit, edit_id)
-    if edit is not None and edit.request.get("duration_s") != row.request["duration_s"]:
-        # The edit's request is its current one: a later regeneration keeps the length,
-        # and a default name follows it (ADR 0071).
-        old_s, new_s = edit.request.get("duration_s"), row.request["duration_s"]
-        if edit.name.endswith(f" · {old_s} s"):
-            edit.name = f"{edit.name[: -len(f' · {old_s} s')]} · {new_s} s"
-        edit.request = {**edit.request, "duration_s": new_s}
-    if edit is not None and edit.request.get("weights", {}) != row.request.get("weights", {}):
-        edit.request = {**edit.request, "weights": row.request.get("weights", {})}  # ADR 0074
+    if edit is not None:
+        follow(edit, row)
     s.execute(delete(EditDraftOp).where(EditDraftOp.edit_id == edit_id))
     s.flush()
     findings.record(s, row)
     return row
+
+
+def follow(edit: Edit, row: EditVersion) -> None:
+    """The edit's request is its current one: a later regeneration keeps the version's
+    length and content weights, and a default name follows the length (ADR 0071, 0074)."""
+    if edit.request.get("duration_s") != row.request["duration_s"]:
+        old_s, new_s = edit.request.get("duration_s"), row.request["duration_s"]
+        if edit.name.endswith(f" · {old_s} s"):
+            edit.name = f"{edit.name[: -len(f' · {old_s} s')]} · {new_s} s"
+        edit.request = {**edit.request, "duration_s": new_s}
+    if edit.request.get("weights", {}) != row.request.get("weights", {}):
+        edit.request = {**edit.request, "weights": row.request.get("weights", {})}
 
 
 def as_json(d: Draft, done: Resolved) -> dict[str, Any]:

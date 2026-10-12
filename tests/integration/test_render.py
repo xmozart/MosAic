@@ -8,7 +8,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from mosaic.core.time import Rounding, parse_rational
 from mosaic.devtools.render_check import SourceInfo, check_render
@@ -953,3 +953,56 @@ def test_the_music_mixer_ducks_exactly_twelve_db(ffmpeg_bin: FFmpegBinaries, tmp
     assert abs(20 * np.log10(rms(4.5, 5.5) / rms(1, 3)) - -12) < 0.3
     assert abs(20 * np.log10(rms(7, 9) / rms(1, 3))) < 0.3, "back up after the speech"
     assert abs(20 * np.log10(rms(3.3, 3.6) / rms(1, 3))) < 0.3, "the loop has no gap"
+
+
+def test_reverting_to_v1_after_five_versions_renders_the_same_file(
+    analyzed_session: Any, ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """M4 acceptance 5 (ADR 0083): reverting to v1 after five versions makes v6 equal to
+    v1; its render reuses every chunk (the same keys, none rendered again) and, its
+    assembly key matching v1's render, is byte for byte the same file."""
+    import hashlib
+
+    from mosaic.editing import versions
+    from mosaic.editing.service import set_duration
+    from mosaic.storage.models_project import Artifact as ArtifactRow
+
+    project, control = analyzed_session
+    edit_id = create_edit(
+        project, EditRequest(duration_s=30, variant=41), control, control.local_principal
+    )
+    job = submit_generate(
+        LocalExecutor(JobStore(control.db)), control.local_principal, project, edit_id
+    )
+    assert run_job(control, job, timeout=600) == "done"
+    first = get_render(project, _render(project, control, edit_id, 1, "final", True))
+    assert first is not None
+    for seconds in (26, 34, 28, 32):  # v2..v5, each a different cut
+        assert set_duration(project, edit_id, seconds) is not None
+    assert get_version(project, edit_id).version == 5
+    assert versions.compare(project, edit_id, 1, 5)["changes"], "v5 is another cut"
+    v6 = versions.revert(project, edit_id, 1)
+    assert v6 == 6
+    same = versions.compare(project, edit_id, 1, 6)
+    assert same["same"]
+    assert same["changes"] == []
+    with project.db.session() as s:
+        chunks_before = s.scalar(
+            select(func.count(ArtifactRow.key)).where(ArtifactRow.kind == "chunk")
+        )
+    again = get_render(project, _render(project, control, edit_id, 6, "final", True))
+    assert again is not None
+    with project.db.session() as s:
+        assert (
+            s.scalar(select(func.count(ArtifactRow.key)).where(ArtifactRow.kind == "chunk"))
+            == chunks_before
+        ), "no chunk rendered"
+    assert again.metrics["assembly_key"] == first.metrics["assembly_key"]
+    assert again.metrics["reused_from"] == first.id
+
+    def digest(r: Any) -> str:
+        return hashlib.sha256(output_path(project.workspace, r).read_bytes()).hexdigest()
+
+    assert digest(again) == digest(first), "the same file"
+    with pytest.raises(versions.RevertError):
+        versions.revert(project, edit_id, 6)

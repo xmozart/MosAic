@@ -315,6 +315,7 @@ The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata 
 
 - **Chunk renderer.** Each timeline event is rendered to a normalized mezzanine at the timeline format (resolution, rate, color space, 48 kHz stereo). Chunks include handles for transitions. The cache key is the event hash plus the render profile, so unchanged events are reused across versions. Chunks render in parallel.
 - **Assembler.** Concatenation, transitions (xfade / acrossfade over handles), audio mix (source audio, generated silence for silent sources, music bed later) and loudness normalization.
+  - A finished render records its **assembly key** (its chunk, dissolve and audio chunk keys in order, the music track and its duck windows, length, profile, loudness target and the assembler's version); a later render with the same key hard-links (or copies) that file and notes `reused_from` (ADR 0083).
   - Music bed (ADR 0080): one user track, looped to the edit's length at a static level with fades, ducked 12 dB under dialogue windows, mixed under the edit's sound before loudness normalization.
   - Transitions (ADR 0078): a dip is a fade inside its event's chunk; a dissolve is its own chunk between the two pictures (each half a dissolve shorter), blended with `xfade` over handles from their usable ranges.
   - A version with J- or L-cuts also renders one audio-only chunk per event over its heard window; the assembler then takes the video from the event chunks and the audio from the audio chunks (ADR 0077).

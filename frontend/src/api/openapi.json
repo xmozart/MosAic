@@ -941,6 +941,21 @@
         "title": "ResumeBody",
         "type": "object"
       },
+      "RevertBody": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "RevertBody",
+        "type": "object"
+      },
       "RootBody": {
         "properties": {
           "label": {
@@ -1879,6 +1894,66 @@
         "summary": "More Or Less Category"
       }
     },
+    "/api/edits/{eid}/compare": {
+      "get": {
+        "description": "S18's \"What changed\": the shot-level differences from version ``a`` to ``b``.",
+        "operationId": "compare_versions_api_edits__eid__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "title": "A",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "title": "B",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Versions Api Edits  Eid  Compare Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Versions"
+      }
+    },
     "/api/edits/{eid}/draft": {
       "get": {
         "description": "S16's storyboard: the draft's beats and shots, undo state and current timing.",
@@ -2543,6 +2618,58 @@
           }
         },
         "summary": "Get Report"
+      }
+    },
+    "/api/edits/{eid}/revert": {
+      "post": {
+        "description": "A new version equal to ``version`` (never a destructive change; ADR 0083): its\nrender reuses the earlier one's chunks. 409 when it is the latest already.",
+        "operationId": "revert_version_api_edits__eid__revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevertBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revert Version Api Edits  Eid  Revert Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revert Version"
       }
     },
     "/api/edits/{eid}/shots/{shot}/alternatives": {

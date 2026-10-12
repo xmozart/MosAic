@@ -112,13 +112,13 @@ SSE event types:
 | GET | `/edits/{eid}/draft` (the storyboard: beats and shots, undo state, timed now; ADR 0067) · `regenerating`: beat ids with a regenerate job running (ADR 0069), `regenerating_scope`: `story`/`all` while one runs (ADR 0070) | S16 |
 | POST | `/edits/{eid}/draft/ops` `{op}` (`move_shot`, `move_beat`, `remove_shot`, `lock_shot`, `replace_shot`, `set_duration`, `pace_beat`, `set_weight`; trim with M8's trim handles) · `/draft/undo` · `/draft/redo` | S16 |
 | POST | `/edits/{eid}/versions` (commit draft) · GET `/edits/{eid}/versions` · `/versions/{v}` | S16, S18 |
-| GET | `/edits/{eid}/compare?a=&b=` (change list) | S18 |
+| GET | `/edits/{eid}/compare?a=&b=` → `{a, b, duration_a, duration_b, same, changes [{kind: replaced\|trimmed\|moved\|added\|removed, ref, event_a, event_b, segment_a, segment_b, frame, in_version, moved}]}` (shots matched by storyboard ref, b's order then the removed; ADR 0083) | S18 |
 | POST | `/edits/{eid}/beats/{bid}/regenerate` (job; locks keep their cut and slot, ADR 0069) · `/edits/{eid}/regenerate?scope=story\|all\|opening\|ending` (job; locks kept, ADR 0070, 0074) · `/edits/{eid}/category` `{category, more}` → `{job_id, category, weight}` (a weight step, then the whole edit regenerated; 409 at either end of the scale; ADR 0074). `opening`/`ending` regenerate the first/last beat (422 when all its shots are locked) | S16, S17 |
 | GET | `/edits/{eid}/shots/{shot}/alternatives` (a storyboard ref such as `b2#1`, percent-encoded; ADR 0071) | S16 |
 | POST | `/edits/{eid}/duration` `{duration_s}` ("Make it N seconds": a new version re-timed with no AI call; ADR 0071) | S16, S17 |
 | GET | `/edits/{eid}/findings?version=` → `{version, items [{finding_id, version, source: critic\|ai, code, severity, frame, event_id, text, can_apply, status: open\|applied\|ignored, applied_in_version}]}` (the latest version by default) · POST `/edits/{eid}/findings/{fid}/apply` · `/findings/apply-all` → the child version (201) with `skipped_findings`; 409 when the finding is on an older version or the storyboard has unsaved changes, 422 when nothing can be applied · POST `/findings/{fid}/ignore` · `/findings/ignore-all` → `{ignored}` (ADR 0081) | S17 |
 | POST | `/edits/{eid}/preview` (render job) | S16, S17 |
-| POST | `/edits/{eid}/revert` `{version}` | S18 |
+| POST | `/edits/{eid}/revert` `{version}` → the new version (201), equal to `version`; 409 when it is the latest, 404 unknown (ADR 0083) | S18 |
 | GET | `/edits/{eid}/report?version=&rejected_offset=` (selection/rejection report and metrics; rejected list follows ADR 0042, clip-level included) | S17, CLI `mosaic report` |
 
 ## Renders
