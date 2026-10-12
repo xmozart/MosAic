@@ -83,7 +83,7 @@ export const REPORT: ReportData = {
     event_id: e.event_id,
     beat_id: e.beat_id,
     role: e.role,
-    segment_id: e.segment_id,
+    segment_id: e.segment_id ?? "", // report rows are shots: never a title card
     source_file: `DCIM/100APPLE/IMG_${4470 + i}.MOV`,
     timeline_in: e.timeline_in,
     timeline_out: e.timeline_out,
