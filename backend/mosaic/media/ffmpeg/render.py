@@ -194,51 +194,14 @@ def chunk(spec: ChunkSpec) -> FFmpegCommand:
         vsrc = "[v0]"
     chains.append(_video_chain(spec, vsrc))
 
-    end_sample = spec.samples
-    if spec.audio_enabled and spec.audio_index is not None:
-        for i, p in enumerate(spec.pieces):
-            chains.append(
-                f"[{i}:{spec.audio_index}]"
-                + chain(
-                    Filter.of("atrim", start=seconds_expr(p.start), end=seconds_expr(p.end)),
-                    Filter.of("asetpts", "PTS-STARTPTS"),
-                    Filter.of("aresample", str(AUDIO_RATE)),
-                    Filter.of("aformat", sample_fmts="fltp", channel_layouts="stereo"),
-                )
-                + f"[a{i}]"
-            )
-        if n > 1:
-            chains.append("".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[acat]")
-            asrc = "[acat]"
-        else:
-            asrc = "[a0]"
-        duration = Fraction(spec.samples, AUDIO_RATE)
-        afilters = [
-            Filter.of("volume", f"{spec.gain_db}dB"),
-            Filter.of("apad", whole_len=end_sample),
-            Filter.of("atrim", end_sample=end_sample),
-        ]
-        if spec.fade_in > 0:
-            afilters.append(Filter.of("afade", t="in", st=0, d=seconds_expr(spec.fade_in)))
-        if spec.fade_out > 0:
-            afilters.append(
-                Filter.of(
-                    "afade",
-                    t="out",
-                    st=seconds_expr(max(Fraction(0), duration - spec.fade_out)),
-                    d=seconds_expr(spec.fade_out),
-                )
-            )
-        chains.append(f"{asrc}{chain(*afilters)}[aout]")
-    else:
-        chains.append(
-            chain(
-                Filter.of("anullsrc", r=AUDIO_RATE, cl="stereo"),
-                Filter.of("atrim", end_sample=end_sample),
-            )
-            + "[aout]"
-        )
-
+    chains += _audio_chains(
+        spec.pieces,
+        spec.audio_index if spec.audio_enabled else None,
+        spec.gain_db,
+        spec.fade_in,
+        spec.fade_out,
+        spec.samples,
+    )
     out: list[tuple[str, OptionValue]] = [("-map", "[vout]"), ("-map", "[aout]")]
     out += _video_codec(spec.encoder, spec.bitrate, spec.rate)
     out += [
@@ -260,6 +223,109 @@ def chunk(spec: ChunkSpec) -> FFmpegCommand:
         global_options=[("-copyts", None)],
         filter_complex=";".join(chains),
         description=f"chunk {spec.out.name}",
+    )
+
+
+def _audio_chains(
+    pieces: list[Piece],
+    audio_index: int | None,
+    gain_db: int,
+    fade_in: Fraction,
+    fade_out: Fraction,
+    samples: int,
+) -> list[str]:
+    """Filter chains ending in ``[aout]``: the pieces' audio (input ``i`` per piece) with
+    its gain and fades, exactly ``samples`` long; generated silence without
+    ``audio_index``."""
+    if audio_index is None or not pieces:
+        return [
+            chain(
+                Filter.of("anullsrc", r=AUDIO_RATE, cl="stereo"),
+                Filter.of("atrim", end_sample=samples),
+            )
+            + "[aout]"
+        ]
+    chains: list[str] = []
+    n = len(pieces)
+    for i, p in enumerate(pieces):
+        chains.append(
+            f"[{i}:{audio_index}]"
+            + chain(
+                Filter.of("atrim", start=seconds_expr(p.start), end=seconds_expr(p.end)),
+                Filter.of("asetpts", "PTS-STARTPTS"),
+                Filter.of("aresample", str(AUDIO_RATE)),
+                Filter.of("aformat", sample_fmts="fltp", channel_layouts="stereo"),
+            )
+            + f"[a{i}]"
+        )
+    if n > 1:
+        chains.append("".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[acat]")
+        asrc = "[acat]"
+    else:
+        asrc = "[a0]"
+    duration = Fraction(samples, AUDIO_RATE)
+    afilters = [
+        Filter.of("volume", f"{gain_db}dB"),
+        Filter.of("apad", whole_len=samples),
+        Filter.of("atrim", end_sample=samples),
+    ]
+    if fade_in > 0:
+        afilters.append(Filter.of("afade", t="in", st=0, d=seconds_expr(fade_in)))
+    if fade_out > 0:
+        afilters.append(
+            Filter.of(
+                "afade",
+                t="out",
+                st=seconds_expr(max(Fraction(0), duration - fade_out)),
+                d=seconds_expr(fade_out),
+            )
+        )
+    chains.append(f"{asrc}{chain(*afilters)}[aout]")
+    return chains
+
+
+@dataclass
+class AudioSpec:
+    """An event's own audio window (a J- or L-cut, ADR 0077): ``pieces`` cut from the
+    files' ``audio_index`` (None or no pieces: silence), exactly ``samples`` long."""
+
+    pieces: list[Piece]
+    audio_index: int | None
+    gain_db: int
+    fade_in: Fraction  # seconds
+    fade_out: Fraction
+    samples: int
+    out: Path
+
+
+def audio_chunk(spec: AudioSpec) -> FFmpegCommand:
+    """An audio-only chunk (PCM in MOV) that concatenates with the others without drift."""
+    inputs = [InputSpec(media_path(p.path), [("-ss", seconds_expr(p.seek))]) for p in spec.pieces]
+    chains = _audio_chains(
+        spec.pieces if spec.audio_index is not None else [],
+        spec.audio_index,
+        spec.gain_db,
+        spec.fade_in,
+        spec.fade_out,
+        spec.samples,
+    )
+    return FFmpegCommand(
+        inputs=inputs if spec.audio_index is not None else [],
+        outputs=[
+            OutputSpec(
+                media_path(spec.out),
+                [
+                    ("-map", "[aout]"),
+                    ("-c:a", "pcm_s16le"),
+                    ("-ar", AUDIO_RATE),
+                    ("-ac", 2),
+                    ("-f", "mov"),
+                ],
+            )
+        ],
+        global_options=[("-copyts", None)],
+        filter_complex=";".join(chains),
+        description=f"audio {spec.out.name}",
     )
 
 
@@ -334,9 +400,11 @@ def assemble(
     container: str,
     total_samples: int,
     rate: Fraction,
+    audio_list: Path | None = None,
 ) -> FFmpegCommand:
     """Concatenate the chunks: video stream-copied, audio normalized (pass 2, linear) and
-    encoded (AAC in MP4; PCM in Matroska for lossless test renders)."""
+    encoded (AAC in MP4; PCM in Matroska for lossless test renders). With ``audio_list``
+    (a version with J- or L-cuts, ADR 0077) the audio is that list's audio chunks."""
     afilters: list[Filter] = []
     if measured is not None:
         afilters.append(
@@ -364,7 +432,7 @@ def assemble(
     ]
     opts: list[tuple[str, OptionValue]] = [
         ("-map", "0:v:0"),
-        ("-map", "0:a:0"),
+        ("-map", "1:a:0" if audio_list is not None else "0:a:0"),
         ("-c:v", "copy"),
         # Re-time the copied frames on the exact grid (no B-frames, so PTS = DTS): the
         # result is constant frame rate however the chunk boundaries were rounded.
@@ -376,8 +444,11 @@ def assemble(
         opts += [("-c:a", "aac"), ("-b:a", "192k"), ("-movflags", "+faststart"), ("-f", "mp4")]
     else:
         opts += [("-c:a", "pcm_s16le"), ("-f", "mov")]
+    inputs = [InputSpec(media_path(list_file), [("-f", "concat"), ("-safe", 0)])]
+    if audio_list is not None:
+        inputs.append(InputSpec(media_path(audio_list), [("-f", "concat"), ("-safe", 0)]))
     return FFmpegCommand(
-        inputs=[InputSpec(media_path(list_file), [("-f", "concat"), ("-safe", 0)])],
+        inputs=inputs,
         outputs=[OutputSpec(media_path(out), opts)],
         description=f"assemble {out.name}",
     )

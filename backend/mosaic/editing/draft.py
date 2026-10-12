@@ -611,7 +611,7 @@ def _digest(value: Any) -> str:
 
 def pinned(op: LockShot, done: Resolved, board: Board) -> LockShot:
     """``op`` with the pin the shot has in ``done`` (``board`` timed now): its event's
-    source range and frames, and the picks the refiner cut together with it."""
+    heard source range and frames, and the picks the refiner cut together with it."""
     if not op.locked:
         return op.model_copy(update={"pin": None, "absorb": []})
     _, _, sh = board.shot(op.ref)
@@ -619,12 +619,16 @@ def pinned(op: LockShot, done: Resolved, board: Board) -> LockShot:
     for e in done.timeline["tracks"][0]["events"]:
         refs = [e["origin"]["selection_ref"], *e["origin"].get("merged", [])]
         if op.ref in refs:
+            # A J- or L-cut moved only its picture: the pin is the window that is heard,
+            # the refiner's speech-safe cut (ADR 0077).
+            heard = e.get("audio") or {}
+            w = heard if e.get("kind") == "video" and "source_in" in heard else e
             pin = Pin(
                 segment_id=sh.segment_id,
-                source_in=SourceTime.model_validate(e["source_in"]),
-                source_out=SourceTime.model_validate(e["source_out"]),
+                source_in=SourceTime.model_validate(w["source_in"]),
+                source_out=SourceTime.model_validate(w["source_out"]),
                 duration=TimelineTime(
-                    frames=e["timeline_out"]["frames"] - e["timeline_in"]["frames"], rate=rate
+                    frames=w["timeline_out"]["frames"] - w["timeline_in"]["frames"], rate=rate
                 ),
             )
             return op.model_copy(update={"pin": pin, "absorb": [r for r in refs if r != op.ref]})

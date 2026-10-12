@@ -64,14 +64,15 @@ def evaluate(
         if c.shot.audio_intent == "mute":
             continue
         m = margin_ticks(c.tb)
-        for t, where in ((c.src_in, "starts"), (c.src_out, "ends")):
+        heard_in, heard_out = c.heard  # a J- or L-cut moves only the picture (ADR 0077)
+        for t, where in ((heard_in, "starts"), (heard_out, "ends")):
             if any(inside(t, w, m) for w in c.ctx.words):
                 mid_word += 1
                 findings.append(
                     Finding("mid_word", "blocking", at, f"{c.shot.cand.ref} {where} inside a word")
                 )
         if c.shot.audio_intent == "dialogue" and any(
-            inside(c.src_out, s, m) for s in c.ctx.sentences
+            inside(heard_out, s, m) for s in c.ctx.sentences
         ):
             truncations += 1
             findings.append(

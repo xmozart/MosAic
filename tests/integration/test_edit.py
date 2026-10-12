@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 from fractions import Fraction
 from typing import Any
@@ -524,3 +525,63 @@ def test_analysis_finds_each_segments_subject_and_edits_carry_it(analyzed_sessio
     edit_id = generate(project, control, EditRequest(duration_s=25, variant=41))
     events = get_version(project, edit_id).timeline["tracks"][0]["events"]
     assert all("focus" in e["transform"] for e in events)
+
+
+def test_dialogue_gets_j_and_l_cuts_without_cutting_a_word(analyzed_session: Any) -> None:
+    """M4 step 8 (ADR 0077): at each boundary between the corpus's speech clip and another
+    recording, the picture cut moves by up to 1 s while the sound stays on whole
+    sentences, unless the neighbour has no picture to spare. Sound and picture each cover
+    the edit exactly, and nothing heard starts or ends in a word."""
+    project, control = analyzed_session
+    edit_id = generate(
+        project, control, EditRequest(duration_s=60, weights={"conversations": "strong"})
+    )
+    v = get_version(project, edit_id)
+    events = v.timeline["tracks"][0]["events"]
+    one_s, smallest = 29, 6  # whole frames at 29.97
+    pos = 0
+    for e in events:
+        a = e["audio"].get("timeline_in", e["timeline_in"])["frames"]
+        b = e["audio"].get("timeline_out", e["timeline_out"])["frames"]
+        assert a == pos
+        pos = b
+        assert abs(a - e["timeline_in"]["frames"]) <= one_s
+        assert abs(b - e["timeline_out"]["frames"]) <= one_s
+    assert pos == v.timeline["duration"]["frames"]
+    assert v.metrics["mid_word_cuts"] == 0
+    assert v.metrics["dialogue_truncations"] == 0
+
+    def talks(e: dict[str, Any]) -> bool:
+        return bool(e["audio"].get("intent") == "dialogue")
+
+    checked = 0
+    with project.db.session() as s:
+        for x, y in itertools.pairwise(events):
+            if talks(x) == talks(y) or x["asset_id"] == y["asset_id"]:
+                continue
+            if x["origin"]["locked"] or y["origin"]["locked"] or "still" in (x["kind"], y["kind"]):
+                continue
+            checked += 1
+            offset = (
+                y["audio"].get("timeline_in", y["timeline_in"])["frames"]
+                - y["timeline_in"]["frames"]
+            )
+            if offset:
+                assert x["audio"]["timeline_out"]["frames"] == y["audio"]["timeline_in"]["frames"]
+                continue
+            # No split: the speaker is too short, or the neighbour had no picture to spare
+            # on the speaker's side.
+            other, later = (x, True) if talks(y) else (y, False)
+            speaker = y if later else x
+            frames = speaker["timeline_out"]["frames"] - speaker["timeline_in"]["frames"]
+            if min(frames // 4, frames - 45) < smallest:  # balanced pace: 45 frames minimum
+                continue
+            seg = s.get(Segment, int(other["segment_id"][4:]))
+            assert seg is not None
+            room = (
+                seg.usable_end_ticks - other["source_out"]["ticks"]
+                if later
+                else other["source_in"]["ticks"] - seg.usable_start_ticks
+            )
+            assert room < smallest * 3003, (other["event_id"], room)
+    assert checked, "the edit has a dialogue boundary"

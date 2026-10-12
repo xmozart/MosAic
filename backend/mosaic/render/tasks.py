@@ -32,12 +32,16 @@ from mosaic.media.ffmpeg.run import run
 from mosaic.media.proxy import load_proxy
 from mosaic.media.tools import media_tools
 from mosaic.render.plan import (
+    AUDIO_VERSION,
     RENDER_VERSION,
     STILL_VERSION,
     Profile,
     SourceFile,
+    audio_key,
+    audio_span,
     chunk_key,
     framing,
+    is_split,
     pieces,
     samples_for,
     still_key,
@@ -251,16 +255,40 @@ def _full_range(ctx: TaskContext, asset: Asset) -> bool:
 
 def _chunk_done(ctx: TaskContext) -> bool:
     r, v = _render(ctx)
-    key, _ = _chunk_plan(ctx, r, v, int(ctx.params["index"]))
-    return ctx.project.artifacts.exists("chunk", key)
+    index = int(ctx.params["index"])
+    key, _ = _chunk_plan(ctx, r, v, index)
+    if not ctx.project.artifacts.exists("chunk", key):
+        return False
+    return not is_split(v.timeline) or ctx.project.artifacts.exists(
+        "chunk", _audio_plan(ctx, r, v, index)[0]
+    )
 
 
 @task("render.chunk", is_done=_chunk_done)
 def chunk_task(ctx: TaskContext) -> dict[str, Any]:
+    """The event's chunk and, in a version with J- or L-cuts, its audio chunk."""
     binaries, caps = media_tools()
     r, v = _render(ctx)
     index = int(ctx.params["index"])
     key, files = _chunk_plan(ctx, r, v, index)
+    out: dict[str, Any] = {"chunk": key}
+    if not ctx.project.artifacts.exists("chunk", key):
+        out = _event_chunk(ctx, r, v, index, key, files, binaries, caps)
+    if is_split(v.timeline):
+        out["audio"] = _audio_chunk(ctx, r, v, index, binaries)
+    return out
+
+
+def _event_chunk(
+    ctx: TaskContext,
+    r: Render,
+    v: EditVersion,
+    index: int,
+    key: str,
+    files: list[SourceFile],
+    binaries: FFmpegBinaries,
+    caps: Any,
+) -> dict[str, Any]:
     if _event(v, index).get("kind") == "still":
         return _still_chunk(ctx, r, v, index, key, files[0], binaries)
     with ctx.project.db.session() as s:
@@ -363,6 +391,74 @@ def _still_chunk(
     return {"chunk": key, "ms": result.duration_ms}
 
 
+def _audio_plan(
+    ctx: TaskContext, r: Render, v: EditVersion, index: int
+) -> tuple[str, list[SourceFile], Asset | None]:
+    """An audio chunk's key, files and asset (None for a still: silence)."""
+    e = _event(v, index)
+    prof = _profile(r)
+    if e.get("kind") == "still":
+        return audio_key(ctx.project.id, e, [], prof, v.rate), [], None
+    with ctx.project.db.session() as s:
+        asset = s.get(Asset, int(e["asset_id"][4:]))
+        if asset is None or asset.tb is None:
+            raise PermanentError(f"{e['asset_id']}: not a playable video asset")
+        s.expunge(asset)
+    files = _sources(ctx, asset, prof.kind)
+    key = audio_key(ctx.project.id, e, [f.fingerprint for f in files], prof, v.rate)
+    return key, files, asset
+
+
+def _audio_chunk(
+    ctx: TaskContext, r: Render, v: EditVersion, index: int, binaries: FFmpegBinaries
+) -> str:
+    """The event's heard window as an audio-only chunk (ADR 0077), exactly its samples."""
+    key, files, asset = _audio_plan(ctx, r, v, index)
+    if ctx.project.artifacts.exists("chunk", key):
+        return key
+    e = _event(v, index)
+    prof = _profile(r)
+    rate = parse_rational(v.rate)
+    src_in, src_out, frames = audio_span(e)
+    audio = e["audio"]
+    index_in_file: int | None = None
+    parts: list[rb.Piece] = []
+    if asset is not None and asset.tb is not None and audio["source_enabled"]:
+        index_in_file = (
+            (1 if asset.audio_stream_index is not None else None)
+            if prof.kind == "preview"
+            else asset.audio_stream_index
+        )
+        parts = pieces(src_in["ticks"], src_out["ticks"], parse_rational(asset.tb), files)
+    with ctx.write() as s:
+        prov = provenance.record(
+            s,
+            provenance.ProvenanceInfo(
+                kind="render.audio",
+                algorithm_version=f"{RENDER_VERSION}+{AUDIO_VERSION}",
+                input_keys=[key],
+                config_hash=key.rsplit("-", 1)[-1][:16],
+            ),
+        )
+    with ctx.project.artifacts.writer("chunk", key, ".mov", provenance_id=prov) as tmp:
+        spec = rb.AudioSpec(
+            pieces=parts,
+            audio_index=index_in_file if parts else None,
+            gain_db=int(audio["gain_db"]),
+            fade_in=Fraction(int(audio["fade_in_frames"])) / rate,
+            fade_out=Fraction(int(audio["fade_out_frames"])) / rate,
+            samples=samples_for(frames, rate),
+            out=tmp,
+        )
+        run(binaries, rb.audio_chunk(spec))
+        got = stream_counts(binaries, tmp)[1]
+        if got != spec.samples:
+            raise PermanentError(
+                f"audio chunk {index}: rendered {got} samples, expected {spec.samples}"
+            )
+    return key
+
+
 _LOUDNORM_JSON = re.compile(r"\{[^{}]*\"input_i\"[^{}]*\}", re.S)
 _EBUR128 = re.compile(r"I:\s+(-?[\d.]+|-inf) LUFS.*?Peak:\s+(-?[\d.]+|-inf) dBFS", re.S)
 
@@ -442,12 +538,25 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
     out.parent.mkdir(parents=True, exist_ok=True)
     list_file = out.with_suffix(".concat.txt")
     list_file.write_text(rb.concat_list(paths))
+    audio_list = None
+    if is_split(v.timeline):  # J- and L-cuts: the sound from the audio chunks (ADR 0077)
+        audio_paths = []
+        for index in range(len(events)):
+            key = _audio_plan(ctx, r, v, index)[0]
+            if not ctx.project.artifacts.exists("chunk", key):
+                raise PermanentError(f"audio chunk {index} is missing")
+            audio_paths.append(ctx.project.artifacts.path("chunk", key))
+        audio_list = out.with_suffix(".audio.txt")
+        audio_list.write_text(rb.concat_list(audio_paths))
     rate = parse_rational(v.rate)
     total_frames = int(v.timeline["duration"]["frames"])
     total_samples = samples_for(total_frames, rate)
-    measured = parse_loudnorm(run(binaries, rb.loudnorm_measure(list_file)).stderr)
+    measured = parse_loudnorm(run(binaries, rb.loudnorm_measure(audio_list or list_file)).stderr)
     tmp = out.with_name(out.stem + ".part" + out.suffix)
-    run(binaries, rb.assemble(list_file, tmp, measured, prof.container, total_samples, rate))
+    run(
+        binaries,
+        rb.assemble(list_file, tmp, measured, prof.container, total_samples, rate, audio_list),
+    )
     frames, samples = stream_counts(binaries, tmp)
     if prof.container == "mp4":
         samples = decoded_samples(binaries, tmp)
@@ -460,6 +569,8 @@ def assemble_task(ctx: TaskContext) -> dict[str, Any]:
         )
     tmp.replace(out)
     list_file.unlink(missing_ok=True)
+    if audio_list is not None:
+        audio_list.unlink(missing_ok=True)
     loud, peak = parse_ebur128(run(binaries, ebur128_measure(out)).stderr)
     metrics = {
         "frames": total_frames,

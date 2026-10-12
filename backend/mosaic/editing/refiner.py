@@ -12,6 +12,8 @@ are snapped:
 Segments never span a shot cut, so neither does an event. Then adjacent jump cuts (same
 recording, < 2 s apart) are removed by merging, reordering or dropping, and the out points
 of non-dialogue shots absorb the last frames so the edit lands on its exact target.
+Last, J- and L-cuts move the picture cut between a dialogue shot and its neighbour by up
+to 1 s while every audio window stays where it was snapped (ADR 0077).
 All arithmetic is in integer ticks and frames (invariant 3).
 """
 
@@ -33,6 +35,8 @@ SETTLE_FACTOR = 2.0
 SETTLE_FLOOR = 0.008
 FADE_FRAMES = 2
 GAIN_DB = {"dialogue": 0, "natural_sound": -6, "natural_sound_low": -14, "mute": 0}
+SPLIT_MAX = Fraction(1)  # seconds: a J- or L-cut's lead or lag (M4.md)
+SPLIT_MIN_FRAMES = 6  # a smaller split is not worth a separate audio cut
 
 
 @dataclass(frozen=True)
@@ -59,12 +63,23 @@ class Cut:
     # the merged segments (adjacent segments of one take).
     ua: int = -1
     ub: int = -1
+    # A J- or L-cut (ADR 0077): the audio window in source ticks, and the frames its sound
+    # starts before the picture (``head``) and runs on after it (``tail``); negative when
+    # the sound starts later or stops earlier. None: the sound is the picture's window.
+    audio: tuple[int, int] | None = None
+    head: int = 0
+    tail: int = 0
 
     def __post_init__(self) -> None:
         if self.ua < 0:
             self.ua = self.shot.cand.usable_start
         if self.ub < 0:
             self.ub = self.shot.cand.usable_end
+
+    @property
+    def heard(self) -> tuple[int, int]:
+        """The source window that is heard."""
+        return self.audio if self.audio is not None else (self.src_in, self.src_out)
 
     @property
     def tb(self) -> Fraction:
@@ -121,14 +136,21 @@ def settle(shot: Shot, ctx: ClipContext, a: int, b: int) -> tuple[int, int]:
         return a, b
     c = shot.cand
     tb = parse_rational(c.tb)
-    values = [v for _, _, v in ctx.motion]
-    limit = max(SETTLE_FLOOR, SETTLE_FACTOR * statistics.median(values))
     room = min(c.usable_end - b, round_fraction(SETTLE_LOOKAHEAD / tb, Rounding.FLOOR))
-    for s, e, v in ctx.motion:
-        if s <= a < e and v > limit:
+    for s, e in jolts(ctx):
+        if s <= a < e:
             shift = min(e - a, room)
             return a + shift, b + shift
     return a, b
+
+
+def jolts(ctx: ClipContext) -> list[tuple[int, int]]:
+    """The motion windows where the camera jolts (well above the clip's usual motion)."""
+    if not ctx.motion:
+        return []
+    values = [v for _, _, v in ctx.motion]
+    limit = max(SETTLE_FLOOR, SETTLE_FACTOR * statistics.median(values))
+    return [(s, e) for s, e, v in ctx.motion if v > limit]
 
 
 def snap_speech(
@@ -445,6 +467,111 @@ def land_on_target(cuts: list[Cut], target: int, rate: str, pace: PaceFrames) ->
     return diff
 
 
+# ------------------------------------------------------------------ J/L cuts
+
+
+def _fixed(c: Cut) -> bool:
+    return c.shot.pin is not None or c.shot.locked
+
+
+def _keep_audio(c: Cut) -> None:
+    if c.audio is None:
+        c.audio = (c.src_in, c.src_out)
+
+
+def _room(c: Cut, later: bool, rate: str, pace: PaceFrames) -> int:
+    """Frames a neighbour's picture may grow, at its end (``later``) or its start: inside
+    its usable range, never onto a camera jolt (the in point stays settled), and a video
+    no longer than its pace allows."""
+    if c.shot.cand.still:
+        return max(0, c.shot.hi - c.frames)
+    cap = max(pace.max, c.shot.hi) - c.frames
+    if later:
+        edge = c.ub
+        for s, e in jolts(c.ctx):
+            if e > c.src_out:
+                edge = min(edge, max(s, c.src_out))
+        room = frames_for_ticks(edge - c.src_in, rate, c.tb, Rounding.FLOOR) - c.frames
+    else:
+        room = frames_for_ticks(c.src_out - _floor(c), rate, c.tb, Rounding.FLOOR) - c.frames
+    return min(room, cap)
+
+
+def _floor(c: Cut) -> int:
+    """The earliest in point a picture may move back to: in its usable range and after
+    every camera jolt before its current in point (it stays settled)."""
+    edge = c.ua
+    for s, e in jolts(c.ctx):
+        if s < c.src_in:
+            edge = max(edge, min(e, c.src_in))
+    return edge
+
+
+def _resize(c: Cut, frames: int, keep_end: bool, rate: str) -> None:
+    """The picture to ``frames``, keeping its out point (``keep_end``) or its in point.
+    A moved in point goes onto the source frame grid (down, unless that leaves the
+    usable range or lands on a jolt), as ``align`` places it. Snapped up, the source span
+    is up to one source frame short of ``frames``; the chunk renderer holds the last frame."""
+    if not c.shot.cand.still:
+        length = ticks_for_frames(frames, rate, c.tb, Rounding.CEIL)
+        if keep_end:
+            a = c.src_out - length
+            if c.shot.cand.rate:
+                src = parse_rational(c.shot.cand.rate)
+                k = round_fraction(Fraction(a) * c.tb * src, Rounding.FLOOR)
+                down = round_fraction(Fraction(k) / src / c.tb, Rounding.CEIL)
+                up = round_fraction(Fraction(k + 1) / src / c.tb, Rounding.CEIL)
+                a = down if down >= _floor(c) else up
+            c.src_in = a
+        else:
+            c.src_out = c.src_in + length
+    c.frames = frames
+
+
+def split_dialogue(cuts: list[Cut], rate: str, pace: PaceFrames) -> list[str]:
+    """J- and L-cuts (ADR 0077) at each boundary between a dialogue shot and a
+    non-dialogue neighbour: into dialogue the neighbour's picture runs on (J), out of it
+    the neighbour's picture starts early (L). Only picture cuts move; the edit's length
+    and every audio window stay as they are."""
+    notes: list[str] = []
+    cap = round_fraction(SPLIT_MAX * parse_rational(rate), Rounding.FLOOR)
+    for i in range(len(cuts) - 1):
+        a, b = cuts[i], cuts[i + 1]
+        if a.shot.dialogue == b.shot.dialogue or _fixed(a) or _fixed(b):
+            continue
+        if a.shot.cand.asset_id == b.shot.cand.asset_id:
+            continue
+        speaker, other = (b, a) if b.shot.dialogue else (a, b)
+        j = speaker is b  # into dialogue: a J-cut
+        n = min(
+            cap,
+            speaker.frames // 4,
+            speaker.frames - pace.min,
+            _room(other, later=j, rate=rate, pace=pace),
+        )
+        if n < SPLIT_MIN_FRAMES:
+            continue
+        saved = [(c, c.src_in, c.src_out, c.frames, c.audio, c.head, c.tail) for c in (a, b)]
+        _keep_audio(a)
+        _keep_audio(b)
+        _resize(a, a.frames + (n if j else -n), keep_end=False, rate=rate)
+        _resize(b, b.frames - (n if j else -n), keep_end=True, rate=rate)
+        a.tail -= n if j else -n
+        b.head += n if j else -n
+        jumps = (i > 0 and is_jump(cuts[i - 1], a)) or (
+            i + 2 < len(cuts) and is_jump(b, cuts[i + 2])
+        )
+        if jumps:
+            for c, si, so, fr, au, hd, tl in saved:
+                c.src_in, c.src_out, c.frames, c.audio, c.head, c.tail = si, so, fr, au, hd, tl
+            continue
+        kind = "J" if j else "L"
+        notes.append(
+            f"{speaker.shot.cand.ref}: {kind}-cut of {n} frames with {other.shot.cand.ref}"
+        )
+    return notes
+
+
 # ----------------------------------------------------------------------- events
 
 
@@ -458,6 +585,13 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
             pos += c.frames
             continue
         audio_on = s.audio_intent != "mute"
+        audio: dict[str, Any] = {
+            "source_enabled": audio_on,
+            "gain_db": GAIN_DB[s.audio_intent],
+            "fade_in_frames": FADE_FRAMES if audio_on else 0,
+            "fade_out_frames": FADE_FRAMES if audio_on else 0,
+            "intent": s.audio_intent,
+        }
         out.append(
             {
                 "event_id": f"evt_{i:04d}",
@@ -470,13 +604,7 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
                 "timeline_out": {"frames": pos + c.frames, "rate": rate},
                 "speed": "1/1",
                 "transform": transform(s.cand.focus),
-                "audio": {
-                    "source_enabled": audio_on,
-                    "gain_db": GAIN_DB[s.audio_intent],
-                    "fade_in_frames": FADE_FRAMES if audio_on else 0,
-                    "fade_out_frames": FADE_FRAMES if audio_on else 0,
-                    "intent": s.audio_intent,
-                },
+                "audio": audio | audio_window(c, pos, rate),
                 "transition_out": {"type": "cut"},
                 "role": s.role,
                 "beat_id": s.beat_id,
@@ -490,6 +618,19 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
         )
         pos += c.frames
     return out
+
+
+def audio_window(c: Cut, pos: int, rate: str) -> dict[str, Any]:
+    """A split event's own audio window (ADR 0077); nothing when sound and picture match."""
+    if c.audio is None or (c.head == 0 and c.tail == 0):
+        return {}
+    tb = c.shot.cand.tb
+    return {
+        "source_in": {"ticks": c.audio[0], "tb": tb},
+        "source_out": {"ticks": c.audio[1], "tb": tb},
+        "timeline_in": {"frames": pos - c.head, "rate": rate},
+        "timeline_out": {"frames": pos + c.frames + c.tail, "rate": rate},
+    }
 
 
 # A still's pan and zoom: start and end rectangles in thousandths of the frame (so they
@@ -544,7 +685,8 @@ def still_event(c: Cut, index: int, pos: int, rate: str) -> dict[str, Any]:
             "fade_in_frames": 0,
             "fade_out_frames": 0,
             "intent": "mute",
-        },
+        }
+        | audio_window(c, pos, rate),
         "transition_out": {"type": "cut"},
         "role": s.role,
         "beat_id": s.beat_id,

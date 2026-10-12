@@ -239,7 +239,9 @@ Solver (code)         → exact durations and positions: meets target ± toleran
    v
 Cut refiner (code)    → snaps in/out to: inside usable_range, not inside a word,
                          after motion settles, before a camera drop, never across a shot cut;
-                         (later) beat/phrase grid
+                         (later) beat/phrase grid;
+                         J/L cuts move picture cuts ≤ 1 s around dialogue,
+                         sound stays on its snapped window (ADR 0077)
    │
    v
 Deterministic critic  → repetition (same similarity group within N shots), jump cuts
@@ -297,6 +299,8 @@ Resulting timeline event (solver and refiner output):
 }
 ```
 
+`audio` may carry its own window when a J- or L-cut moved the picture cut: `source_in`/`source_out` (SourceTime) and `timeline_in`/`timeline_out` (TimelineTime). The audio windows are contiguous and cover the timeline exactly, like the video events; without them the sound is the event's own window (ADR 0077).
+
 `transform.focus` is optional: the subject's position in integer thousandths of the display frame, from the segment's focus (ADR 0076). A crop to another shape centres on it.
 
 Still-photo events use `"kind": "still"` with `duration` in frames and a `motion` object: start and end crop rectangles for pan and zoom, in integer thousandths of the frame, plus an easing (ADR 0075).
@@ -307,6 +311,7 @@ The model stays OTIO-mappable: tracks, clips, transitions, markers and metadata 
 
 - **Chunk renderer.** Each timeline event is rendered to a normalized mezzanine at the timeline format (resolution, rate, color space, 48 kHz stereo). Chunks include handles for transitions. The cache key is the event hash plus the render profile, so unchanged events are reused across versions. Chunks render in parallel.
 - **Assembler.** Concatenation, transitions (xfade / acrossfade over handles), audio mix (source audio, generated silence for silent sources, music bed later) and loudness normalization.
+  - A version with J- or L-cuts also renders one audio-only chunk per event over its heard window; the assembler then takes the video from the event chunks and the audio from the audio chunks (ADR 0077).
   - Loudness targets: −14 LUFS integrated for web (default) or −23 LUFS (EBU R128) for TV.
   - True peak ≤ −1 dBTP.
 - **Preview** renders from proxies at 720p with a fast hardware encoder. **Final** renders conform to originals at the requested format.

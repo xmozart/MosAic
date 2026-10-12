@@ -26,6 +26,8 @@ Fill = Literal["auto", "crop"]
 Framing = Literal["fit", "crop"]
 RENDER_VERSION = "render/3"  # aspect framing: crop near the target shape, else fit (ADR 0046)
 STILL_VERSION = "still/1"  # canvas, blurred fill and pan/zoom (ADR 0075)
+# An event's own audio window (a J- or L-cut, ADR 0077).
+AUDIO_WINDOW = ("source_in", "source_out", "timeline_in", "timeline_out")
 ASPECTS = {
     "16:9": Fraction(16, 9),
     "9:16": Fraction(9, 16),
@@ -216,7 +218,9 @@ def chunk_key(
             "in": event["source_in"],
             "out": event["source_out"],
             "frames": event["timeline_out"]["frames"] - event["timeline_in"]["frames"],
-            "audio": event["audio"],
+            # A J- or L-cut's audio window is the audio chunk's (``audio_key``): left out,
+            # so a split event's picture is reused wherever it sits (ADR 0077).
+            "audio": {k: v for k, v in event["audio"].items() if k not in AUDIO_WINDOW},
             "transform": event.get("transform"),
             "speed": event.get("speed"),
         },
@@ -242,5 +246,46 @@ def still_key(project_id: str, event: dict[str, Any], photo: str, prof: Profile,
             "motion": event.get("motion"),
         },
         config={"profile": prof.as_json(), "rate": rate, "still": STILL_VERSION},
+        version=RENDER_VERSION,
+    )
+
+
+AUDIO_VERSION = "audio/1"  # separate audio chunks for J- and L-cuts (ADR 0077)
+
+
+def is_split(timeline: dict[str, Any]) -> bool:
+    """Whether any event's sound has its own window (a J- or L-cut, ADR 0077)."""
+    return any("timeline_in" in e["audio"] for e in timeline["tracks"][0]["events"])
+
+
+def audio_span(event: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], int]:
+    """An event's heard source range and its length in timeline frames."""
+    a = event["audio"]
+    w = a if "timeline_in" in a else event
+    return w["source_in"], w["source_out"], w["timeline_out"]["frames"] - w["timeline_in"]["frames"]
+
+
+def audio_key(
+    project_id: str, event: dict[str, Any], sources: list[str], prof: Profile, rate: str
+) -> str:
+    """An audio chunk's key (ADR 0077): the event's heard window, its audio settings, its
+    sources and the profile (previews read the proxies' audio)."""
+    src_in, src_out, frames = audio_span(event)
+    a = event["audio"]
+    return artifact_key(
+        "audio",
+        project_id=project_id,
+        inputs={
+            "sources": sources,
+            "asset": event["asset_id"],
+            "kind": event.get("kind", "video"),
+            "in": src_in,
+            "out": src_out,
+            "frames": frames,
+            "audio": {
+                k: a[k] for k in ("source_enabled", "gain_db", "fade_in_frames", "fade_out_frames")
+            },
+        },
+        config={"profile": prof.kind, "rate": rate, "audio": AUDIO_VERSION},
         version=RENDER_VERSION,
     )

@@ -240,6 +240,26 @@ def test_pinning_the_second_pick_of_a_merged_cut() -> None:
     )
     assert op.absorb == ["b1#0"]
     assert pinned(LockShot(ref="b1#1", locked=False, pin=op.pin), done, board).pin is None
+    # A J-cut moved the picture in: the pin is what is heard, the speech-safe cut (ADR 0077).
+    split = event | {
+        "kind": "video",
+        "source_in": {"ticks": 1100, "tb": "1/1000"},
+        "timeline_in": {"frames": 60, "rate": RATE},
+        "audio": {
+            "source_in": {"ticks": 100, "tb": "1/1000"},
+            "source_out": {"ticks": 9100, "tb": "1/1000"},
+            "timeline_in": {"frames": 30, "rate": RATE},
+            "timeline_out": {"frames": 300, "rate": RATE},
+        },
+    }
+    done = Resolved({"rate": RATE, "tracks": [{"kind": "video", "events": [split]}]}, [], {}, [])
+    op = pinned(LockShot(ref="b1#1"), done, board)
+    assert op.pin is not None
+    assert (op.pin.source_in.ticks, op.pin.source_out.ticks, op.pin.duration.frames) == (
+        100,
+        9100,
+        270,
+    )
 
 
 def test_absorbed_footage_stays_in_its_locked_cut_and_is_never_a_spare(project: Project) -> None:

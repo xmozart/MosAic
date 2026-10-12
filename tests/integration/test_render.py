@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from mosaic.core.time import parse_rational
+from mosaic.core.time import Rounding, parse_rational
 from mosaic.devtools.render_check import SourceInfo, check_render
 from mosaic.editing.request import EditRequest
 from mosaic.editing.service import create_edit, get_version, submit_generate
@@ -27,6 +27,7 @@ from mosaic.storage.models_project import (
     Artifact,
     Asset,
     AssetFile,
+    EditVersion,
     MediaFile,
     MediaStream,
     Segment,
@@ -500,3 +501,119 @@ def test_a_crop_to_another_shape_keeps_the_subject_in_frame(
     assert not subject_seen(render(None)), "centred: the left-edge subject is cut away"
     assert subject_seen(render((0, 0))), "clamped at the left edge, still the right size"
     assert not subject_seen(render((1000, 1000))), "clamped at the right edge"
+
+
+def test_an_l_cut_plays_the_sound_on_under_the_next_picture(
+    edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries
+) -> None:
+    """ADR 0077: a version whose events carry their own audio windows renders the sound
+    from separate audio chunks. With an L-cut, the first shot's tone runs on under the
+    second picture, then the second shot's tone takes over; length and samples exact."""
+    import copy
+
+    import numpy as np
+
+    from mosaic.editing.refiner import ticks_for_frames
+    from mosaic.media.ffmpeg.builders import audio_pcm
+
+    project, control, edit_id, version = edit
+    v = get_version(project, edit_id, version)
+    rate = parse_rational(v.rate)
+    k = 20
+    sr = 8000
+
+    def pcm(path: Any) -> np.ndarray:
+        raw = run(ffmpeg_bin, audio_pcm(path, sr, 1)).stdout
+        return np.frombuffer(raw, dtype="<f4")
+
+    def tone(x: np.ndarray, a: int, b: int) -> float:
+        seg = x[round(a / rate * sr) : round(b / rate * sr)]
+        spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), n=8 * len(seg)))
+        return float(np.argmax(spec[8:]) + 8) * sr / (8 * len(seg))
+
+    base = get_render(project, _render(project, control, edit_id, version, "final", True))
+    assert base is not None
+    plain = pcm(output_path(project.workspace, base))
+    events = v.timeline["tracks"][0]["events"]
+    pair = next(
+        i
+        for i in range(len(events) - 1)
+        if all(
+            e["kind"] == "video"
+            and e["audio"]["source_enabled"]
+            and e["timeline_out"]["frames"] - e["timeline_in"]["frames"] > 3 * k
+            for e in events[i : i + 2]
+        )
+        and abs(
+            tone(
+                plain,
+                events[i]["timeline_out"]["frames"] - 2 * k,
+                events[i]["timeline_out"]["frames"] - 2,
+            )
+            - tone(
+                plain,
+                events[i + 1]["timeline_in"]["frames"] + k + 2,
+                events[i + 1]["timeline_in"]["frames"] + 2 * k + 2,
+            )
+        )
+        > 40
+    )
+    a, b = events[pair], events[pair + 1]
+    cut = b["timeline_in"]["frames"]
+    tl = copy.deepcopy(v.timeline)
+    ea, eb = tl["tracks"][0]["events"][pair : pair + 2]
+    tb = parse_rational(a["source_in"]["tb"])
+    shift_a = ticks_for_frames(k, v.rate, tb, Rounding.CEIL)
+    shift_b = ticks_for_frames(k, v.rate, parse_rational(b["source_in"]["tb"]), Rounding.CEIL)
+    ea["audio"] |= {
+        "source_in": a["source_in"],
+        "source_out": {"ticks": a["source_out"]["ticks"] + shift_a, "tb": a["source_in"]["tb"]},
+        "timeline_in": a["timeline_in"],
+        "timeline_out": {"frames": cut + k, "rate": v.rate},
+    }
+    eb["audio"] |= {
+        "source_in": {"ticks": b["source_in"]["ticks"] + shift_b, "tb": b["source_in"]["tb"]},
+        "source_out": b["source_out"],
+        "timeline_in": {"frames": cut + k, "rate": v.rate},
+        "timeline_out": b["timeline_out"],
+    }
+    with project.write() as s:
+        row = s.scalar(
+            select(EditVersion).where(
+                EditVersion.edit_id == edit_id, EditVersion.version == version
+            )
+        )
+        assert row is not None
+        top = max(s.scalars(select(EditVersion.version).where(EditVersion.edit_id == edit_id)))
+        split = EditVersion(
+            edit_id=edit_id,
+            version=top + 1,
+            parent_version=version,
+            creator="user",
+            reason="L-cut test",
+            key=row.key + "-split",
+            request=row.request,
+            rate=row.rate,
+            beats=row.beats,
+            timeline=tl,
+            metrics=row.metrics,
+            findings=row.findings,
+            provenance_id=row.provenance_id,
+            created_at=row.created_at,
+        )
+        s.add(split)
+        s.flush()
+        new = split.version
+    r = get_render(project, _render(project, control, edit_id, new, "final", True))
+    assert r is not None
+    path = output_path(project.workspace, r)
+    total = v.timeline["duration"]["frames"]
+    assert _frames(ffmpeg_bin, path) == total
+    assert _samples(ffmpeg_bin, path) == samples_for(total, rate)
+    heard = pcm(path)
+    first = tone(plain, cut - 2 * k, cut - 2)
+    second = tone(plain, cut + k + 2, cut + 2 * k + 2)
+    assert abs(tone(heard, cut + 2, cut + k - 2) - first) < 15, "the first tone runs on"
+    assert abs(tone(heard, cut + k + 2, cut + 2 * k + 2) - second) < 15
+    # Everything away from the split sounds as before.
+    assert abs(tone(heard, cut - 2 * k, cut - 2) - first) < 15
