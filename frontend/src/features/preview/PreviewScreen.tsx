@@ -86,7 +86,7 @@ function Preview() {
 
   const render = useMutation({
     mutationFn: async (final: boolean) => {
-      const { error } = await api.POST("/api/renders", { body: { edit_id: eid, version, final } });
+      const { error } = await api.POST("/api/renders", { body: { edit_id: eid, version, final, codec: "h264" } });
       if (error) throw new Error("render");
       return final;
     },

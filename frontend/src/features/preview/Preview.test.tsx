@@ -213,9 +213,9 @@ it("PreviewScreen starts a preview once for a version without one, and renders t
   mount();
   expect(await screen.findByText("Costa Rica — 5 min cinematic")).toBeInTheDocument();
   await waitFor(() => expect(posts.filter((p) => p.path === "/api/renders")).toHaveLength(1));
-  expect(posts[0]!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: false });
+  expect(posts[0]!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: false, codec: "h264" });
   fireEvent.click(await screen.findByRole("button", { name: "Render final" }));
-  await waitFor(() => expect(posts.at(-1)!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: true }));
+  await waitFor(() => expect(posts.at(-1)!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: true, codec: "h264" }));
   expect(posts.filter((p) => (p.body as { final: boolean }).final === false)).toHaveLength(1);
 });
 
@@ -255,7 +255,7 @@ it("PreviewScreen follows ?v=: that version, its report, one preview each, and p
   // switching to v3 (no preview) starts exactly one, for v3
   fireEvent.click(screen.getByRole("radio", { name: "v3" }));
   await waitFor(() => expect(posts.filter((p) => p.path === "/api/renders")).toHaveLength(1));
-  expect(posts[0]!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: false });
+  expect(posts[0]!.body).toEqual({ edit_id: EDIT.edit_id, version: 3, final: false, codec: "h264" });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(3000);
   });
