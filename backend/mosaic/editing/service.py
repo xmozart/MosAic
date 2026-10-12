@@ -174,7 +174,7 @@ def shot_media(s: Any, cands: list[Candidate]) -> dict[str, dict[str, Any]]:
             .order_by(SampleFrame.ticks)
             .limit(1)
         )
-        path = _source_file(s, c.asset_id, c.start)
+        path = source_file(s, c.asset_id, c.start)
         out[c.ref] = {
             "sample_id": sample,
             "file": path.rsplit("/", 1)[-1] if path else None,
@@ -285,6 +285,72 @@ def submit_regenerate_beat(
             ],
         ),
     )
+
+
+def submit_fixes(
+    executor: Executor, principal: Principal, project: Project, edit_id: int
+) -> dict[str, Any]:
+    """S17 "Regenerate with fixes" (ADR 0089): every open finding with a fix applied as a
+    child version, then one job regenerating, one after the other, the beats that still
+    hold an issue with no fix (locks kept, ADR 0069). ``findings.FindingStateError``
+    with unsaved storyboard changes; ``findings.FindingError`` when there is nothing to
+    fix or regenerate."""
+    from mosaic.editing import draft, findings, regenerate
+
+    with project.db.session() as s:
+        latest = draft.latest(s, edit_id)
+        if latest is None:
+            raise LookupError("this edit has no version yet")
+        if draft.load(s, edit_id).dirty:
+            raise findings.FindingStateError("Save or discard your storyboard changes first.")
+        rows = findings.of_version(s, edit_id, latest.version)
+        fixable = [f.uid for f in rows if f.status == "open" and f.ops]
+        # The beats come from the findings the owner is looking at (the AI critic's notes
+        # are not made again for a child version); beat ids hold across versions.
+        marked = findings.beats_with_issues(s, latest)
+    version: int | None = None
+    skipped: list[str] = []
+    if fixable:
+        try:
+            version, skipped = findings.apply(project, edit_id, fixable)
+        except findings.FindingStateError:
+            raise
+        except findings.FindingError:
+            skipped = fixable  # none of them fits the storyboard any more
+    with project.db.session() as s:
+        board = draft.load(s, edit_id).board
+        beats = []
+        for beat_id in marked:
+            try:
+                regenerate.slots(board, beat_id)
+            except draft.DraftError:
+                continue  # every shot locked: the owner's, left alone
+            beats.append(beat_id)
+    if version is None and not beats:
+        raise findings.FindingError("Nothing here can be fixed or regenerated.")
+    job_id = None
+    if beats:
+        job_id = executor.submit(
+            principal,
+            JobSpec(
+                project_id=project.id,
+                kind="edit",
+                params={"edit_id": edit_id, "beat_ids": beats},
+                cost_limit_usd=job_cost_limit(principal),
+                tasks=[
+                    TaskSpec(
+                        kind="edit.regenerate_beat",
+                        stage="edit",
+                        resource_class=ResourceClass.AI_API,
+                        params={"edit_id": edit_id, "beat_id": b, "directive": None},
+                        label=f"regenerating {b} of {edit_ref(edit_id)}",
+                        deps=[i - 1] if i else [],
+                    )
+                    for i, b in enumerate(beats)
+                ],
+            ),
+        )
+    return {"version": version, "skipped_findings": skipped, "job_id": job_id, "beats": beats}
 
 
 def submit_regenerate(
@@ -455,7 +521,7 @@ def get_version(project: Project, edit_id: int, version: int | None = None) -> E
     return row
 
 
-def _source_file(s: Any, asset_id: int, ticks: int) -> str | None:
+def source_file(s: Any, asset_id: int, ticks: int) -> str | None:
     rows = list(
         s.execute(
             select(AssetFile.logical_start_ticks, AssetFile.duration_ticks, MediaFile.rel_path)
@@ -494,7 +560,7 @@ def report(
                     "beat_id": e.get("beat_id"),
                     "role": e["role"],
                     "segment_id": e["segment_id"],
-                    "source_file": _source_file(s, aid, e["source_in"]["ticks"]),
+                    "source_file": source_file(s, aid, e["source_in"]["ticks"]),
                     "source_in": e["source_in"],
                     "source_out": e["source_out"],
                     "timeline_in": e["timeline_in"],
@@ -545,7 +611,7 @@ def report(
                     "whole_clip": source == "clip",
                     "reasons": reasons,
                     "words": reason_words(reasons),
-                    "source_file": _source_file(s, aid, starts.get(sid, 0)),
+                    "source_file": source_file(s, aid, starts.get(sid, 0)),
                     "camera": (a.camera_model or a.profile) if a else None,
                 }
             )

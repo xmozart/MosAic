@@ -1,6 +1,6 @@
 import type { RenderRow } from "@/lib/renders";
 
-import type { Beat, EditVersionData, ReportData, TimelineEvent } from "./model";
+import type { Beat, EditVersionData, ReportData, TimelineEvent, Finding } from "./model";
 
 const RATE = "30000/1001";
 export const BEATS: Beat[] = [
@@ -102,3 +102,28 @@ export const REPORT: ReportData = {
     ],
   },
 };
+
+const finding = (i: number, f: Partial<Finding>): Finding => ({
+  finding_id: `01J${String(i).padStart(23, "0")}`,
+  version: 3,
+  source: "critic",
+  code: "repetition",
+  severity: "warning",
+  frame: 0,
+  event_id: `evt_${String(i).padStart(4, "0")}`,
+  text: "",
+  fix: null,
+  can_apply: false,
+  status: "open",
+  applied_in_version: null,
+  ...f,
+});
+
+/** S17's mockup findings: one applied, issues and suggestions with and without fixes. */
+export const FINDINGS: Finding[] = [
+  finding(1, { frame: 1289, text: "Two similar waterfall shots back to back", fix: "Replace it with DSC_0932.MOV", can_apply: true, status: "applied", applied_in_version: 3 }),
+  finding(2, { frame: 2637, code: "truncation", text: "Leo's line “Mom, look — it's right there!” is cut off", fix: null }),
+  finding(3, { frame: 3896, code: "shaky_shot", severity: "info", text: "A shakier shot than most of the trip's", fix: "Replace it with GX010233.MP4", can_apply: true }),
+  finding(4, { frame: 6893, source: "ai", code: "ai_note", severity: "info", text: "The coast section has no people" }),
+  finding(5, { frame: 8631, source: "ai", code: "ai_note", severity: "warning", text: "The ending is the drone pull-away; the family photo might land stronger" }),
+];

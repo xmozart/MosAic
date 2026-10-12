@@ -4,6 +4,7 @@ the fake AI: the storyboard, undoable ops, saving a version and rendering the dr
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 
@@ -1224,3 +1225,135 @@ def test_s14_probes_a_music_track_for_its_card(
         assert refused.status_code == 422, refused.text
         assert refused.json()["detail"] == "Horizon.wav: it can't be read as audio"
     monkeypatch.setattr(run_mod, "run", real)
+
+
+def test_regenerate_with_fixes_applies_them_then_regenerates_the_beats_left(
+    drafted: Any,
+) -> None:
+    """S17 "Regenerate with fixes" (ADR 0089): the open findings with a fix are applied as
+    a child version, then the beats holding an issue with no fix are regenerated in one
+    job, one after the other in story order; a suggestion (info) regenerates nothing, and
+    a beat with every shot locked is left alone. Unsaved changes come first; with nothing
+    to do it is refused. The child version lists the findings applied in it."""
+    from sqlalchemy import select
+
+    from mosaic.core.clock import now_iso
+    from mosaic.core.ids import new_ulid
+    from mosaic.storage.models_project import Edit, EditFinding
+    from tests.support.runner import run_job
+
+    project, control, client, _ = drafted
+    edit_id = generate(project, control, EditRequest(duration_s=90, variant=23))
+    with project.db.session() as s:
+        eid = s.scalar(select(Edit.uid).where(Edit.id == edit_id))
+    start = client.get(f"/api/edits/{eid}/draft").json()
+    shots = [e for e in start["timeline"]["tracks"][0]["events"] if e["kind"] != "title"]
+    beats = [b["beat_id"] for b in start["board"]["beats"]]
+    assert len(beats) == 3, beats
+    first_of = {b: next(e for e in shots if e["beat_id"] == b) for b in beats}
+    # Every shot of the first beat locked (saved as a version): an issue there is left alone.
+    locked_beat = start["board"]["beats"][0]
+    for sh in locked_beat["shots"]:
+        if not sh["absorbed_by"]:
+            client.post(
+                f"/api/edits/{eid}/draft/ops",
+                json={"op": {"kind": "lock_shot", "ref": sh["ref"]}},
+            )
+    assert client.post(f"/api/edits/{eid}/versions").status_code == 201
+    v0 = client.get(f"/api/edits/{eid}").json()
+    version = v0["version"]
+    events = {e["event_id"]: e for e in v0["timeline"]["tracks"][0]["events"]}
+    by_beat = {b: next(e for e in events.values() if e.get("beat_id") == b) for b in beats}
+    victim = next(
+        e["origin"]["selection_ref"]
+        for e in reversed(list(events.values()))
+        if e.get("beat_id") == beats[1] and not e["origin"]["locked"]
+    )
+    alternative = client.get(
+        f"/api/edits/{eid}/shots/{quote(by_beat[beats[2]]['origin']['selection_ref'], safe='')}"
+        "/alternatives"
+    ).json()["items"][0]
+    findings_ = [
+        ("repetition", "warning", None, [{"kind": "remove_shot", "ref": victim}]),
+        (
+            "shaky_shot",
+            "info",
+            None,
+            [
+                {
+                    "kind": "replace_shot",
+                    "ref": by_beat[beats[2]]["origin"]["selection_ref"],
+                    "segment_id": alternative["segment_id"],
+                }
+            ],
+        ),
+        ("ai_note", "warning", by_beat[beats[2]]["event_id"], None),  # issues, no fix
+        ("ai_note", "blocking", by_beat[beats[1]]["event_id"], None),
+        ("ai_note", "warning", by_beat[locked_beat["beat_id"]]["event_id"], None),  # locked
+        ("ai_note", "info", first_of[beats[1]]["event_id"], None),  # a suggestion
+    ]
+    with project.write() as s:
+        s.query(EditFinding).filter(EditFinding.edit_id == edit_id).delete()
+        for i, (code, severity, event, ops) in enumerate(findings_):
+            s.add(
+                EditFinding(
+                    uid=new_ulid(),
+                    edit_id=edit_id,
+                    version=version,
+                    seq=i,
+                    source="ai" if code == "ai_note" else "critic",
+                    code=code,
+                    severity=severity,
+                    frame=0,
+                    event_id=event,
+                    text=code,
+                    ops=ops,
+                    status="open",
+                    applied_in_version=None,
+                    created_at=now_iso(),
+                )
+            )
+    listed = client.get(f"/api/edits/{eid}/findings").json()["items"]
+    assert [f["fix"] for f in listed] == [
+        "Remove it",
+        f"Replace it with {alternative['file']}",
+        None,
+        None,
+        None,
+        None,
+    ]
+
+    changed = client.post(
+        f"/api/edits/{eid}/draft/ops", json={"op": {"kind": "lock_shot", "ref": victim}}
+    )
+    assert changed.json()["dirty"]
+    assert client.post(f"/api/edits/{eid}/findings/regenerate").status_code == 409
+    client.post(f"/api/edits/{eid}/draft/undo")
+
+    started = client.post(f"/api/edits/{eid}/findings/regenerate")
+    assert started.status_code == 202, started.text
+    got = started.json()
+    assert got["version"] == version + 1
+    assert got["beats"] == [beats[1], beats[2]], "story order; the locked beat left alone"
+    child = client.get(f"/api/edits/{eid}/findings", params={"version": version + 1}).json()
+    assert [f["code"] for f in child["applied"]] == ["repetition", "shaky_shot"]
+    assert all(f["applied_in_version"] == version + 1 for f in child["applied"])
+    assert client.get(f"/api/edits/{eid}/draft").json()["regenerating"] == sorted(got["beats"])
+    assert run_job(control, got["job_id"]) == "done"
+    v = client.get(f"/api/edits/{eid}").json()
+    assert v["version"] == version + 3, "one version per beat"
+    assert v["parent_version"] == version + 2
+    assert v["metrics"]["regenerated"]["beat_id"] == beats[2]
+    mid = client.get(f"/api/edits/{eid}/versions/{version + 2}").json()
+    assert mid["parent_version"] == version + 1, "regenerated on top of the fixes"
+    assert mid["metrics"]["regenerated"]["beat_id"] == beats[1]
+    after = client.get(f"/api/edits/{eid}/draft").json()
+    kept = next(b for b in after["board"]["beats"] if b["beat_id"] == locked_beat["beat_id"])
+    assert [s["segment_id"] for s in kept["shots"]] == [
+        s["segment_id"] for s in locked_beat["shots"]
+    ]
+
+    # Nothing to fix: refused, with no job.
+    client.post(f"/api/edits/{eid}/findings/ignore-all")
+    nothing = client.post(f"/api/edits/{eid}/findings/regenerate")
+    assert nothing.status_code == 422

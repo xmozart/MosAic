@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
 import { renderStatusText, type RenderRow } from "@/lib/renders";
 
-import { beatAt, beatSegments, factsRows, toSource, type EditVersionData, type ReportData, type VersionItem } from "./model";
+import { FindingsPanel } from "./FindingsPanel";
+import { beatAt, beatSegments, factsRows, isIssue, toSource, type EditVersionData, type Finding, type ReportData, type VersionItem } from "./model";
 import { ReportPanel } from "./ReportPanel";
 
 export type PreviewState =
@@ -46,9 +47,25 @@ export interface PreviewViewProps {
   loadingMore?: boolean;
   /** Something is being started (a render or a regenerate): its buttons wait. */
   busy?: boolean;
+  /** The shown version's findings (M4; ADR 0081); undefined while they load. */
+  findings: Finding[] | undefined;
+  findingsError?: boolean;
+  onRetryFindings?: () => void;
+  /** The shown version is the latest: findings apply to it. */
+  latest: boolean;
+  /** A fix or a regenerate is on its way. */
+  fixing?: boolean;
+  onApplyFinding: (id: string) => void;
+  onIgnoreFinding: (id: string) => void;
+  onApplyAll: () => void;
+  onIgnoreAll: () => void;
+  onRegenerateWithFixes: () => void;
+  /** The side panel shown first (stories). */
+  initialPanel?: "findings" | "report";
 }
 
-/** S17 Preview (M2: player and selection/rejection report; findings are M4). */
+/** S17 Preview: the player, the edit's facts, and its findings (M4) or the selection
+ * report (M2). */
 export function PreviewView(p: PreviewViewProps) {
   const st = p.state;
   return (
@@ -113,6 +130,7 @@ export function PreviewView(p: PreviewViewProps) {
 function Ready(p: PreviewViewProps & { edit: EditVersionData }) {
   const player = useRef<PlayerHandle>(null);
   const [now, setNow] = useState(0);
+  const [panel, setPanel] = useState<"findings" | "report">(p.initialPanel ?? "findings");
   const e = p.edit;
   const events = e.timeline.tracks[0]?.events ?? [];
   const beat = beatAt(events, e.beats, now);
@@ -150,6 +168,9 @@ function Ready(p: PreviewViewProps & { edit: EditVersionData }) {
             rate={e.rate}
             length={toSource(e.timeline.duration)}
             segments={beatSegments(events, e.beats)}
+            markers={(p.findings ?? [])
+              .filter((f) => f.status === "open")
+              .map((f) => ({ at: toSource({ frames: f.frame, rate: e.timeline.duration.rate }), label: f.text, kind: isIssue(f) ? ("issue" as const) : ("suggestion" as const) }))}
             onTime={setNow}
             empty={empty}
             overlay={
@@ -193,18 +214,49 @@ function Ready(p: PreviewViewProps & { edit: EditVersionData }) {
           )}
         </div>
       </div>
-      <ReportPanel
-        report={p.report}
-        error={p.reportError}
-        onRetry={p.onRetryReport}
-        beats={e.beats}
-        onSeek={(t) => {
-          player.current?.seekTo(toSource(t));
-          player.current?.focus();
-        }}
-        onMoreRejected={p.onMoreRejected}
-        loadingMore={p.loadingMore}
-      />
+      <div className="flex min-h-0 w-[400px] shrink-0 flex-col gap-3">
+        <Segmented<"findings" | "report">
+          label="Side panel"
+          value={panel}
+          onChange={setPanel}
+          className="self-start"
+          options={[
+            { value: "findings", label: "Findings" },
+            { value: "report", label: "Why these shots" },
+          ]}
+        />
+        {panel === "findings" ? (
+          <FindingsPanel
+            findings={p.findings}
+            error={p.findingsError}
+            onRetry={p.onRetryFindings}
+            rate={e.timeline.duration.rate}
+            latest={p.latest}
+            busy={p.fixing}
+            onSeek={(t) => {
+              player.current?.seekTo(toSource(t));
+            }}
+            onApply={p.onApplyFinding}
+            onIgnore={p.onIgnoreFinding}
+            onApplyAll={p.onApplyAll}
+            onIgnoreAll={p.onIgnoreAll}
+            onRegenerate={p.onRegenerateWithFixes}
+          />
+        ) : (
+          <ReportPanel
+            report={p.report}
+            error={p.reportError}
+            onRetry={p.onRetryReport}
+            beats={e.beats}
+            onSeek={(t) => {
+              player.current?.seekTo(toSource(t));
+              player.current?.focus();
+            }}
+            onMoreRejected={p.onMoreRejected}
+            loadingMore={p.loadingMore}
+          />
+        )}
+      </div>
     </div>
   );
 }

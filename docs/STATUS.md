@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.14d, S17 findings.
+- **Step:** M4.14e, S18 Versions.
 - **Checks:** full `make ci` per group of related steps, then push (AGENT_WORKFLOW §1). Groups: 7 · 8+9a · 9b+9c · 10+11 · 12+13 · S14+S15 · S16+S17 · S18+S19+S24 · 15.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
@@ -39,7 +39,6 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [x] 10. Critic v2 and findings: deterministic checks, the optional AI critic (event ids only), apply/ignore/apply-all creating child versions
   - [x] 10a. Critic v2 with fixes as storyboard ops, `edit_finding` rows, apply/ignore/apply-all as child versions (ADR 0081)
   - [x] 10b. The optional AI critic (event ids only; ADR 0082)
-  - S17's "Regenerate with fixes" comes with the S17 findings screen (14d).
 - [x] 11. Compare and revert; render reuse by assembly key (acceptance 5; ADR 0083)
 - [x] 12. Final render profiles and exports: H.264/HEVC hardware, ProRes 422 (VideoToolbox, then `prores_ks`), 1080p/4K, SRT, report, EDL JSON (ADR 0084)
   - Follow-up: warm the per-codec encoder probe at startup (today the first `/system/info` call runs the trials).
@@ -48,6 +47,7 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
   - [x] 14a. S14 full: steps 3–5, custom beats, music track card (ADR 0086)
   - [x] 14b. S15 Creating edit: steps, beats as planned, background, cancel, retry, preview (ADR 0087)
   - [x] 14c. S16 Storyboard: beats and shots, drag, popover, locks, regenerate, undo, Save version (ADR 0088)
+  - [x] 14d. S17 findings: FindingCards, markers, Apply/Ignore (all), Undo, Regenerate with fixes, N/P/A (ADR 0089)
 - [ ] 15. Acceptance tests, `make eval`, `docs/reports/M4.md`, then G6
 
 ## M0 plan

@@ -12,7 +12,8 @@ export interface PlayerRange {
 export interface PlayerMarker {
   at: SourceTime;
   label: string;
-  kind: "moment" | "finding";
+  /** S17's findings: an issue (`reject`) or a suggestion (`info`). */
+  kind: "moment" | "finding" | "issue" | "suggestion";
 }
 
 /** A stretch of the bar in one of the categorical series colours (S17: beats). */
@@ -247,13 +248,13 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
             />
           )}
           <div className="absolute inset-y-0 left-0 rounded-full bg-accent/40" style={{ width: pct(time) }} />
-          {markers.map((m) => (
+          {markers.map((m, i) => (
             <span
-              key={`${m.kind}-${m.at.ticks}`}
+              key={`${m.kind}-${m.at.ticks}-${i}`}
               title={m.label}
               className={cn(
                 "absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                m.kind === "finding" ? "bg-maybe" : "bg-info",
+                m.kind === "issue" ? "bg-reject" : m.kind === "finding" ? "bg-maybe" : "bg-info",
               )}
               style={{ left: pct(seconds(m.at)) }}
             />

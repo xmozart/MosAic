@@ -184,3 +184,22 @@ const ROLE: Record<string, string> = {
 export function roleLabel(role: string): string {
   return ROLE[role] ?? role.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
+
+/** `GET /edits/{eid}/findings` items (ADR 0081, 0089). */
+export interface Finding {
+  finding_id: string;
+  version: number;
+  source: "critic" | "ai";
+  code: string;
+  severity: "blocking" | "warning" | "info";
+  /** Timeline frame at the edit's rate. */
+  frame: number;
+  event_id: string | null;
+  text: string;
+  fix: string | null;
+  can_apply: boolean;
+  status: "open" | "applied" | "ignored";
+  applied_in_version: number | null;
+}
+
+export const isIssue = (f: Finding) => f.severity !== "info";

@@ -2473,6 +2473,48 @@
         "summary": "Ignore All Findings"
       }
     },
+    "/api/edits/{eid}/findings/regenerate": {
+      "post": {
+        "description": "S17 \"Regenerate with fixes\": the fixes applied, then the beats with issues that\nhave no fix regenerated as one job (ADR 0089). 409 with unsaved storyboard changes,\n422 when there is nothing to do.",
+        "operationId": "regenerate_with_fixes_api_edits__eid__findings_regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "title": "Eid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Regenerate With Fixes Api Edits  Eid  Findings Regenerate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Regenerate With Fixes"
+      }
+    },
     "/api/edits/{eid}/findings/{fid}/apply": {
       "post": {
         "description": "Apply one finding: a child version with its fix (ADR 0081).",

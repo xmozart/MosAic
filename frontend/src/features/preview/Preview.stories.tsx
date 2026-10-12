@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { EditFacts } from "@/components/edit/EditFacts";
 import sample from "@/stories/assets/sample.mp4";
 
-import { BEATS, EDIT, REPORT, renderRow } from "./fixtures";
+import { BEATS, EDIT, REPORT, renderRow, FINDINGS } from "./fixtures";
 import { factsRows } from "./model";
 import { PreviewView, type PreviewViewProps } from "./PreviewView";
 import { ReportPanel, type ReportPanelProps } from "./ReportPanel";
@@ -27,6 +27,13 @@ const base: PreviewViewProps = {
   onExports: noop,
   onStoryboard: noop,
   report: REPORT,
+  findings: FINDINGS,
+  latest: true,
+  onApplyFinding: noop,
+  onIgnoreFinding: noop,
+  onApplyAll: noop,
+  onIgnoreAll: noop,
+  onRegenerateWithFixes: noop,
 };
 const page = (p: Partial<PreviewViewProps>) => (
   <div className="flex h-[900px] w-[1368px] overflow-hidden rounded-lg border border-border bg-bg">
@@ -40,7 +47,12 @@ export const PreviewQueued: Story = { render: () => page({ preview: renderRow(2,
 export const PreviewFailed: Story = { render: () => page({ preview: renderRow(2, { status: "failed" }) }) };
 export const FinalRendering: Story = { render: () => page({ final: renderRow(3, { kind: "final", status: "rendering", pct: 20 }) }) };
 export const FinalDone: Story = { render: () => page({ final: renderRow(3, { kind: "final" }), finalDownloadUrl: "#download" }) };
-export const ReportLoading: Story = { render: () => page({ report: undefined }) };
+export const ReportLoading: Story = { render: () => page({ report: undefined, initialPanel: "report" }) };
+export const SelectionReport: Story = { render: () => page({ initialPanel: "report" }) };
+export const NoFindings: Story = { name: "Findings: none", render: () => page({ findings: [] }) };
+export const FindingsLoading: Story = { name: "Findings: loading", render: () => page({ findings: undefined }) };
+export const OlderVersionFindings: Story = { name: "Findings: older version", render: () => page({ latest: false }) };
+export const FindingsLight: Story = { name: "Findings: light", globals: { theme: "light" }, render: () => page({}) };
 export const StillGenerating: Story = { render: () => page({ state: { kind: "generating", pct: 64 } }) };
 export const CouldNotCreate: Story = { render: () => page({ state: { kind: "failed", error: "No usable clips: analyze the folder first." } }) };
 export const Light: Story = { globals: { theme: "light" }, render: () => page({}) };
@@ -51,7 +63,7 @@ export const Loading: Story = { render: () => page({ state: { kind: "loading" } 
 export const NotMadeYet: Story = { render: () => page({ state: { kind: "new" } }) };
 export const NotFound: Story = { render: () => page({ state: { kind: "missing" } }) };
 export const LoadError: Story = { render: () => page({ state: { kind: "error" }, onRetryLoad: noop }) };
-export const ReportError: Story = { render: () => page({ report: undefined, reportError: true, onRetryReport: noop }) };
+export const ReportError: Story = { render: () => page({ report: undefined, reportError: true, onRetryReport: noop, initialPanel: "report" }) };
 
 const panel = (p: Partial<ReportPanelProps>) => (
   <div className="flex h-[700px] bg-bg p-4">

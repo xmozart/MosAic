@@ -29,7 +29,7 @@ export function ReportPanel(p: ReportPanelProps) {
   const r = p.report;
   const beatTitle = (id: string | null | undefined) => p.beats.find((b) => b.beat_id === id)?.title;
   return (
-    <aside aria-label="Selection report" className="flex w-[400px] shrink-0 flex-col gap-2.5">
+    <section aria-label="Selection report" className="flex min-h-0 flex-col gap-2.5">
       <div className="flex items-center gap-2">
         <h2 className="text-subhead font-semibold tracking-[-0.01em] text-text">Why these shots</h2>
       </div>
@@ -121,7 +121,7 @@ export function ReportPanel(p: ReportPanelProps) {
             ))}
         </ul>
       )}
-    </aside>
+    </section>
   );
 }
 

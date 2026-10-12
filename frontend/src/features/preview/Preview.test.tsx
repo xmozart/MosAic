@@ -4,8 +4,9 @@ import { MemoryRouter, Route, Routes } from "react-router";
 
 import { card } from "@/features/edits/fixtures";
 import type { RenderRow } from "@/lib/renders";
+import { useToasts } from "@/lib/toasts";
 
-import { BEATS, EDIT, EVENTS, REPORT, renderRow } from "./fixtures";
+import { BEATS, EDIT, EVENTS, REPORT, renderRow, FINDINGS } from "./fixtures";
 import { beatAt, beatSegments, factsRows, timecode, toSource } from "./model";
 import { PreviewScreen } from "./PreviewScreen";
 import { PreviewView, type PreviewViewProps } from "./PreviewView";
@@ -71,11 +72,18 @@ const base: PreviewViewProps = {
   onExports: noop,
   onStoryboard: noop,
   report: REPORT,
+  findings: FINDINGS,
+  latest: true,
+  onApplyFinding: noop,
+  onIgnoreFinding: noop,
+  onApplyAll: noop,
+  onIgnoreAll: noop,
+  onRegenerateWithFixes: noop,
 };
 
 describe("PreviewView", () => {
   it("a shot's timecode seeks the player (S17 acceptance)", () => {
-    render(<PreviewView {...base} />);
+    render(<PreviewView {...base} initialPanel="report" />);
     const video = document.querySelector("video")!;
     Object.defineProperty(video, "duration", { value: 60, configurable: true });
     fireEvent.loadedMetadata(video);
@@ -124,10 +132,90 @@ describe("PreviewView", () => {
     expect(screen.getByRole("link", { name: /Download final/ })).toHaveAttribute("href", "/dl");
   });
 
+  it("findings: severity, fix, applied state, and Apply / Ignore / Regenerate with fixes", () => {
+    const apply = vi.fn();
+    const ignore = vi.fn();
+    const all = vi.fn();
+    const regen = vi.fn();
+    render(<PreviewView {...base} onApplyFinding={apply} onIgnoreFinding={ignore} onApplyAll={all} onRegenerateWithFixes={regen} />);
+    const panel = within(screen.getByRole("region", { name: "Findings" }));
+    const cards = panel.getAllByRole("article");
+    expect(cards).toHaveLength(5);
+    expect(within(cards[0]!).getByText("Applied in v3")).toBeInTheDocument();
+    expect(within(cards[0]!).queryByRole("button", { name: "Apply" })).toBeNull();
+    expect(within(cards[1]!).getByText("Issue")).toBeInTheDocument();
+    expect(within(cards[1]!).queryByRole("button", { name: "Apply" })).toBeNull(); // no fix: Ignore only
+    expect(within(cards[2]!).getByText("Suggestion")).toBeInTheDocument();
+    expect(within(cards[2]!).getByText("Replace it with GX010233.MP4")).toBeInTheDocument();
+    fireEvent.click(within(cards[2]!).getByRole("button", { name: "Apply" }));
+    fireEvent.click(within(cards[1]!).getByRole("button", { name: "Ignore" }));
+    fireEvent.click(panel.getByRole("button", { name: "Apply all" }));
+    fireEvent.click(panel.getByRole("button", { name: /Regenerate with fixes/ }));
+    expect(apply).toHaveBeenCalledWith(FINDINGS[2]!.finding_id);
+    expect(ignore).toHaveBeenCalledWith(FINDINGS[1]!.finding_id);
+    expect(all).toHaveBeenCalled();
+    expect(regen).toHaveBeenCalled();
+    expect(panel.getByText("4")).toBeInTheDocument(); // open findings
+  });
+
+  it("findings: N / P move between them and seek, A applies the focused one", () => {
+    const apply = vi.fn();
+    render(<PreviewView {...base} onApplyFinding={apply} />);
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "duration", { value: 600, configurable: true });
+    fireEvent.loadedMetadata(video);
+    fireEvent.keyDown(window, { key: "n" });
+    fireEvent.keyDown(window, { key: "n" });
+    fireEvent.keyDown(window, { key: "n" });
+    expect(document.activeElement).toHaveAccessibleName(`Suggestion at ${timecode({ frames: FINDINGS[2]!.frame, rate: "30000/1001" })}`);
+    expect(video.currentTime).toBeCloseTo((FINDINGS[2]!.frame + 0.25) * (1001 / 30000), 6);
+    fireEvent.keyDown(window, { key: "a" });
+    expect(apply).toHaveBeenCalledWith(FINDINGS[2]!.finding_id);
+    fireEvent.keyDown(window, { key: "p" });
+    fireEvent.keyDown(window, { key: "a" }); // no fix: nothing to apply
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking a finding's timecode seeks the player (S17 acceptance)", () => {
+    render(<PreviewView {...base} />);
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "duration", { value: 600, configurable: true });
+    fireEvent.loadedMetadata(video);
+    const f = FINDINGS[3]!;
+    fireEvent.click(screen.getByRole("button", { name: `Go to ${timecode({ frames: f.frame, rate: "30000/1001" })}` }));
+    expect(video.currentTime).toBeCloseTo((f.frame + 0.25) * (1001 / 30000), 6);
+  });
+
+  it("findings: A applies only the finding that has the focus", () => {
+    const apply = vi.fn();
+    const { rerender } = render(<PreviewView {...base} onApplyFinding={apply} />);
+    fireEvent.keyDown(window, { key: "n" });
+    fireEvent.keyDown(window, { key: "n" });
+    fireEvent.keyDown(window, { key: "n" }); // the shaky shot, which has a fix
+    screen.getByRole("button", { name: "Render final" }).focus(); // focus moves away
+    fireEvent.keyDown(window, { key: "a" });
+    expect(apply).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "n" });
+    fireEvent.keyDown(window, { key: "p" }); // back on it
+    // A new list (the fix made a new version): the old focus counts for nothing.
+    rerender(<PreviewView {...base} onApplyFinding={apply} findings={FINDINGS.map((f) => ({ ...f, finding_id: `${f.finding_id}x` }))} />);
+    fireEvent.keyDown(window, { key: "a" });
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("findings: none, and an older version's can't be applied", () => {
+    const { rerender } = render(<PreviewView {...base} findings={[]} />);
+    expect(screen.getByText("Looks good — no issues found")).toBeInTheDocument();
+    rerender(<PreviewView {...base} latest={false} />);
+    expect(screen.getByText(/Fixes apply to the latest version/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply all" })).toBeDisabled();
+  });
+
   it("the report: reasons, not used, and rejections marked by who made them", () => {
     const more = vi.fn();
     render(<PreviewView {...base} onMoreRejected={more} />);
-    const panel = within(screen.getByRole("complementary", { name: "Selection report" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Why these shots" }));
+    const panel = within(screen.getByRole("region", { name: "Selection report" }));
     expect(panel.getAllByText("Strong opener: wide shot of the bay at sunrise.").length).toBeGreaterThan(0);
     fireEvent.click(panel.getByRole("radio", { name: "Not used 1" }));
     expect(panel.getByText(/the toucan is further away/)).toBeInTheDocument();
@@ -182,11 +270,15 @@ vi.mock("@/api/client", () => ({
         return Promise.resolve({ data: { ...EDIT, version: v, renders: server[v] ?? [] }, response: { status: 200 } });
       }
       if (path === "/api/edits/{eid}/versions") return Promise.resolve({ data: { items: [2, 3].map((v) => ({ version: v, created_at: "x" })) } });
+      if (path === "/api/edits/{eid}/findings") return Promise.resolve({ data: { version: 3, items: FINDINGS } });
+      if (path === "/api/jobs/{job_id}") return Promise.resolve({ data: { job_id: 11, state: "done", error: null } });
       if (path === "/api/edits/{eid}/report") return Promise.resolve({ data: { ...REPORT, version: Number(o?.params?.query?.version) } });
       return Promise.resolve({ error: { detail: "unknown" }, response: { status: 404 } });
     },
     POST: (path: string, o: { body?: unknown }) => {
       posts.push({ path, body: o?.body });
+      if (path === "/api/edits/{eid}/findings/{fid}/apply" || path === "/api/edits/{eid}/findings/apply-all") return Promise.resolve({ data: { version: 4 } });
+      if (path === "/api/edits/{eid}/findings/regenerate") return Promise.resolve({ data: { version: 4, job_id: 11, beats: ["b2", "b3"] } });
       return Promise.resolve({ data: { render_id: 9, job_id: 1 } });
     },
   },
@@ -264,4 +356,35 @@ it("PreviewScreen follows ?v=: that version, its report, one preview each, and p
   });
   expect(posts.filter((p) => p.path === "/api/renders")).toHaveLength(1);
   vi.useRealTimers();
+});
+
+it("PreviewScreen applies a finding as a new version, with Undo reverting to the one before", async () => {
+  mode = "ready";
+  posts.length = 0;
+  server[3] = [renderRow(5, { version: 3 })];
+  useToasts.setState({ items: [] });
+  mount();
+  const card = (await screen.findAllByRole("article"))[2]!;
+  fireEvent.click(within(card).getByRole("button", { name: "Apply" }));
+  await waitFor(() => expect(posts.map((p) => p.path)).toContain("/api/edits/{eid}/findings/{fid}/apply"));
+  await waitFor(() => expect(useToasts.getState().items.map((x) => x.message)).toContain("Version 4 created"));
+  useToasts.getState().items.find((x) => x.message === "Version 4 created")!.action!.run();
+  await waitFor(() => expect(posts.at(-1)).toEqual({ path: "/api/edits/{eid}/revert", body: { version: 3 } }));
+});
+
+it("PreviewScreen's Regenerate with fixes applies them, then follows the beats' job", async () => {
+  mode = "ready";
+  posts.length = 0;
+  gets.length = 0;
+  server[3] = [renderRow(5, { version: 3 })];
+  useToasts.setState({ items: [] });
+  mount();
+  fireEvent.click(await screen.findByRole("button", { name: /Regenerate with fixes/ }));
+  await waitFor(() => expect(posts.map((p) => p.path)).toContain("/api/edits/{eid}/findings/regenerate"));
+  await waitFor(() => expect(gets.some((g) => g.path === "/api/jobs/{job_id}")).toBe(true));
+  await waitFor(() => expect(useToasts.getState().items.map((x) => x.message)).toContain("The regenerated version is ready."));
+  const messages = useToasts.getState().items;
+  expect(messages.map((x) => x.message)).toContain("Regenerating 2 beats that still have issues. Your locked shots stay.");
+  // No Undo while the beats regenerate on top of the fixes.
+  expect(messages.find((x) => x.message === "Fixes applied as version 4")!.action).toBeUndefined();
 });

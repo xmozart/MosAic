@@ -36,3 +36,9 @@
 - "Open storyboard" is disabled until M4. "Export…" is **Exports** (S20).
 - Render final becomes Download final when the render is done.
 
+
+## M4 notes (ADR 0089)
+
+- The right column switches between Findings (first) and Why these shots.
+- Regenerate with fixes applies every fix, then regenerates the beats with issues that have no fix.
+- Undo in the toast reverts to the version the fix was applied to.

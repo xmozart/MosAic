@@ -51,7 +51,8 @@ def record(s: Session, row: EditVersion) -> None:
         )
 
 
-def as_json(f: EditFinding) -> dict[str, Any]:
+def as_json(f: EditFinding, fix: str | None = None) -> dict[str, Any]:
+    """A finding for S17; ``fix``: its suggested fix in words (``fix_text``)."""
     return {
         "finding_id": f.uid,
         "version": f.version,
@@ -62,9 +63,53 @@ def as_json(f: EditFinding) -> dict[str, Any]:
         "event_id": f.event_id,
         "text": f.text,
         "can_apply": bool(f.ops),
+        "fix": fix,
         "status": f.status,
         "applied_in_version": f.applied_in_version,
     }
+
+
+def fix_text(s: Session, ops: list[Any] | None) -> str | None:
+    """A finding's fix in the owner's words (S17's "suggested fix"): "Replace it with
+    DSC_0932.MOV", "Remove it". None when it has nothing to apply."""
+    from mosaic.editing.retrieval import parse_ref
+    from mosaic.editing.service import source_file
+    from mosaic.storage.models_project import Segment
+
+    words: list[str] = []
+    for op in ops or []:
+        kind = op.get("kind")
+        if kind == "replace_shot":
+            sid = parse_ref(str(op.get("segment_id", "")))
+            seg = s.get(Segment, sid) if sid is not None else None
+            path = source_file(s, seg.asset_id, seg.usable_start_ticks) if seg else None
+            words.append(f"Replace it with {path.rsplit('/', 1)[-1]}" if path else "Replace it")
+        elif kind == "remove_shot":
+            words.append("Remove it")
+        elif kind == "pace_beat":
+            words.append("Make the beat faster" if op.get("faster", True) else "Slow the beat")
+        else:
+            words.append("Change the storyboard")
+    return "; ".join(dict.fromkeys(words)) or None
+
+
+ISSUES = ("blocking", "warning")  # S17 "Issue"; info is a "Suggestion"
+
+
+def beats_with_issues(s: Session, row: EditVersion) -> list[str]:
+    """The beats (in story order) holding an open issue that has no fix on version
+    ``row``: what "Regenerate with fixes" regenerates (ADR 0089)."""
+    beat_of = {
+        e["event_id"]: e.get("beat_id")
+        for e in row.timeline["tracks"][0]["events"]
+        if e.get("beat_id")
+    }
+    hit = {
+        beat_of[f.event_id]
+        for f in of_version(s, row.edit_id, row.version)
+        if f.status == "open" and not f.ops and f.severity in ISSUES and f.event_id in beat_of
+    }
+    return [str(b["beat_id"]) for b in row.beats if b["beat_id"] in hit]
 
 
 def of_version(s: Session, edit_id: int, version: int) -> list[EditFinding]:
@@ -73,6 +118,17 @@ def of_version(s: Session, edit_id: int, version: int) -> list[EditFinding]:
             select(EditFinding)
             .where(EditFinding.edit_id == edit_id, EditFinding.version == version)
             .order_by(EditFinding.seq)
+        )
+    )
+
+
+def applied_in(s: Session, edit_id: int, version: int) -> list[EditFinding]:
+    """Findings of earlier versions whose fix made ``version`` (S17's "Applied in vN")."""
+    return list(
+        s.scalars(
+            select(EditFinding)
+            .where(EditFinding.edit_id == edit_id, EditFinding.applied_in_version == version)
+            .order_by(EditFinding.version, EditFinding.seq)
         )
     )
 

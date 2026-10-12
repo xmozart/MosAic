@@ -294,7 +294,10 @@ def get_draft(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, An
             for j in svc.store.jobs(project.id, True, kind="edit")
             if j.params.get("edit_id") == edit_id
         ]
-        out["regenerating"] = sorted({str(p["beat_id"]) for p in running if "beat_id" in p})
+        out["regenerating"] = sorted(
+            {str(p["beat_id"]) for p in running if "beat_id" in p}
+            | {str(b) for p in running for b in p.get("beat_ids", [])}
+        )
         out["regenerating_scope"] = next((p["scope"] for p in running if "scope" in p), None)
         return out
 
@@ -716,8 +719,15 @@ def list_findings(
             if latest is None:
                 raise HTTPException(404, "this edit has no version yet")
             version = latest.version
-        items = [findings.as_json(f) for f in findings.of_version(s, edit_id, version)]
-        return {"version": version, "items": items}
+        items = [
+            findings.as_json(f, findings.fix_text(s, f.ops))
+            for f in findings.of_version(s, edit_id, version)
+        ]
+        applied = [
+            findings.as_json(f, findings.fix_text(s, f.ops))
+            for f in findings.applied_in(s, edit_id, version)
+        ]
+        return {"version": version, "items": items, "applied": applied}
 
 
 def _apply_findings(svc: Services, me: Principal, eid: str, which: list[str] | None) -> Any:
@@ -757,6 +767,26 @@ def apply_finding(eid: str, fid: str, svc: Services = Svc, me: Principal = Me) -
 def apply_all_findings(eid: str, svc: Services = Svc, me: Principal = Me) -> Any:
     """Apply every open finding that has a fix: one child version."""
     return _apply_findings(svc, me, eid, None)
+
+
+@router.post("/edits/{eid}/findings/regenerate", status_code=202)
+def regenerate_with_fixes(eid: str, svc: Services = Svc, me: Principal = Me) -> dict[str, Any]:
+    """S17 "Regenerate with fixes": the fixes applied, then the beats with issues that
+    have no fix regenerated as one job (ADR 0089). 409 with unsaved storyboard changes,
+    422 when there is nothing to do."""
+    from mosaic.editing import findings
+    from mosaic.editing.service import submit_fixes
+
+    check(me, "edits.write", eid)
+    with _edit(svc, me, eid, write=True) as (project, edit_id):
+        try:
+            return submit_fixes(svc.executor, me, project, edit_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except findings.FindingStateError as exc:
+            raise HTTPException(409, str(exc)) from None
+        except findings.FindingError as exc:
+            raise HTTPException(422, str(exc)) from None
 
 
 def _ignore(svc: Services, me: Principal, eid: str, fid: str | None) -> dict[str, Any]:
