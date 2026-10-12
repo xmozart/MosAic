@@ -276,11 +276,16 @@ def is_split(timeline: dict[str, Any]) -> bool:
     return any("timeline_in" in e["audio"] for e in timeline["tracks"][0]["events"])
 
 
+NO_SOURCE = {"ticks": 0, "tb": "1/1"}  # a title card's (silent) range: it has no source
+
+
 def audio_span(event: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], int]:
-    """An event's heard source range and its length in timeline frames."""
+    """An event's heard source range and its length in timeline frames. A title card has
+    no source: its range is empty and it is heard as silence for its length."""
     a = event["audio"]
     w = a if "timeline_in" in a else event
-    return w["source_in"], w["source_out"], w["timeline_out"]["frames"] - w["timeline_in"]["frames"]
+    frames = w["timeline_out"]["frames"] - w["timeline_in"]["frames"]
+    return w.get("source_in", NO_SOURCE), w.get("source_out", NO_SOURCE), frames
 
 
 def audio_key(

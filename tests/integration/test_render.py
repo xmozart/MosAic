@@ -812,6 +812,47 @@ def test_title_cards_open_and_close_the_edit_and_render_frame_exact(
     assert card[: h // 4].max() < 30, "a dark ground"
     assert card[h // 3 : 2 * h // 3].max() > 200, "the name, drawn in the middle"
 
+    # With a J- or L-cut anywhere the sound comes from audio chunks (ADR 0077): a card
+    # is heard as silence for its length (found by the M4 eval, where a cut edit with
+    # cards failed to render).
+    import copy
+
+    tl = copy.deepcopy(v.timeline)
+    shot = next(e for e in tl["tracks"][0]["events"] if e["kind"] == "video")
+    shot["audio"] |= {
+        k: shot[k] for k in ("source_in", "source_out", "timeline_in", "timeline_out")
+    }
+    with project.write() as s:
+        row = s.scalar(
+            select(EditVersion).where(
+                EditVersion.edit_id == edit_id, EditVersion.version == v.version
+            )
+        )
+        assert row is not None
+        s.add(
+            EditVersion(
+                edit_id=edit_id,
+                version=v.version + 1,
+                parent_version=v.version,
+                creator="user",
+                reason="split sound with cards",
+                key=row.key + "-split",
+                request=row.request,
+                rate=row.rate,
+                beats=row.beats,
+                timeline=tl,
+                metrics=row.metrics,
+                findings=row.findings,
+                provenance_id=row.provenance_id,
+                created_at=row.created_at,
+            )
+        )
+    split = get_render(project, _render(project, control, edit_id, v.version + 1, "final", True))
+    assert split is not None
+    out = output_path(project.workspace, split)
+    assert _frames(ffmpeg_bin, out) == total
+    assert _samples(ffmpeg_bin, out) == samples_for(total, rate)
+
 
 def test_a_music_bed_plays_under_the_edit_and_ducks_under_dialogue(
     edit: tuple[Project, ControlDB, int, int], ffmpeg_bin: FFmpegBinaries, tmp_path: Any
