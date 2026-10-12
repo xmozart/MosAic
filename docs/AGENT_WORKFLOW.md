@@ -12,7 +12,8 @@ For each milestone, in order (M0 → M1 → M2 → M3 → M4):
    - run `make check` (lint, types, unit tests) and the relevant integration tests
    - run the **spec-reviewer** subagent on the step's diff (`.claude/agents/spec-reviewer.md`) and fix what it finds
    - commit with a message `M<n>.<step>: <summary>`
-   - after pushing, check the commit's GitHub runs (`gh run list`): the step is done only when they are green, not only the local `make ci` (ADR 0062). A red run is fixed before the next step
+   - run the full `make ci` once per group of related steps, before pushing the group (owner's choice, 2026-10-12): a step on its own gets `make check`, the integration tests its change touches and the review. Nothing is pushed without a green `make ci`
+   - after pushing, check the group's GitHub runs (`gh run list`): its steps are done only when they are green, not only the local `make ci` (ADR 0062). A red run is fixed before the next group
    - append a one-line entry to `docs/STATUS.md`
 3. **Decide, don't ask.** When the spec is ambiguous, contradictory or wrong:
    - pick the option most consistent with `CLAUDE.md` invariants and the milestone goal
