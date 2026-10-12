@@ -117,7 +117,7 @@ function Creating() {
       onBackground={() => navigate(`/p/${pid}/edits`)}
       onCancel={() => !cancel.isPending && cancel.mutate()}
       onRetry={() => !retry.isPending && retry.mutate()}
-      onView={() => navigate(`/p/${pid}/edits/${eid}`)}
+      onView={() => navigate(`/p/${pid}/edits/${eid}/storyboard`)}
     />
   );
 }

@@ -25,6 +25,7 @@ const base: PreviewViewProps = {
   onRetryGenerate: noop,
   onBack: noop,
   onExports: noop,
+  onStoryboard: noop,
   report: REPORT,
 };
 const page = (p: Partial<PreviewViewProps>) => (

@@ -12,6 +12,7 @@ from mosaic.core.ids import new_ulid
 from mosaic.core.principal import Principal
 from mosaic.core.time import format_display, parse_rational
 from mosaic.editing.request import Category, EditRequest
+from mosaic.editing.retrieval import Candidate
 from mosaic.editing.titles import shot_events
 from mosaic.jobs.executor import Executor
 from mosaic.jobs.model import JobSpec, ResourceClass, TaskSpec
@@ -27,6 +28,7 @@ from mosaic.storage.models_project import (
     Edit,
     EditVersion,
     MediaFile,
+    SampleFrame,
     Segment,
     VisualObservation,
 )
@@ -136,7 +138,55 @@ def draft_state(project: Project, edit_id: int) -> dict[str, Any]:
     with project.db.session() as s:
         d = draft.load(s, edit_id)
         req, inp = draft.inputs(s, d)
-        return draft.as_json(d, draft.timed(s, req, inp, d.board))
+        out = draft.as_json(d, draft.timed(s, req, inp, d.board))
+        by_ref = {c.ref: c for c in inp.cands}
+        out["media"] = shot_media(s, [by_ref[r] for r in d.board.segments() if r in by_ref])
+        target = out["target"]["frames"] or 0
+        tolerance = target * req.tolerance_pct // 100
+        out["tolerance"] = {"frames": tolerance, "rate": out["target"]["rate"]}
+        return out
+
+
+def shot_media(s: Any, cands: list[Candidate]) -> dict[str, dict[str, Any]]:
+    """What S16 shows of each clip (ADR 0088): a kept frame inside the segment, the file
+    it is in, its trip day, and its asset and usable range (to play it). Keyed by segment
+    ref."""
+    out: dict[str, dict[str, Any]] = {}
+    for c in cands:
+        sample = s.scalar(
+            select(SampleFrame.id)
+            .where(
+                SampleFrame.asset_id == c.asset_id,
+                SampleFrame.kept.is_(True),
+                SampleFrame.image_key.is_not(None),
+                SampleFrame.ticks >= c.start,
+                SampleFrame.ticks <= max(c.end, c.start),
+            )
+            .order_by(SampleFrame.ticks)
+            .limit(1)
+        ) or s.scalar(
+            select(SampleFrame.id)
+            .where(
+                SampleFrame.asset_id == c.asset_id,
+                SampleFrame.kept.is_(True),
+                SampleFrame.image_key.is_not(None),
+            )
+            .order_by(SampleFrame.ticks)
+            .limit(1)
+        )
+        path = _source_file(s, c.asset_id, c.start)
+        out[c.ref] = {
+            "sample_id": sample,
+            "file": path.rsplit("/", 1)[-1] if path else None,
+            "day": c.day or None,
+            "photo": c.still,
+            "asset": c.asset_id,
+            "range": {
+                "start": {"ticks": c.usable_start, "tb": c.tb},
+                "end": {"ticks": c.usable_end, "tb": c.tb},
+            },
+        }
+    return out
 
 
 def change_draft(project: Project, edit_id: int, action: str, op: Any = None) -> bool:
@@ -308,11 +358,17 @@ def alternatives(project: Project, edit_id: int, ref: str) -> tuple[list[dict[st
     (then ``replace_shot`` is refused until it is unlocked)."""
     from mosaic.editing import draft
 
-    with project.db.session() as s:
-        d = draft.load(s, edit_id)
+    with project.db.session() as s_media:
+        d = draft.load(s_media, edit_id)
         beat, _, sh = d.board.shot(ref)
-        by_ref = {c.ref: c for c in draft.inputs(s, d)[1].cands}
-    taken = d.board.segments() | set(d.board.excluded)
+        by_ref = {c.ref: c for c in draft.inputs(s_media, d)[1].cands}
+        taken = d.board.segments() | set(d.board.excluded)
+        return _alternatives(s_media, beat, sh, by_ref, taken)
+
+
+def _alternatives(
+    s_media: Any, beat: Any, sh: Any, by_ref: dict[str, Candidate], taken: set[str]
+) -> tuple[list[dict[str, Any]], bool]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     named = [(a["segment_id"], a.get("why_not")) for a in sh.alternatives]
@@ -325,6 +381,7 @@ def alternatives(project: Project, edit_id: int, ref: str) -> tuple[list[dict[st
             {
                 "segment_id": seg,
                 "asset_id": f"ast_{c.asset_id:04d}",
+                **shot_media(s_media, [c])[seg],
                 "why_not": why,
                 "line": c.line(),
                 "usable": {"ticks": c.usable_end - c.usable_start, "tb": c.tb},

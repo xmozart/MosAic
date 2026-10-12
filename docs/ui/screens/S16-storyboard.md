@@ -2,6 +2,7 @@
 
 - **Reference:** `docs/ui/reference/` → S16-Storyboard
 - **Milestone:** M4
+- **Route:** `/p/:pid/edits/:eid/storyboard` (ADR 0088)
 
 **Purpose.** Review and shape the story.
 

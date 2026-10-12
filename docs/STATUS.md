@@ -12,7 +12,7 @@ Nothing blocks the work now. Coming up:
 ## Current
 
 - **Milestone:** M4 (M3 complete except signing: `docs/reports/M3.md`, GitHub runs 38159797505 and 38159797507 green)
-- **Step:** M4.14c, S16 Storyboard.
+- **Step:** M4.14d, S17 findings.
 - **Checks:** full `make ci` per group of related steps, then push (AGENT_WORKFLOW §1). Groups: 7 · 8+9a · 9b+9c · 10+11 · 12+13 · S14+S15 · S16+S17 · S18+S19+S24 · 15.
 - **Dev setup for a fresh session:** `uv sync`. The LGPL FFmpeg 8.1.2 lives in `.tools/ffmpeg/bin`; rebuild it with `make ffmpeg` if it's missing. Docker must be running for the visual tests. The real-footage tests read `Samples/`, a local symlink to the SSD. `make ci` must pass, and so must the step's GitHub runs (ADR 0062).
 
@@ -47,6 +47,7 @@ The final gate is G6: the benchmark edits and the rubric. Real footage and real 
 - [ ] 14. Screens with stories in both themes: a S14 full, b S15, c S16, d S17 findings, e S18, f S19, g S24
   - [x] 14a. S14 full: steps 3–5, custom beats, music track card (ADR 0086)
   - [x] 14b. S15 Creating edit: steps, beats as planned, background, cancel, retry, preview (ADR 0087)
+  - [x] 14c. S16 Storyboard: beats and shots, drag, popover, locks, regenerate, undo, Save version (ADR 0088)
 - [ ] 15. Acceptance tests, `make eval`, `docs/reports/M4.md`, then G6
 
 ## M0 plan

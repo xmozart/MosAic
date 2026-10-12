@@ -38,6 +38,7 @@ export interface PreviewViewProps {
   onRetryLoad?: () => void;
   onBack: () => void;
   onExports: () => void;
+  onStoryboard: () => void;
   report: ReportData | undefined;
   reportError?: boolean;
   onRetryReport?: () => void;
@@ -173,7 +174,7 @@ function Ready(p: PreviewViewProps & { edit: EditVersionData }) {
         </div>
         <EditFacts rows={factsRows(e.facts)} />
         <div className="flex items-center gap-2">
-          <Button variant="ghost" disabled title="The storyboard comes in a later update">
+          <Button variant="ghost" onClick={p.onStoryboard}>
             <LayoutPanelTop /> Open storyboard
           </Button>
           <span className="flex-1" />

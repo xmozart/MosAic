@@ -53,6 +53,35 @@ def test_an_untouched_draft_times_exactly_like_its_version(drafted: Any) -> None
     assert len(fake.CALLS) == calls, "the draft is timed without AI"
 
 
+def test_the_storyboard_shows_each_shots_frame_file_and_day(drafted: Any) -> None:
+    """S16's chips (ADR 0088): a frame inside the shot, its file, day, asset and usable
+    range, for every shot on the board; and the target's tolerance in frames."""
+    project, _, client, eid = drafted
+    d = client.get(f"/api/edits/{eid}/draft").json()
+    segments = {sh["segment_id"] for sh in _shots(d)}
+    assert set(d["media"]) == segments
+    for ref, m in d["media"].items():
+        assert isinstance(m["sample_id"], int), ref
+        assert m["file"]
+        assert "/" not in m["file"]
+        assert isinstance(m["asset"], int)
+        assert m["range"]["start"]["tb"] == m["range"]["end"]["tb"]
+        assert m["range"]["end"]["ticks"] >= m["range"]["start"]["ticks"]
+        assert m["day"] is None or m["day"] >= 1
+    sample = next(iter(d["media"].values()))["sample_id"]
+    frame = client.get(f"/api/media/{project.id}/frame/{sample}")
+    assert frame.status_code == 200
+    target = d["target"]["frames"]
+    assert d["tolerance"] == {"frames": target * 5 // 100, "rate": d["target"]["rate"]}
+    ref = _shots(d)[0]["ref"]
+    from urllib.parse import quote
+
+    alts = client.get(f"/api/edits/{eid}/shots/{quote(ref, safe='')}/alternatives").json()["items"]
+    assert alts
+    assert all(isinstance(a["sample_id"], int) for a in alts)
+    assert all(a["file"] for a in alts)
+
+
 def test_ops_undo_redo_and_saving_a_version(drafted: Any) -> None:
     project, _, client, eid = drafted
     calls = len(fake.CALLS)

@@ -149,12 +149,12 @@ function mount(state: CreatingJob, existing: unknown[] = []) {
   );
 }
 
-it("CreatingScreen renders the version's preview once made, then opens the edit", async () => {
+it("CreatingScreen renders the version's preview once made, then opens the storyboard", async () => {
   mount(job("done", { step: "checking", beats: BEATS }));
   await waitFor(() => expect(posts.filter((p) => p.path === "/api/renders")).toHaveLength(1));
   expect(posts.find((p) => p.path === "/api/renders")!.body).toEqual({ edit_id: EID, version: 3, final: false, codec: "h264" });
   fireEvent.click(await screen.findByRole("button", { name: "View storyboard" }));
-  await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(`/p/P1/edits/${EID}`));
+  await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(`/p/P1/edits/${EID}/storyboard`));
   expect(posts.filter((p) => p.path === "/api/renders")).toHaveLength(1); // one preview
 });
 

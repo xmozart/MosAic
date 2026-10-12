@@ -69,6 +69,7 @@ const base: PreviewViewProps = {
   onRetryGenerate: noop,
   onBack: noop,
   onExports: noop,
+  onStoryboard: noop,
   report: REPORT,
 };
 
@@ -87,14 +88,16 @@ describe("PreviewView", () => {
 
   it("player, facts, versions and the beat segments", () => {
     const onVersion = vi.fn();
-    render(<PreviewView {...base} onVersion={onVersion} />);
+    const onStoryboard = vi.fn();
+    render(<PreviewView {...base} onVersion={onVersion} onStoryboard={onStoryboard} />);
     expect(screen.getByText("v3 · preview 720p")).toBeInTheDocument();
     expect(screen.getAllByTestId("segment")).toHaveLength(4);
     const facts = within(screen.getByRole("region", { name: "Edit facts" }));
     expect(facts.getByText("9 of 11")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "v1" }));
     expect(onVersion).toHaveBeenCalledWith(1);
-    expect(screen.getByRole("button", { name: /Open storyboard/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Open storyboard/ }));
+    expect(onStoryboard).toHaveBeenCalled();
   });
 
   it("rendering, failed and missing preview states", () => {
