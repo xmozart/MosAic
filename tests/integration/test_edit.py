@@ -510,3 +510,17 @@ def test_photos_become_stills(analyzed_session: Any) -> None:
     none = generate(project, control, EditRequest(duration_s=600, photo_share="none"))
     kinds = {e["kind"] for e in get_version(project, none).timeline["tracks"][0]["events"]}
     assert kinds == {"video"}
+
+
+def test_analysis_finds_each_segments_subject_and_edits_carry_it(analyzed_session: Any) -> None:
+    """ADR 0076: the focus stage gives every analysed segment a subject position in
+    thousandths of the frame; an edit's events carry it in their transform."""
+    project, control = analyzed_session
+    with project.db.session() as s:
+        points = list(s.execute(select(Segment.focus_x, Segment.focus_y)))
+    assert points
+    assert all(x is not None and y is not None for x, y in points)
+    assert all(0 <= x <= 1000 and 0 <= y <= 1000 for x, y in points)
+    edit_id = generate(project, control, EditRequest(duration_s=25, variant=41))
+    events = get_version(project, edit_id).timeline["tracks"][0]["events"]
+    assert all("focus" in e["transform"] for e in events)

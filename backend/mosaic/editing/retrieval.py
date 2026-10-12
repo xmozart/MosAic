@@ -86,6 +86,7 @@ class Candidate:
     categories: frozenset[str] = frozenset()  # content categories (ADR 0072)
     bonus: float = 0.0  # the owner's content weights for those categories
     still: bool = False  # a photo: a still event on the timeline (ADR 0075)
+    focus: tuple[int, int] | None = None  # the subject, thousandths of the frame (ADR 0076)
 
     @property
     def ref(self) -> str:
@@ -221,6 +222,8 @@ class _Seg(NamedTuple):
     quality: float | None
     similarity_group_id: int | None
     group_best: bool
+    focus_x: int | None
+    focus_y: int | None
 
 
 _SEG_COLUMNS = tuple(getattr(Segment, f) for f in _Seg._fields)
@@ -437,6 +440,9 @@ def retrieve(
                     bonus=weight_bonus(cats, weights)
                     + (PHOTO_BONUS.get(photo_share, 0.0) if still else 0.0),
                     still=still,
+                    focus=(g.focus_x, g.focus_y)
+                    if g.focus_x is not None and g.focus_y is not None
+                    else None,
                 )
             )
     counts["duplicate"] = len(similar)

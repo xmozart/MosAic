@@ -206,6 +206,7 @@ def _spec(
         framing=framing(
             asset.display_width, asset.display_height, prof.width, prof.height, prof.fill
         ),
+        focus=_focus(e),
         rate=rate,
         frames=frames,
         samples=samples_for(frames, rate),
@@ -216,6 +217,11 @@ def _spec(
         out=out,
         source_rate=src_rate,
     )
+
+
+def _focus(e: dict[str, Any]) -> tuple[int, int] | None:
+    f = (e.get("transform") or {}).get("focus")
+    return (int(f["x"]), int(f["y"])) if f else None
 
 
 def _source_rate(asset: Asset, kind: str) -> Fraction | None:

@@ -27,6 +27,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "mosaic.library.embed_task",
     "mosaic.library.photo_segment",
     "mosaic.library.segments",
+    "mosaic.library.focus",
     "mosaic.library.mosaics",
     "mosaic.library.vision",
     "mosaic.library.similarity",

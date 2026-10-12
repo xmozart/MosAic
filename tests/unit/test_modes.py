@@ -227,7 +227,19 @@ def test_plan_stages_by_asset_kind() -> None:
     video = per_asset(specs, 1)
     photo = per_asset(specs, 2)
     assert "photo" not in {s for s, _ in video}
-    assert [s for s, _ in photo] == ["photo", "embed", "photo_segment", "mosaics", "vision"]
+    order = [s for s, _ in photo]
+    # ``focus`` and ``mosaics`` both follow ``photo_segment``; neither depends on the other,
+    # so their relative order is only the import order.
+    assert [s for s in order if s != "focus"] == [
+        "photo",
+        "embed",
+        "photo_segment",
+        "mosaics",
+        "vision",
+    ]
+    assert order.index("focus") > order.index("photo_segment")
+    assert dict(photo)["focus"] == ["photo_segment"], "a photo's subject, from its segment"
+    assert dict(video)["focus"] == ["segments"]
     assert dict(photo)["embed"] == ["photo"]
     assert dict(photo)["mosaics"] == ["photo_segment"]
     assert "visual" in dict(video)["embed"]

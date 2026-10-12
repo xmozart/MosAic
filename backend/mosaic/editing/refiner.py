@@ -469,7 +469,7 @@ def events(cuts: list[Cut], rate: str) -> list[dict[str, Any]]:
                 "timeline_in": {"frames": pos, "rate": rate},
                 "timeline_out": {"frames": pos + c.frames, "rate": rate},
                 "speed": "1/1",
-                "transform": {"crop": None, "reframe": None, "stabilize": False},
+                "transform": transform(s.cand.focus),
                 "audio": {
                     "source_enabled": audio_on,
                     "gain_db": GAIN_DB[s.audio_intent],
@@ -499,9 +499,32 @@ FULL = {"x": 0, "y": 0, "w": 1000, "h": 1000}
 PUSHED = {"x": 75, "y": 75, "w": 850, "h": 850}
 
 
+def transform(focus: tuple[int, int] | None) -> dict[str, Any]:
+    """An event's transform: ``focus`` (where the subject is, ADR 0076) when analysis found
+    it, so a crop to another shape centres on it."""
+    out: dict[str, Any] = {"crop": None, "reframe": None, "stabilize": False}
+    if focus is not None:
+        out["focus"] = {"x": focus[0], "y": focus[1]}
+    return out
+
+
+def pushed(focus: tuple[int, int] | None) -> dict[str, int]:
+    """The pushed-in rectangle, centred on the subject as far as the frame allows."""
+    if focus is None:
+        return dict(PUSHED)
+    w = PUSHED["w"]
+    room = 1000 - w
+
+    def at(c: int) -> int:
+        return max(0, min(room, c - w // 2))
+
+    return {"x": at(focus[0]), "y": at(focus[1]), "w": w, "h": w}
+
+
 def still_event(c: Cut, index: int, pos: int, rate: str) -> dict[str, Any]:
     s = c.shot
-    start, end = (FULL, PUSHED) if index % 2 else (PUSHED, FULL)
+    near = pushed(s.cand.focus)
+    start, end = (FULL, near) if index % 2 else (near, FULL)
     return {
         "event_id": f"evt_{index:04d}",
         "kind": "still",
@@ -514,7 +537,7 @@ def still_event(c: Cut, index: int, pos: int, rate: str) -> dict[str, Any]:
         "duration": {"frames": c.frames, "rate": rate},
         "speed": "1/1",
         "motion": {"start": dict(start), "end": dict(end), "easing": "ease_in_out"},
-        "transform": {"crop": None, "reframe": None, "stabilize": False},
+        "transform": transform(s.cand.focus),
         "audio": {
             "source_enabled": False,
             "gain_db": 0,

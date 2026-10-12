@@ -27,6 +27,7 @@ from mosaic.media.ffmpeg.command import (
     OptionValue,
     OutputSpec,
     chain,
+    escape_filter_value,
     media_path,
 )
 
@@ -74,6 +75,21 @@ class ChunkSpec:
     # "fit": scale the whole picture into the frame, bars where shapes differ; "crop": fill
     # the frame and cut the overflow at the centre (ADR 0046).
     framing: Literal["fit", "crop"] = "fit"
+    # Where the subject is, in thousandths of the frame (ADR 0076): a crop centres on it,
+    # as far as the picture allows; None crops the centre.
+    focus: tuple[int, int] | None = None
+
+
+def crop_origin(focus: tuple[int, int] | None) -> tuple[str, str]:
+    """The crop's top-left as expressions: centred on ``focus`` (thousandths of the
+    frame), kept inside the picture; the centre without one."""
+    if focus is None:
+        return "(iw-ow)/2", "(ih-oh)/2"
+    fx, fy = focus
+    return (
+        f"max(0,min(iw-ow,iw*{fx}/1000-ow/2))",
+        f"max(0,min(ih-oh,ih*{fy}/1000-oh/2))",
+    )
 
 
 def conform_shift(timeline_rate: Fraction, source_rate: Fraction | None) -> Fraction:
@@ -134,8 +150,9 @@ def _video_chain(spec: ChunkSpec, src: str) -> str:
                 out_color_matrix="bt709",
             )
         )
+    crop_x, crop_y = (escape_filter_value(e) for e in crop_origin(spec.focus))
     fit += [
-        Filter.of("crop", w=spec.width, h=spec.height, x="(iw-ow)/2", y="(ih-oh)/2")
+        Filter.of("crop", w=spec.width, h=spec.height, x=crop_x, y=crop_y)
         if spec.framing == "crop"
         else Filter.of(
             "pad", w=spec.width, h=spec.height, x="(ow-iw)/2", y="(oh-ih)/2", color="black"
@@ -392,9 +409,9 @@ def still_chunk(spec: StillSpec) -> FFmpegCommand:
     video = chain(
         Filter.of(
             "zoompan",
-            z=spec.zoom,
-            x=spec.x,
-            y=spec.y,
+            z=escape_filter_value(spec.zoom),
+            x=escape_filter_value(spec.x),
+            y=escape_filter_value(spec.y),
             d=1,
             s=f"{spec.width}x{spec.height}",
             fps=spec.rate,

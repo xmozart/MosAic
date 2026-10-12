@@ -325,6 +325,10 @@ class Segment(ProjectBase):
     )
     group_best: Mapped[bool] = mapped_column(Boolean, default=False)
     provenance_id: Mapped[int] = mapped_column(ForeignKey("provenance.id"))
+    # Where the subject is, in thousandths of the frame (ADR 0076): crops and still
+    # motion centre on it. None until the focus stage ran.
+    focus_x: Mapped[int | None] = mapped_column(Integer)
+    focus_y: Mapped[int | None] = mapped_column(Integer)
 
 
 # ------------------------------------------------------------ L2 vision and decisions

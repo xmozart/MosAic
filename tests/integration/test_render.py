@@ -403,3 +403,85 @@ def stream_frames(ffmpeg_bin: FFmpegBinaries, path: Any, w: int, h: int) -> Any:
 
     for data in stream_stdout(ffmpeg_bin, raw_frames(path, w, h, "gray"), w * h):
         yield np.frombuffer(data, dtype=np.uint8).reshape(h, w)
+
+
+def test_a_crop_to_another_shape_keeps_the_subject_in_frame(
+    ffmpeg_bin: FFmpegBinaries, tmp_path: Any
+) -> None:
+    """ADR 0076: a 9:16 crop of a 16:9 clip whose subject is near its left edge keeps the
+    subject with its focus, and loses it centred; the crop never leaves the picture."""
+    import numpy as np
+
+    from mosaic.media.ffmpeg import render as rb
+
+    src = tmp_path / "left_subject.mp4"
+    from mosaic.media.ffmpeg.command import (
+        FFmpegCommand,
+        Filter,
+        InputSpec,
+        OutputSpec,
+        chain,
+        media_path,
+    )
+
+    run(
+        ffmpeg_bin,
+        FFmpegCommand(
+            inputs=[InputSpec("color=c=0x203040:s=1280x720:d=1:r=30", [("-f", "lavfi")])],
+            outputs=[
+                OutputSpec(
+                    media_path(src),
+                    [
+                        (
+                            "-vf",
+                            chain(
+                                Filter.of(
+                                    "drawbox", x=90, y=310, w=100, h=100, color="white", t="fill"
+                                )
+                            ),
+                        ),
+                        ("-c:v", "ffv1"),
+                        ("-pix_fmt", "yuv420p"),
+                    ],
+                )
+            ],
+            description="a clip with its subject near the left edge",
+        ),
+    )
+
+    def render(focus: tuple[int, int] | None) -> np.ndarray:
+        out = tmp_path / f"crop_{focus}.mov"
+        spec = rb.ChunkSpec(
+            pieces=[rb.Piece(src, Fraction(0), Fraction(1, 3), Fraction(0))],
+            video_index=0,
+            audio_index=None,
+            audio_enabled=False,
+            gain_db=0,
+            fade_in=Fraction(0),
+            fade_out=Fraction(0),
+            width=360,
+            height=640,
+            rate=Fraction(30),
+            frames=10,
+            samples=samples_for(10, Fraction(30)),
+            hdr=None,
+            full_range=False,
+            encoder="ffv1",
+            bitrate="5M",
+            out=out,
+            source_rate=Fraction(30),
+            framing="crop",
+            focus=focus,
+        )
+        run(ffmpeg_bin, rb.chunk(spec))
+        assert _frames(ffmpeg_bin, out) == 10
+        frame = next(stream_frames(ffmpeg_bin, out, 360, 640))
+        return frame
+
+    def subject_seen(frame: np.ndarray) -> bool:
+        return bool((frame > 200).mean() > 0.01)
+
+    assert subject_seen(render((110, 500))), "focused on the subject: it stays in"
+    assert not subject_seen(render(None)), "centred: the left-edge subject is cut away"
+    assert subject_seen(render((0, 0))), "clamped at the left edge, still the right size"
+    assert not subject_seen(render((1000, 1000))), "clamped at the right edge"

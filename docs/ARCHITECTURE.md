@@ -162,6 +162,7 @@ Every AI or algorithmic row links to a `provenance` row with:
   },
   "audio": {"speech": false, "natural_sound": "waterfall", "quality": "good"},
   "technical": {"sharpness": "good", "stability": "excellent", "exposure": "good"},
+  "focus": {"x": 540, "y": 410},
   "editorial": {
     "status": "USE",
     "status_source": "ai",
@@ -205,6 +206,7 @@ Stages per asset, all tasks:
 6. **tech metrics.** Sharpness (variance of Laplacian), exposure (histogram clipping), noise estimate, shake (gyro from GoPro GPMF or Insta360 when present, stored as `shake_gyro`; otherwise optical-flow jitter, `shake`), freeze or duplicate frames, and lens obstruction.
 7. **audio.** VAD, then transcription with word timestamps, loudness, clipping and wind estimate.
 8. **segments.** Split shots into Segments using motion changes, speech boundaries and sample clustering. Compute `usable_range` by trimming camera-start and camera-stop wobble, as detected from motion.
+   - **focus** (right after segments, for videos and photos): each segment's subject position from the saliency of a few of its sample frames, in thousandths of the frame. No AI, and no face or person detection (ADR 0076).
 9. **embeddings.** Local SigLIP image embeddings per sample, then pooled per segment.
 10. **mosaics.** Build contact sheets per the active analysis mode, sized to the vision provider's effective image size (ADR 0013). Tiles come from one asset or shot where possible, so the model sees continuity. Each tile has a burned-in label (`T07 · ast_0123 · 00:02:14.3`) and a sidecar mapping. The model must reference tiles by index (`T07`), and code resolves the index to source ticks.
 11. **vision.** A structured observation for each segment. The mosaic is the transport format; the segment is the unit. Skipped with a "not configured" reason when no vision provider can be used; dispositions then use rules only (ADR 0013).
@@ -287,13 +289,15 @@ Resulting timeline event (solver and refiner output):
   "timeline_in":  {"frames": 311, "rate": "30000/1001"},
   "timeline_out": {"frames": 479, "rate": "30000/1001"},
   "speed": "1/1",
-  "transform": {"crop": null, "reframe": null, "stabilize": false},
+  "transform": {"crop": null, "reframe": null, "stabilize": false, "focus": {"x": 312, "y": 540}},
   "audio": {"source_enabled": true, "gain_db": -12, "fade_in_frames": 6, "fade_out_frames": 6},
   "transition_out": {"type": "cut"},
   "role": "establishing",
   "origin": {"selection_ref": "beat_02#0", "locked": false}
 }
 ```
+
+`transform.focus` is optional: the subject's position in integer thousandths of the display frame, from the segment's focus (ADR 0076). A crop to another shape centres on it.
 
 Still-photo events use `"kind": "still"` with `duration` in frames and a `motion` object: start and end crop rectangles for pan and zoom, in integer thousandths of the frame, plus an easing (ADR 0075).
 
