@@ -1,7 +1,9 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { BeatsEditor, LevelSlider, MusicTrackCard, PaceSlider, WeightSlider, type TrackInfo } from "@/components/edit/Controls";
 import { AspectPicker, ChoiceChip, DurationChips, EditSummaryPanel, StoryPresetCard, WizardStepNav, type AspectOption } from "@/components/edit/Wizard";
+import { CheckboxRow } from "@/components/ui/Checkbox";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
@@ -10,8 +12,28 @@ import { TextField } from "@/components/ui/TextField";
 import { formatClock } from "@/lib/time";
 
 import {
+  ARCS,
   ASPECTS,
+  CATEGORIES,
   CHRONOLOGY,
+  MAX_BEAT_CHARS,
+  MAX_BEATS,
+  MIN_BEATS,
+  MUSIC_DEFAULT,
+  PACES,
+  PHOTO_SHARES,
+  RULES,
+  TRANSITIONS,
+  WEIGHTS,
+  beatsProblem,
+  paceReadout,
+  type Arc,
+  type Category,
+  type CategoryCount,
+  type Music,
+  type PhotoShare,
+  type Transitions,
+  type Weight,
   DEFAULT_TOLERANCE,
   DURATIONS,
   FRAME_RATES,
@@ -39,8 +61,12 @@ const OPEN = STEPS.filter((s) => !s.later).map((s) => s.id);
 const TITLES: Record<number, string> = {
   1: "How long, and where will it play?",
   2: "What kind of story?",
+  3: "What should we feature?",
+  4: "Pace and transitions",
+  5: "Sound",
   6: "Anything else for the editor?",
 };
+const FEATURED = 6; // step 3 shows the six categories that matter most in this footage
 const ASPECT_OPTIONS: AspectOption<Aspect | "native">[] = [...ASPECTS, { value: "native", label: "Native", w: 56, h: 36, disabled: true }];
 
 export interface WizardViewProps {
@@ -60,9 +86,17 @@ export interface WizardViewProps {
   onCreate: () => void;
   /** Preliminary banner: go back to the analysis instead. */
   onWait: () => void;
+  /** Step 3: the library's categories, most frequent first; missing while loading. */
+  categories?: CategoryCount[];
+  /** Step 5: the chosen track as read; null while reading. */
+  track?: TrackInfo | null;
+  trackError?: string | null;
+  /** Step 5: pick a track (the desktop's file dialog; false when cancelled); without one the
+   * view asks for the track's path. */
+  onChooseTrack?: () => Promise<boolean>;
 }
 
-/** S14 Create edit wizard (M2 basic: steps 1, 2, 6). Presentational. */
+/** S14 Create edit wizard: six steps and the summary panel (ADR 0048, 0086). Presentational. */
 export function WizardView(p: WizardViewProps) {
   const r = p.request;
   const [customPicked, setCustomLength] = useState(false);
@@ -70,6 +104,32 @@ export function WizardView(p: WizardViewProps) {
   const customLength = customPicked || !(DURATIONS as readonly number[]).includes(r.duration_s);
   const [moreFormat, setMoreFormat] = useState(false);
   const featured = p.presets?.filter((x) => x.featured) ?? [];
+  const [moreStory, setMoreStory] = useState(r.arc !== "classic_travel");
+  const [extraCategories, setExtraCategories] = useState<Category[]>([]);
+  const [moreRules, setMoreRules] = useState(false);
+  const [musicChoice, setMusicChoice] = useState<"none" | "track">(r.music ? "track" : "none");
+  const [trackPath, setTrackPath] = useState(r.music?.path ?? "");
+  // The level and fades outlive a change of track (Change, in a browser, clears the track).
+  const [lastMusic, setLastMusic] = useState<Music | null>(r.music);
+  const setWeight = (c: Category, w: Weight) => {
+    const weights = { ...r.weights };
+    if (w === "neutral") delete weights[c];
+    else weights[c] = w;
+    p.onChange({ weights });
+  };
+  const ranked = p.categories?.map((c) => c.category) ?? [];
+  const shown = [...ranked.slice(0, FEATURED), ...extraCategories.filter((c) => !ranked.slice(0, FEATURED).includes(c))];
+  const chooseTrack = () => {
+    setMusicChoice("track");
+    if (p.onChooseTrack) {
+      void p.onChooseTrack().then((picked) => {
+        if (!picked && !r.music) setMusicChoice("none"); // cancelled, and no track before
+      });
+    } else if (r.music) {
+      setLastMusic(r.music);
+      p.onChange({ music: null }); // Change, in a browser: type another path
+    }
+  };
   const others = p.presets?.filter((x) => !x.featured) ?? [];
   const [customStory, setCustomStory] = useState(false);
   const storyIsOther = others.some((x) => x.id === r.story);
@@ -82,11 +142,12 @@ export function WizardView(p: WizardViewProps) {
   };
   const est = p.estimate;
   const noFootage = est !== undefined && est.candidates === 0;
+  const badBeats = r.arc === "custom" && beatsProblem(r.beats);
   const { onCreate, creating } = p;
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key === "Enter" && !creating && !noFootage) {
+      if (e.key === "Enter" && !creating && !noFootage && !badBeats) {
         e.preventDefault();
         onCreate();
       } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -103,6 +164,7 @@ export function WizardView(p: WizardViewProps) {
       {noFootage && (
         <Banner kind="warning">Nothing to edit yet: no analyzed clips can be used. Analyze the folder first, or bring back rejected clips.</Banner>
       )}
+      {badBeats && <Banner kind="warning">{badBeats}</Banner>}
       {est && !noFootage && !est.enough_footage && (
         <Banner kind="warning">
           Your usable footage adds up to about {formatClock(est.usable_seconds)} — shorter than {formatClock(r.duration_s)}. The edit may come out shorter.
@@ -257,6 +319,144 @@ export function WizardView(p: WizardViewProps) {
               <span className="text-caption text-text-muted">Chronology</span>
               <Segmented label="Chronology" value={r.chronology} options={CHRONOLOGY} onChange={(c) => p.onChange({ chronology: c })} className="self-start" />
             </div>
+            <MoreToggle open={moreStory} onToggle={() => setMoreStory((m) => !m)}>
+              More options
+            </MoreToggle>
+            {moreStory && (
+              <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface-1 p-[18px]">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-caption text-text-muted">Arc template</span>
+                  <Segmented<Arc>
+                    label="Arc template"
+                    value={r.arc}
+                    options={ARCS}
+                    className="self-start"
+                    onChange={(arc) =>
+                      p.onChange(arc === "custom" ? { arc, beats: r.beats.length ? r.beats : ["", ""] } : { arc, beats: [] })
+                    }
+                  />
+                </div>
+                {r.arc === "custom" ? (
+                  <BeatsEditor beats={r.beats} min={MIN_BEATS} max={MAX_BEATS} maxChars={MAX_BEAT_CHARS} onChange={(beats) => p.onChange({ beats })} />
+                ) : (
+                  <p className="text-caption font-normal text-text-faint">The editor plans the beats from your footage. Choose Custom beats to name and order them yourself.</p>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {p.step === 3 && (
+          <section aria-label="What to feature" className="flex flex-col gap-5">
+            <p className="-mt-3 text-body text-text-muted">The six categories that matter most in your footage are shown first.</p>
+            <div className="grid grid-cols-2 gap-3.5">
+              {!p.categories
+                ? [0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-[66px] animate-pulse rounded-lg bg-surface-1" />)
+                : shown.map((c) => (
+                    <WeightSlider key={c} label={CATEGORIES[c]} value={r.weights[c] ?? "neutral"} steps={WEIGHTS} onChange={(w) => setWeight(c, w)} />
+                  ))}
+            </div>
+            {p.categories && (
+              <div className="flex flex-col gap-2">
+                <span className="text-caption font-medium text-text-muted">More categories</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {ranked.some((c) => !shown.includes(c)) && (
+                    <button
+                      type="button"
+                      onClick={() => setExtraCategories(ranked)}
+                      className="order-last rounded-full border border-border bg-surface-2 px-[9px] py-[3px] text-caption font-semibold text-text hover:border-text-faint focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      All categories
+                    </button>
+                  )}
+                  {ranked
+                    .filter((c) => !shown.includes(c))
+                    .map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setExtraCategories((xs) => [...xs, c])}
+                        className="rounded-full border border-border bg-surface-2 px-[9px] py-[3px] text-caption text-text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
+                      >
+                        {CATEGORIES[c]}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {p.step === 4 && (
+          <section aria-label="Style" className="flex max-w-[720px] flex-col gap-5">
+            <PaceSlider value={r.pace} stops={PACES} readout={paceReadout(r.pace)} onChange={(pace) => p.onChange({ pace })} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-caption text-text-muted">Transitions</span>
+              <Segmented<Transitions> label="Transitions" value={r.transitions} options={TRANSITIONS} onChange={(transitions) => p.onChange({ transitions })} className="self-start" />
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {RULES.filter((x) => !x.more || moreRules).map((x) => (
+                <CheckboxRow key={x.key} label={x.label} checked={r.rules[x.key]} onChange={(on) => p.onChange({ rules: { ...r.rules, [x.key]: on } })} />
+              ))}
+            </div>
+            <MoreToggle open={moreRules} onToggle={() => setMoreRules((m) => !m)}>
+              More options
+            </MoreToggle>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-caption text-text-muted">Photo share</span>
+              <Segmented<PhotoShare> label="Photo share" value={r.photo_share} options={PHOTO_SHARES} onChange={(photo_share) => p.onChange({ photo_share })} className="self-start" />
+            </div>
+          </section>
+        )}
+
+        {p.step === 5 && (
+          <section aria-label="Sound" className="flex max-w-[560px] flex-col gap-5">
+            <SwitchRow label="Keep dialogue" description="Never cut someone mid-sentence" checked={r.audio.keep_dialogue} onChange={(on) => p.onChange({ audio: { ...r.audio, keep_dialogue: on } })} />
+            <SwitchRow label="Keep natural sound" description="Waterfalls, waves, laughter" checked={r.audio.natural_sound} onChange={(on) => p.onChange({ audio: { ...r.audio, natural_sound: on } })} />
+            <SwitchRow label="Reduce wind and noise" checked={r.audio.reduce_wind} onChange={(on) => p.onChange({ audio: { ...r.audio, reduce_wind: on } })} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-caption text-text-muted">Music</span>
+              <Segmented<"none" | "track">
+                label="Music"
+                value={musicChoice}
+                options={[
+                  { value: "none", label: "None" },
+                  { value: "track", label: "Choose track" },
+                ]}
+                className="self-start"
+                onChange={(v) => {
+                  if (v === "none") {
+                    setMusicChoice("none");
+                    p.onChange({ music: null });
+                  } else chooseTrack();
+                }}
+              />
+            </div>
+            {musicChoice === "track" && r.music && <MusicTrackCard track={p.track ?? null} error={p.trackError} onChange={chooseTrack} />}
+            {musicChoice === "track" && !p.onChooseTrack && (
+              <form
+                className="flex items-end gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const path = trackPath.trim();
+                  if (path) p.onChange({ music: { ...(r.music ?? lastMusic ?? MUSIC_DEFAULT), path } });
+                }}
+              >
+                <TextField className="flex-1" label="The track's full path" value={trackPath} placeholder="/Users/me/Music/Horizon.mp3" onChange={(e) => setTrackPath(e.target.value)} />
+                <Button type="submit" variant="secondary">
+                  Use this track
+                </Button>
+              </form>
+            )}
+            {r.music && (
+              <LevelSlider
+                label="Music level"
+                value={r.music.level_db}
+                min={-40}
+                readout={`${r.music.level_db < 0 ? "−" : ""}${Math.abs(r.music.level_db)} dB under dialogue`}
+                onChange={(level_db) => p.onChange({ music: { ...r.music!, level_db } })}
+              />
+            )}
           </section>
         )}
 
@@ -307,9 +507,23 @@ export function WizardView(p: WizardViewProps) {
         estimate={p.estimateError ? "Estimate unavailable" : est ? estimateText(est) : null}
         estimatePending={p.estimatePending}
         creating={p.creating}
-        disabled={noFootage}
+        disabled={noFootage || Boolean(badBeats)}
         onCreate={p.onCreate}
       />
     </div>
+  );
+}
+
+function MoreToggle({ open, onToggle, children }: { open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      className="inline-flex items-center gap-1.5 self-start rounded-full border border-border bg-surface-2 px-[9px] py-[3px] text-caption text-text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {open ? <ChevronUp aria-hidden className="size-3.5" /> : <ChevronDown aria-hidden className="size-3.5" />}
+      {children}
+    </button>
   );
 }

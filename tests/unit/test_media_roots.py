@@ -367,6 +367,11 @@ def test_a_music_track_must_be_a_readable_file_inside_the_media_roots(
         stored = s.query(Edit).one().request["music"]["path"]
     project.close()
     assert stored == str((tree["root"] / "Iceland" / "song.mp3").resolve()), "canonical"
+    probe = client.post(
+        "/api/music/probe", json={"path": str(tree["outside"] / "song.mp3")}, headers=h
+    )
+    assert probe.status_code == 403, "the track card checks the media roots too"
+    assert str(tree["outside"]) not in probe.text
     desktop, _ = _signed_in(monkeypatch, "desktop")
     r = desktop.post(url, json={"request": {"duration_s": 30, "music": {"path": "song.mp3"}}})
     assert r.status_code == 422

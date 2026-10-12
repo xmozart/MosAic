@@ -20,7 +20,27 @@ describe("edit model", () => {
       "Strict",
       "Balanced pace · about 3.5 s per shot",
       "Length within ±15 s",
+      "Natural sound kept · dialogue protected",
     ]);
+    const m4 = summaryLines(
+      {
+        ...req,
+        weights: { wildlife: "strong", people: "more", selfies: "less" },
+        rules: { ...req.rules, drone_openers: true },
+        transitions: "dissolves",
+        music: { path: "/Music/Horizon.mp3", level_db: -18, fade_in_ms: 2000, fade_out_ms: 3000 },
+      },
+      PRESETS,
+    );
+    expect(m4).toEqual(
+      expect.arrayContaining([
+        "More wildlife and people",
+        "Less selfies",
+        "Drone shots as openers",
+        "Soft dissolves",
+        "Music: Horizon.mp3",
+      ]),
+    );
     const strict = summaryLines({ ...req, duration_s: 60, tolerance_pct: 0, fps: null, instructions: "End on the best sunset." }, PRESETS);
     expect(strict[0]).toBe("60-second cinematic journey");
     expect(strict[1]).toBe("9:16 · 4K · native frame rate");
@@ -141,13 +161,110 @@ describe("WizardView", () => {
     expect(seen.at(-1)!.duration_s).toBe(75);
   });
 
-  it("the summary panel follows the request, and later steps wait for M4", () => {
+  it("the summary panel follows the request, and every step is open", () => {
     render(<Wizard />);
     const panel = within(screen.getByRole("complementary", { name: "Your edit" }));
     expect(panel.getByText("5-minute cinematic journey")).toBeInTheDocument();
     expect(panel.getByText("About 2 min · ~$0.25–0.55")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /What to feature/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Sound/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /What to feature/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Sound/ })).toBeEnabled();
+  });
+
+  it("step 2: custom beats are the owner's, in order, and must all be named", () => {
+    const seen: EditRequest[] = [];
+    const { rerender } = render(<Wizard step={2} onRequest={(r) => seen.push(r)} />);
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Custom beats" }));
+    expect(seen.at(-1)!).toMatchObject({ arc: "custom", beats: ["", ""] });
+    const custom = { ...DEFAULT_REQUEST, duration_s: 300, arc: "custom" as const, beats: ["Arrival", "Into the jungle", "Finale"] };
+    rerender(<Wizard step={2} request={custom} onRequest={(r) => seen.push(r)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Move beat 3 up" }));
+    expect(seen.at(-1)!.beats).toEqual(["Arrival", "Finale", "Into the jungle"]);
+    fireEvent.change(screen.getByLabelText("Beat 1"), { target: { value: "Landing" } });
+    expect(seen.at(-1)!.beats[0]).toBe("Landing");
+    rerender(<Wizard step={2} request={{ ...custom, beats: ["Arrival", ""] }} />);
+    expect(screen.getByText("Give every beat a name of 2 characters or more.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create edit" })).toBeDisabled();
+  });
+
+  it("step 3: the library's six categories first, weights by keyboard, more on demand", () => {
+    const seen: EditRequest[] = [];
+    const categories = (["wildlife", "people", "reactions", "landscapes", "drone", "selfies", "food", "pov"] as const).map((category, i) => ({ category, count: 50 - i }));
+    render(<Wizard step={3} categories={categories} onRequest={(r) => seen.push(r)} />);
+    const sliders = screen.getAllByRole("slider");
+    expect(sliders.map((s) => s.getAttribute("aria-label"))).toEqual(["Wildlife weight", "People weight", "Reactions weight", "Landscapes weight", "Drone shots weight", "Selfies weight"]);
+    expect(sliders[0]).toHaveAttribute("aria-valuetext", "Neutral");
+    fireEvent.keyDown(sliders[0]!, { key: "ArrowRight" });
+    expect(seen.at(-1)!.weights).toEqual({ wildlife: "more" });
+    fireEvent.click(screen.getByRole("button", { name: "Food" }));
+    expect(screen.getByRole("slider", { name: "Food weight" })).toBeInTheDocument();
+  });
+
+  it("step 3: All categories shows a slider for every category in the library", () => {
+    const categories = (["wildlife", "people", "reactions", "landscapes", "drone", "selfies", "food", "pov", "night"] as const).map((category, i) => ({ category, count: 50 - i }));
+    render(<Wizard step={3} categories={categories} />);
+    expect(screen.getAllByRole("slider")).toHaveLength(6);
+    fireEvent.click(screen.getByRole("button", { name: "All categories" }));
+    expect(screen.getAllByRole("slider")).toHaveLength(9);
+    expect(screen.queryByRole("button", { name: "Food" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "All categories" })).not.toBeInTheDocument();
+  });
+
+  it("step 5: a cancelled file dialog leaves the music at None", async () => {
+    const pick = vi.fn(() => Promise.resolve(false));
+    render(<Wizard step={5} onChooseTrack={pick} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Choose track" }));
+    expect(pick).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "None" })).toHaveAttribute("aria-checked", "true"));
+  });
+
+  it("step 5: Change in a browser asks for another path and keeps the level", () => {
+    const seen: EditRequest[] = [];
+    const music = { path: "/Music/Horizon.mp3", level_db: -24, fade_in_ms: 2000, fade_out_ms: 3000 };
+    const { rerender } = render(<Wizard step={5} request={{ ...DEFAULT_REQUEST, duration_s: 300, music }} onRequest={(r) => seen.push(r)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(seen.at(-1)!.music).toBeNull();
+    rerender(<Wizard step={5} request={{ ...DEFAULT_REQUEST, duration_s: 300, music: null }} onRequest={(r) => seen.push(r)} />);
+    fireEvent.change(screen.getByLabelText("The track's full path"), { target: { value: "/Music/Dawn.mp3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use this track" }));
+    expect(seen.at(-1)!.music).toEqual({ ...music, path: "/Music/Dawn.mp3" });
+  });
+
+  it("step 4: pace, transitions, rules and photo share", () => {
+    const seen: EditRequest[] = [];
+    render(<Wizard step={4} onRequest={(r) => seen.push(r)} />);
+    expect(screen.getByText("about 3.5 s per shot")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Pace" }), { key: "ArrowRight" });
+    expect(seen.at(-1)!.pace).toBe("energetic");
+    fireEvent.click(screen.getByRole("radio", { name: "Soft dissolves" }));
+    expect(seen.at(-1)!.transitions).toBe("dissolves");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Drone shots as openers" }));
+    expect(seen.at(-1)!.rules.drone_openers).toBe(true);
+    expect(screen.queryByRole("checkbox", { name: "Allow long cinematic holds" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    expect(screen.getByRole("checkbox", { name: "Allow long cinematic holds" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Many" }));
+    expect(seen.at(-1)!.photo_share).toBe("many");
+  });
+
+  it("step 5: sound switches, a track by path, its card and level", () => {
+    const seen: EditRequest[] = [];
+    const { rerender } = render(<Wizard step={5} onRequest={(r) => seen.push(r)} />);
+    fireEvent.click(screen.getByRole("switch", { name: /Keep natural sound/ }));
+    expect(seen.at(-1)!.audio.natural_sound).toBe(false);
+    fireEvent.click(screen.getByRole("radio", { name: "Choose track" }));
+    fireEvent.change(screen.getByLabelText("The track's full path"), { target: { value: "/Music/Horizon.mp3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use this track" }));
+    expect(seen.at(-1)!.music).toEqual({ path: "/Music/Horizon.mp3", level_db: -18, fade_in_ms: 2000, fade_out_ms: 3000 });
+    const withMusic = { ...DEFAULT_REQUEST, duration_s: 300, music: seen.at(-1)!.music };
+    const track = { name: "Horizon.mp3", duration_ms: 228000, sample_rate: 44100, peaks: Array.from({ length: 48 }, (_, i) => i * 2) };
+    rerender(<Wizard step={5} request={withMusic} track={track} onRequest={(r) => seen.push(r)} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Choose track" }));
+    expect(screen.getByText("3:48 · 44.1 kHz")).toBeInTheDocument();
+    const level = screen.getByRole("slider", { name: "Music level" });
+    expect(level).toHaveAttribute("aria-valuetext", "−18 dB under dialogue");
+    fireEvent.keyDown(level, { key: "ArrowLeft", shiftKey: true });
+    expect(seen.at(-1)!.music!.level_db).toBe(-24);
   });
 
   it("step 2: a featured story, Custom's other stories, and chronology", () => {
@@ -175,15 +292,15 @@ describe("WizardView", () => {
     fireEvent.keyDown(window, { key: "Enter", metaKey: true });
     expect(create).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(window, { key: "ArrowUp", metaKey: true });
-    expect(step).toHaveBeenLastCalledWith(2);
+    expect(step).toHaveBeenLastCalledWith(5);
   });
 
-  it("⌘↓ moves to the next open step; arrows move within a choice group", () => {
+  it("⌘↓ moves to the next step; arrows move within a choice group", () => {
     const step = vi.fn();
     const seen: EditRequest[] = [];
     render(<Wizard step={2} onStep={step} onRequest={(r) => seen.push(r)} />);
     fireEvent.keyDown(window, { key: "ArrowDown", metaKey: true });
-    expect(step).toHaveBeenLastCalledWith(6); // steps 3–5 are skipped
+    expect(step).toHaveBeenLastCalledWith(3);
     const first = screen.getByRole("radio", { name: "Cinematic journey" });
     first.focus();
     fireEvent.keyDown(first, { key: "ArrowRight" });

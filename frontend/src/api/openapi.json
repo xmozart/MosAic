@@ -1321,6 +1321,53 @@
         "title": "TimelineTime",
         "type": "object"
       },
+      "TrackBody": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "TrackBody",
+        "type": "object"
+      },
+      "TrackCard": {
+        "properties": {
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "peaks": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Peaks",
+            "type": "array"
+          },
+          "sample_rate": {
+            "title": "Sample Rate",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "duration_ms",
+          "sample_rate",
+          "peaks"
+        ],
+        "title": "TrackCard",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3678,6 +3725,45 @@
           }
         },
         "summary": "Download"
+      }
+    },
+    "/api/music/probe": {
+      "post": {
+        "description": "S14 step 5's track card (ADR 0086): the track's name, length, sample rate and a\ncoarse waveform (``WAVE_BARS`` peaks, 0-100). The same path checks as an edit's\nmusic (ADR 0080); the file is only read, its first half hour at most, so the request\nstays short. A file that isn't readable audio is refused in plain words (422).",
+        "operationId": "probe_track_api_music_probe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackCard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Probe Track"
       }
     },
     "/api/projects": {

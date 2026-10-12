@@ -9,6 +9,35 @@ export type Resolution = "720p" | "1080p" | "1440p" | "4k";
 export type Chronology = "strict" | "mostly" | "thematic" | "story";
 export type Pace = "very_slow" | "slow" | "balanced" | "energetic" | "fast" | "very_fast";
 
+export type Arc = "classic_travel" | "fast_highlight" | "documentary" | "custom";
+export type Weight = "avoid" | "less" | "neutral" | "more" | "strong";
+export type PhotoShare = "none" | "some" | "many";
+export type Transitions = "cuts" | "dissolves" | "minimal";
+
+/** Editing rules (backend `Rules`; PRODUCT.md §4). */
+export interface Rules {
+  avoid_repetition: boolean;
+  allow_imperfect: boolean;
+  unique_over_quality: boolean;
+  drone_openers: boolean;
+  remove_dead_time: boolean;
+  long_holds: boolean;
+}
+
+export interface Audio {
+  keep_dialogue: boolean;
+  natural_sound: boolean;
+  reduce_wind: boolean;
+}
+
+/** One track under the edit (ADR 0080): its full path, a level in dB, fades in ms. */
+export interface Music {
+  path: string;
+  level_db: number;
+  fade_in_ms: number;
+  fade_out_ms: number;
+}
+
 export interface EditRequest {
   duration_s: number;
   story: string;
@@ -19,6 +48,15 @@ export interface EditRequest {
   fps: string | null;
   aspect: Aspect;
   resolution: Resolution;
+  // M4 (ADR 0066): defaults are the wizard's.
+  arc: Arc;
+  beats: string[];
+  weights: Partial<Record<Category, Weight>>;
+  rules: Rules;
+  photo_share: PhotoShare;
+  transitions: Transitions;
+  audio: Audio;
+  music: Music | null;
 }
 
 export const DEFAULT_TOLERANCE = 5; // percent; "Strict length" sets 0
@@ -33,7 +71,125 @@ export const DEFAULT_REQUEST: EditRequest = {
   fps: null,
   aspect: "16:9",
   resolution: "1080p",
+  arc: "classic_travel",
+  beats: [],
+  weights: {},
+  rules: {
+    avoid_repetition: true,
+    allow_imperfect: false,
+    unique_over_quality: true,
+    drone_openers: false,
+    remove_dead_time: false,
+    long_holds: false,
+  },
+  photo_share: "some",
+  transitions: "cuts",
+  audio: { keep_dialogue: true, natural_sound: true, reduce_wind: true },
+  music: null,
 };
+
+/** The content categories (backend `Category`), with their wizard labels. */
+export const CATEGORIES = {
+  people: "People",
+  reactions: "Reactions",
+  landscapes: "Landscapes",
+  wildlife: "Wildlife",
+  architecture: "Architecture",
+  food: "Food",
+  culture: "Culture",
+  action: "Activities",
+  drone: "Drone shots",
+  pov: "POV",
+  selfies: "Selfies",
+  conversations: "Conversations",
+  natural_sound: "Natural sound",
+  humor: "Humor",
+  transport: "Transport",
+  sunsets: "Sunsets",
+  water: "Water",
+  night: "Night",
+  city: "City",
+  slow_motion: "Slow motion",
+  timelapse: "Timelapse",
+  photos: "Photos",
+} as const;
+export type Category = keyof typeof CATEGORIES;
+
+/** `GET /projects/{pid}/edit-categories`: most frequent in this library first (ADR 0072). */
+export interface CategoryCount {
+  category: Category;
+  count: number;
+}
+
+export const WEIGHTS: { value: Weight; label: string }[] = [
+  { value: "avoid", label: "Avoid" },
+  { value: "less", label: "Less" },
+  { value: "neutral", label: "Neutral" },
+  { value: "more", label: "More" },
+  { value: "strong", label: "Strongly prefer" },
+];
+
+export const ARCS: { value: Arc; label: string }[] = [
+  { value: "classic_travel", label: "Classic travel" },
+  { value: "fast_highlight", label: "Fast highlight" },
+  { value: "documentary", label: "Documentary" },
+  { value: "custom", label: "Custom beats" },
+];
+export const MIN_BEATS = 2;
+export const MAX_BEATS = 12;
+export const MAX_BEAT_CHARS = 60;
+
+/** The rules step 4 shows, then the two under More options (ADR 0066). */
+export const RULES: { key: keyof Rules; label: string; more?: boolean }[] = [
+  { key: "avoid_repetition", label: "Avoid repetition" },
+  { key: "allow_imperfect", label: "Allow imperfect but emotional moments" },
+  { key: "drone_openers", label: "Drone shots as openers" },
+  { key: "remove_dead_time", label: "Remove dead time aggressively" },
+  { key: "unique_over_quality", label: "Unique moments over technical quality", more: true },
+  { key: "long_holds", label: "Allow long cinematic holds", more: true },
+];
+
+export const TRANSITIONS: { value: Transitions; label: string }[] = [
+  { value: "cuts", label: "Mostly cuts" },
+  { value: "dissolves", label: "Soft dissolves" },
+  { value: "minimal", label: "Minimal" },
+];
+
+export const PHOTO_SHARES: { value: PhotoShare; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "some", label: "Some" },
+  { value: "many", label: "Many" },
+];
+
+export const PACES: { value: Pace; label: string }[] = [
+  { value: "very_slow", label: "Very slow" },
+  { value: "slow", label: "Slow" },
+  { value: "balanced", label: "Balanced" },
+  { value: "energetic", label: "Energetic" },
+  { value: "fast", label: "Fast" },
+  { value: "very_fast", label: "Very fast" },
+];
+
+export const MUSIC_DEFAULT: Omit<Music, "path"> = { level_db: -18, fade_in_ms: 2000, fade_out_ms: 3000 };
+
+/** Why custom beats can't be planned yet (the planner's bounds, ADR 0066), or null. */
+export function beatsProblem(beats: string[]): string | null {
+  const named = beats.map((b) => b.trim());
+  if (named.length < MIN_BEATS) return `Name at least ${MIN_BEATS} beats, or choose an arc template.`;
+  if (named.some((b) => b.length < 2)) return "Give every beat a name of 2 characters or more.";
+  if (new Set(named.map((b) => b.toLowerCase())).size < named.length) return "Give each beat its own name.";
+  return null;
+}
+
+/** "about 3.5 s per shot" for a pace (display). */
+export function paceReadout(p: Pace): string {
+  return `about ${PACE_SHOT[p]} s per shot`;
+}
+
+/** "Horizon.mp3" from a full path (either separator). */
+export function trackName(path: string): string {
+  return path.split(/[\\/]/).at(-1) || path;
+}
 
 export const MAX_SECONDS = 4 * 3600;
 export const MIN_SECONDS = 5;
@@ -202,9 +358,27 @@ export function summaryLines(req: EditRequest, presets: Preset[]): string[] {
     `${PACE_WORDS[req.pace]} pace · about ${PACE_SHOT[req.pace]} s per shot`,
     req.tolerance_pct === 0 ? "Strict length" : `Length within ±${tol} s`,
   ];
+  const more = Object.entries(req.weights).filter(([, w]) => w === "more" || w === "strong");
+  const less = Object.entries(req.weights).filter(([, w]) => w === "less" || w === "avoid");
+  const names = (xs: [string, unknown][]) => joinWords(xs.map(([c]) => CATEGORIES[c as Category].toLowerCase()));
+  if (more.length) lines.push(`More ${names(more)}`);
+  if (less.length) lines.push(`Less ${names(less)}`);
+  for (const r of RULES) {
+    if (r.key !== "avoid_repetition" && r.key !== "unique_over_quality" && req.rules[r.key]) lines.push(r.label);
+  }
+  if (req.transitions !== "cuts") lines.push(TRANSITIONS.find((t) => t.value === req.transitions)!.label);
+  if (req.photo_share !== "some") lines.push(req.photo_share === "none" ? "No photos" : "Many photos");
+  const sound = [req.audio.natural_sound ? "Natural sound kept" : "Natural sound low", req.audio.keep_dialogue ? "dialogue protected" : null];
+  lines.push(sound.filter(Boolean).join(" · "));
+  if (req.music) lines.push(`Music: ${trackName(req.music.path)}`);
   const notes = req.instructions.trim();
   if (notes) lines.push(`Notes: ${notes.length > 80 ? `${notes.slice(0, 79)}…` : notes}`);
   return lines;
+}
+
+/** "wildlife", "wildlife and people", "wildlife, people and food". */
+function joinWords(words: string[]): string {
+  return words.length < 2 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 }
 
 /** The edit's default name: "Costa Rica — 5 min cinematic" (the trip name is the owner's). */
@@ -276,13 +450,13 @@ export function otherLength(seconds: number): number {
   return seconds >= 120 ? 90 : 180;
 }
 
-/** M2 builds steps 1, 2 and 6; the others show and wait for M4 (ADR 0048). */
+/** S14's six steps, all open since M4. */
 export const STEPS: WizardStep[] = [
   { id: 1, label: "Length & format" },
   { id: 2, label: "Story" },
-  { id: 3, label: "What to feature", later: true },
-  { id: 4, label: "Style", later: true },
-  { id: 5, label: "Sound", later: true },
+  { id: 3, label: "What to feature" },
+  { id: 4, label: "Style" },
+  { id: 5, label: "Sound" },
   { id: 6, label: "Anything else?" },
 ];
 

@@ -6,8 +6,13 @@ import { api } from "@/api/client";
 import { media } from "@/lib/media";
 import { useToasts } from "@/lib/toasts";
 
-import { DEFAULT_REQUEST, defaultName, isAspect, requestFrom, type EditCardData, type EditEstimate, type EditRequest, type Preset } from "./model";
+import type { TrackInfo } from "@/components/edit/Controls";
+import { hasNativeFolderPicker, nativeFile } from "@/lib/desktop";
+
+import { DEFAULT_REQUEST, MUSIC_DEFAULT, beatsProblem, defaultName, isAspect, requestFrom, type CategoryCount, type EditCardData, type EditEstimate, type EditRequest, type Preset } from "./model";
 import { WizardView } from "./WizardView";
+
+const MUSIC_EXTENSIONS = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "ogg"];
 
 const ESTIMATE_DEBOUNCE_MS = 400;
 
@@ -72,14 +77,36 @@ function Wizard() {
   });
 
   const settled = useDebounced(request, ESTIMATE_DEBOUNCE_MS); // one estimate per pause (STATUS: retrieval runs per call)
+  const plannable = settled !== undefined && !(settled.arc === "custom" && beatsProblem(settled.beats));
   const estimate = useQuery({
     queryKey: ["edit-estimate", pid, settled],
-    enabled: settled !== undefined,
+    enabled: plannable,
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const { data, error } = await api.POST("/api/edits/estimate", { body: { project_id: pid, request: settled as unknown as Record<string, never> } });
       if (error || !data) throw new Error("estimate");
       return data as unknown as EditEstimate;
+    },
+  });
+
+  const categories = useQuery({
+    queryKey: ["edit-categories", pid],
+    staleTime: 60_000,
+    queryFn: async () =>
+      ((await api.GET("/api/projects/{pid}/edit-categories", { params: { path: { pid } } })).data as unknown as { items: CategoryCount[] }).items,
+  });
+  const trackPath = request?.music?.path;
+  const track = useQuery({
+    queryKey: ["music-probe", trackPath],
+    enabled: Boolean(trackPath),
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await api.POST("/api/music/probe", { body: { path: trackPath! } });
+      if (error || !data) {
+        const detail = (error as { detail?: unknown } | undefined)?.detail;
+        throw new Error(typeof detail === "string" ? detail : "That track can't be read.");
+      }
+      return data satisfies TrackInfo;
     },
   });
 
@@ -118,6 +145,18 @@ function Wizard() {
       creating={create.isPending}
       onCreate={() => !create.isPending && create.mutate()}
       onWait={() => navigate(`/p/${pid}/analysis`)}
+      categories={categories.data}
+      track={track.data ?? null}
+      trackError={track.isError ? track.error.message : null}
+      onChooseTrack={
+        hasNativeFolderPicker()
+          ? async () => {
+              const path = await nativeFile("Choose a music track", "Music", MUSIC_EXTENSIONS);
+              if (path) setEdited((r) => ({ ...(r ?? request!), music: { ...(r?.music ?? request!.music ?? MUSIC_DEFAULT), path } }));
+              return path !== null;
+            }
+          : undefined
+      }
     />
   );
 }

@@ -1132,3 +1132,66 @@ def test_s19_exports_a_prores_master_with_its_edl_over_the_api(drafted: Any) -> 
         keep = ("codec", "height", "resolution", "loudness", "sidecars")
         assert {k: second.profile.get(k) for k in keep} == {k: first.profile.get(k) for k in keep}
         assert first.profile["loudness"] == "tv"
+
+
+def test_s14_probes_a_music_track_for_its_card(
+    drafted: Any, ffmpeg_bin: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S14 step 5 (ADR 0086): a track's name, length, sample rate and waveform; a file
+    that isn't one, or isn't there, is refused in plain words."""
+    from mosaic.media.ffmpeg.command import FFmpegCommand, InputSpec, OutputSpec, media_path
+    from mosaic.media.ffmpeg.run import run
+
+    _, _, client, _ = drafted
+    track = tmp_path / "Horizon.wav"
+    run(
+        ffmpeg_bin,
+        FFmpegCommand(
+            inputs=[
+                InputSpec("sine=frequency=440:sample_rate=44100:duration=3", [("-f", "lavfi")])
+            ],
+            outputs=[OutputSpec(media_path(track), [("-af", "afade=t=in:d=3")])],
+            description="a fading-in track",
+        ),
+    )
+    card = client.post("/api/music/probe", json={"path": str(track)})
+    assert card.status_code == 200, card.text
+    body = card.json()
+    assert (body["name"], body["sample_rate"]) == ("Horizon.wav", 44100)
+    assert abs(body["duration_ms"] - 3000) < 50
+    assert len(body["peaks"]) == 48
+    assert body["peaks"][0] < body["peaks"][-1] == 100, "a fade in rises"
+    (tmp_path / "notes.mp3").write_text("not audio")
+    assert (
+        client.post("/api/music/probe", json={"path": str(tmp_path / "notes.mp3")}).status_code
+        == 422
+    )
+    assert (
+        client.post("/api/music/probe", json={"path": str(tmp_path / "gone.mp3")}).status_code
+        == 422
+    )
+    assert client.post("/api/music/probe", json={"path": "Horizon.wav"}).status_code == 422
+
+    # A track whose header reads but whose sound fails, or takes too long, to decode is
+    # refused in plain words, never a server error (invariant 14).
+    import subprocess
+
+    from mosaic.media.ffmpeg import run as run_mod
+    from mosaic.media.ffmpeg.run import FFmpegError
+
+    real = run_mod.run
+    for failure in (
+        FFmpegError("decode failed", ["ffmpeg"], 1, "Invalid data"),
+        subprocess.TimeoutExpired("ffmpeg", 60),
+    ):
+
+        def broken(binaries: Any, cmd: Any, *a: Any, _f: Exception = failure, **k: Any) -> Any:
+            if getattr(cmd, "description", "").startswith("pcm "):
+                raise _f
+            return real(binaries, cmd, *a, **k)
+
+        monkeypatch.setattr(run_mod, "run", broken)
+        refused = client.post("/api/music/probe", json={"path": str(track)})
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["detail"] == "Horizon.wav: it can't be read as audio"
+    monkeypatch.setattr(run_mod, "run", real)

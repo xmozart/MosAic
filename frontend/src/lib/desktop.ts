@@ -3,7 +3,11 @@ declare global {
     /** Injected by the desktop shell into its own webview only (ADR 0057). */
     __MOSAIC_DESKTOP__?: { token?: string };
     /** Tauri's API in the desktop shell's own webview (withGlobalTauri; ADR 0060). */
-    __TAURI__?: { dialog?: { open: (o: { directory: boolean; multiple: boolean; title?: string }) => Promise<string | string[] | null> } };
+    __TAURI__?: {
+      dialog?: {
+        open: (o: { directory: boolean; multiple: boolean; title?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | string[] | null>;
+      };
+    };
   }
 }
 
@@ -24,5 +28,11 @@ export function hasNativeFolderPicker(): boolean {
 /** The folder the user picked in the native dialog, or null when they cancelled. */
 export async function nativeFolder(title: string): Promise<string | null> {
   const picked = await window.__TAURI__!.dialog!.open({ directory: true, multiple: false, title });
+  return typeof picked === "string" ? picked : null;
+}
+
+/** A file the user picked in the native dialog (``extensions``: the kinds offered), or null. */
+export async function nativeFile(title: string, kind: string, extensions: string[]): Promise<string | null> {
+  const picked = await window.__TAURI__!.dialog!.open({ directory: false, multiple: false, title, filters: [{ name: kind, extensions }] });
   return typeof picked === "string" ? picked : null;
 }

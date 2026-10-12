@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -825,3 +826,76 @@ def compare_versions(
             return versions.compare(project, edit_id, a, b)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
+
+
+# ------------------------------------------------------------- music (S14 step 5)
+
+
+class TrackBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(min_length=1, max_length=4096)
+
+
+WAVE_BARS = 48
+
+
+class TrackCard(BaseModel):
+    name: str
+    duration_ms: int  # display only
+    sample_rate: int
+    peaks: list[int]
+
+
+MAX_TRACK_S = 30 * 60  # longer tracks are read for their first half hour only
+
+
+@router.post("/music/probe", response_model=TrackCard)
+def probe_track(body: TrackBody, svc: Services = Svc, me: Principal = Me) -> TrackCard:
+    """S14 step 5's track card (ADR 0086): the track's name, length, sample rate and a
+    coarse waveform (``WAVE_BARS`` peaks, 0-100). The same path checks as an edit's
+    music (ADR 0080); the file is only read, its first half hour at most, so the request
+    stays short. A file that isn't readable audio is refused in plain words (422)."""
+    import json
+    import subprocess
+    from fractions import Fraction
+
+    import numpy as np
+
+    from mosaic.media.ffmpeg.builders import audio_pcm, ffprobe_json
+    from mosaic.media.ffmpeg.run import FFmpegError, run
+    from mosaic.media.tools import media_tools
+
+    check(me, "edits.write", "*")
+    request = _music(
+        svc, EditRequest.model_validate({"duration_s": 60, "music": {"path": body.path}})
+    )
+    assert request.music is not None
+    path = Path(request.music.path)
+    unreadable = HTTPException(422, f"{path.name}: it can't be read as audio")
+    binaries, _ = media_tools()
+    try:
+        probe = json.loads(run(binaries, ffprobe_json(path), timeout=30).stdout)
+        audio = next(
+            (st for st in probe.get("streams", []) if st.get("codec_type") == "audio"), None
+        )
+        if audio is None:
+            raise HTTPException(422, f"{path.name}: it has no audio")
+        seconds = float(probe.get("format", {}).get("duration") or audio.get("duration") or 0)
+        # 400 samples a second, mono: a few hundred kilobytes for half an hour.
+        raw = run(
+            binaries, audio_pcm(path, 400, 1, duration=Fraction(MAX_TRACK_S)), timeout=60
+        ).stdout
+    except (FFmpegError, subprocess.TimeoutExpired, ValueError):
+        raise unreadable from None
+    pcm = np.abs(np.frombuffer(raw, dtype="<f4"))
+    peaks = [0] * WAVE_BARS
+    if pcm.size:
+        bars = np.array_split(pcm, WAVE_BARS)
+        top = max(float(pcm.max()), 1e-6)
+        peaks = [round(100 * float(b.max()) / top) if b.size else 0 for b in bars]
+    return TrackCard(
+        name=path.name,
+        duration_ms=round(seconds * 1000),
+        sample_rate=int(audio.get("sample_rate") or 0),
+        peaks=peaks,
+    )

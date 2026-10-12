@@ -955,6 +955,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Track
+         * @description S14 step 5's track card (ADR 0086): the track's name, length, sample rate and a
+         *     coarse waveform (``WAVE_BARS`` peaks, 0-100). The same path checks as an edit's
+         *     music (ADR 0080); the file is only read, its first half hour at most, so the request
+         *     stays short. A file that isn't readable audio is refused in plain words (422).
+         */
+        post: operations["probe_track_api_music_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -2304,6 +2327,22 @@ export interface components {
             frames: number;
             /** Rate */
             rate: string;
+        };
+        /** TrackBody */
+        TrackBody: {
+            /** Path */
+            path: string;
+        };
+        /** TrackCard */
+        TrackCard: {
+            /** Duration Ms */
+            duration_ms: number;
+            /** Name */
+            name: string;
+            /** Peaks */
+            peaks: number[];
+            /** Sample Rate */
+            sample_rate: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -3957,6 +3996,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_track_api_music_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackCard"];
                 };
             };
             /** @description Validation Error */

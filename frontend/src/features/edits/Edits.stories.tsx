@@ -5,7 +5,7 @@ import { frame } from "@/stories/frames";
 
 import { EditsView, type EditsViewProps } from "./EditsView";
 import { CARDS, ESTIMATE, PRESETS } from "./fixtures";
-import { DEFAULT_REQUEST, defaultName, type EditRequest } from "./model";
+import { DEFAULT_REQUEST, defaultName, type CategoryCount, type EditRequest } from "./model";
 import { WizardView, type WizardViewProps } from "./WizardView";
 
 const meta: Meta = { title: "Screens/S13 S14 Edits" };
@@ -81,3 +81,60 @@ export const WizardNothingToEdit: Story = {
 export const WizardEstimating: Story = { name: "S14 Estimate loading", render: () => <Wizard estimate={undefined} /> };
 export const WizardReuse: Story = { name: "S14 Plan reused", render: () => <Wizard estimate={{ ...ESTIMATE, reuses_plan: true, cost_usd: [0, 0] }} /> };
 export const WizardLight: Story = { name: "S14 Light", globals: { theme: "light" }, render: () => <Wizard step={2} /> };
+
+const CATEGORIES_IN_LIBRARY: CategoryCount[] = (
+  ["wildlife", "people", "reactions", "landscapes", "drone", "selfies", "food", "action", "pov", "conversations", "natural_sound", "humor", "sunsets", "water", "city", "night", "photos"] as const
+).map((category, i) => ({ category, count: 120 - i * 6 }));
+const FEATURE: Partial<EditRequest> = {
+  weights: { wildlife: "strong", people: "more", reactions: "more", selfies: "less" },
+  rules: { ...DEFAULT_REQUEST.rules, drone_openers: true },
+};
+const TRACK = {
+  name: "Horizon.mp3",
+  duration_ms: 228000,
+  sample_rate: 44100,
+  peaks: [30, 50, 40, 60, 45, 70, 55, 80, 65, 90, 70, 60, 85, 75, 95, 80, 70, 90, 100, 85, 70, 80, 60, 75, 90, 70, 55, 80, 65, 50, 70, 85, 60, 45, 65, 55, 40, 60, 50, 35, 45, 40, 30, 35, 25, 30, 20, 15],
+};
+const pickNothing = () => Promise.resolve(true);
+const MUSIC = { music: { path: "/Users/me/Music/Horizon.mp3", level_db: -18, fade_in_ms: 2000, fade_out_ms: 3000 } };
+
+export const WizardCustomBeats: Story = {
+  name: "S14 Step 2 Custom beats",
+  render: () => (
+    <Wizard
+      step={2}
+      start={{ arc: "custom", beats: ["Arrival", "Into the jungle", "Waterfalls", "Wildlife", "Up in the canopy", "The coast", "Finale"] }}
+    />
+  ),
+};
+export const WizardBeatsUnnamed: Story = {
+  name: "S14 Step 2 Beats to name",
+  render: () => <Wizard step={2} start={{ arc: "custom", beats: ["Arrival", ""] }} />,
+};
+export const WizardFeature: Story = {
+  name: "S14 Step 3 What to feature",
+  render: () => <Wizard step={3} categories={CATEGORIES_IN_LIBRARY} start={FEATURE} />,
+};
+export const WizardFeatureLoading: Story = { name: "S14 Step 3 Loading", render: () => <Wizard step={3} categories={undefined} /> };
+export const WizardStyle: Story = {
+  name: "S14 Step 4 Style",
+  render: () => <Wizard step={4} start={{ ...FEATURE, pace: "balanced", rules: { ...DEFAULT_REQUEST.rules, allow_imperfect: true, drone_openers: true } }} />,
+};
+export const WizardSound: Story = { name: "S14 Step 5 Sound", render: () => <Wizard step={5} /> };
+export const WizardSoundTrack: Story = {
+  name: "S14 Step 5 Track",
+  render: () => <Wizard step={5} start={{ ...FEATURE, ...MUSIC }} track={TRACK} onChooseTrack={pickNothing} />,
+};
+export const WizardSoundReading: Story = {
+  name: "S14 Step 5 Reading the track",
+  render: () => <Wizard step={5} start={MUSIC} track={null} onChooseTrack={pickNothing} />,
+};
+export const WizardSoundTrackError: Story = {
+  name: "S14 Step 5 Track can't be read",
+  render: () => <Wizard step={5} start={MUSIC} track={null} trackError="Horizon.mp3: it has no audio" onChooseTrack={pickNothing} />,
+};
+export const WizardFeatureLight: Story = {
+  name: "S14 Step 3 Light",
+  globals: { theme: "light" },
+  render: () => <Wizard step={3} categories={CATEGORIES_IN_LIBRARY} start={FEATURE} />,
+};
